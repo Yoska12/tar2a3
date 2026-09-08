@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: 'Cairo', sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Custom modern scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.4);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(245, 158, 11, 0.6);
+}
+
+/* KaTeX Formula enhancements for Arabic RTL context */
+.katex {
+  direction: ltr !important;
+  unicode-bidi: isolate !important;
+  font-size: 1.1em;
+}
+
+.katex-display {
+  direction: ltr !important;
+  margin: 0.75rem 0 !important;
+}
+
+/* Smooth pulse animation */
+@keyframes subtle-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.95; transform: scale(1.01); }
+}
+
+.animate-subtle {
+  animation: subtle-pulse 3s infinite ease-in-out;
+}

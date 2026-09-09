@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { UserRole } from '../types';
+import { sendWelcomeTelegramMessage } from './telegram';
 
 // قراءة بيانات الاتصال بـ Supabase من متغيرات بيئة Vite
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://djkwgwdlygxqcateivbc.supabase.co';
@@ -262,28 +263,73 @@ export const authService = {
     return { user: newUser, isDemo: true };
   },
 
-  // تسجيل الدخول السريع عبر تليجرام
-  signInWithTelegram: (tgData: {
+  // تسجيل الدخول والربط عبر تليجرام الرسمي (@heartqdbot)
+  signInWithTelegram: async (tgData: {
     id: number;
     first_name: string;
     last_name?: string;
     username?: string;
     photo_url?: string;
-  }): TarqaUser => {
-    const fullName = [tgData.first_name, tgData.last_name].filter(Boolean).join(' ') || 'طالب طرقع';
+  }): Promise<TarqaUser> => {
+    const rawUsername = tgData.username?.replace(/^@/, '').trim() || '';
+    const isOwner = rawUsername.toLowerCase() === 'yassien_ahmed';
+    let fullName = isOwner 
+      ? 'Yoska' 
+      : ([tgData.first_name, tgData.last_name].filter(Boolean).join(' ') || (rawUsername ? `@${rawUsername}` : 'طالب طرقع'));
+
+    let role: UserRole = isOwner ? 'super_admin' : 'student';
+    let email = isOwner 
+      ? 'yassooooo27m@gmail.com' 
+      : (rawUsername ? `${rawUsername}@telegram.tarqa` : `tg_${tgData.id}@tarqa.app`);
+
+    let targetScore = 100;
+    let userId = isOwner ? 'usr-admin-01' : `tg-${tgData.id}`;
+
+    // مزامنة والتحقق من حسابات Supabase إذا كانت مفعلة
+    if (isSupabaseConfigured) {
+      try {
+        let query = supabase.from('profiles').select('id, email, full_name, role, target_score, telegram_id, telegram_username');
+        if (tgData.id && rawUsername) {
+          query = query.or(`telegram_id.eq.${tgData.id},telegram_username.eq.${rawUsername}`);
+        } else if (tgData.id) {
+          query = query.eq('telegram_id', tgData.id);
+        } else if (rawUsername) {
+          query = query.eq('telegram_username', rawUsername);
+        }
+        const { data: existingProfile } = await query.maybeSingle();
+        if (existingProfile) {
+          userId = existingProfile.id || userId;
+          if (existingProfile.email) email = existingProfile.email;
+          if (existingProfile.role) role = existingProfile.role as UserRole;
+          if (existingProfile.full_name) fullName = existingProfile.full_name;
+          if (existingProfile.target_score) targetScore = existingProfile.target_score;
+        }
+      } catch (err) {
+        console.warn('Supabase telegram profile lookup note:', err);
+      }
+    }
+
     const user: TarqaUser = {
-      id: 'tg-' + tgData.id,
-      email: `tg_${tgData.id}@tarqa.app`,
+      id: userId,
+      email,
       fullName,
-      targetScore: 100,
-      role: 'student',
-      telegramUsername: tgData.username,
+      targetScore,
+      role,
+      telegramUsername: rawUsername || undefined,
       telegramId: tgData.id,
       avatarUrl: tgData.photo_url,
     };
 
     localStorage.setItem('tarqa_current_user', JSON.stringify(user));
     window.dispatchEvent(new Event('tarqa_user_changed'));
+
+    // إرسال رسالة ترحيبية فورية للطالب عبر البوت إذا توفر الـ chatId
+    if (tgData.id) {
+      try {
+        sendWelcomeTelegramMessage(tgData.id, fullName, targetScore).catch(() => {});
+      } catch {}
+    }
+
     return user;
   },
 

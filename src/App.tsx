@@ -33,6 +33,7 @@ import { mockFoundationModules } from './data/foundationModules';
 import { mockCategories, mockQuestions } from './data/mockQuestions';
 import { QuizSettings, QuizResult, Category, Question, CourseModule, Lesson, UserRole } from './types';
 import { localScoreStorage, authService, TarqaUser, supabase, isSupabaseConfigured } from './lib/supabase';
+import { sendQuizCompletedNotification, TELEGRAM_BOT_URL, TELEGRAM_BOT_USERNAME } from './lib/telegram';
 
 const isOwnerEmail = (email?: string | null) => {
   if (!email) return false;
@@ -242,6 +243,19 @@ export const App: React.FC = () => {
   const handleQuizFinish = (result: QuizResult) => {
     setLastResult(result);
     localScoreStorage.saveAttempt(result);
+
+    // إرسال إشعار فوري عبر بوت تليجرام @heartqdbot إذا كان حساب الطالب مربوطاً
+    if (currentUser?.telegramId) {
+      sendQuizCompletedNotification(
+        currentUser.telegramId,
+        currentUser.fullName,
+        quizTitle || 'اختبار كمي - منصة طرقع',
+        result.percentageScore,
+        result.totalQuestions,
+        result.totalTimeSeconds
+      ).catch(() => {});
+    }
+
     setCurrentView('result');
   };
 
@@ -840,6 +854,17 @@ export const App: React.FC = () => {
       {/* التذييل */}
       <footer className="border-t border-slate-200/80 dark:border-slate-800/80 py-6 text-center text-xs text-slate-500">
         <p>منصة طرقع للكمي © {new Date().getFullYear()} • تجميعات وتدريبات تفاعلية لاختبار القدرات العامة</p>
+        <div className="mt-2 flex items-center justify-center gap-3 text-[11px]">
+          <a
+            href={TELEGRAM_BOT_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[#24A1DE] hover:underline font-semibold flex items-center gap-1"
+          >
+            <span>بوت التدريب والإشعارات الرسمي: @{TELEGRAM_BOT_USERNAME}</span>
+            <span>↗</span>
+          </a>
+        </div>
       </footer>
 
     </div>

@@ -289,7 +289,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </div>
         )}
 
-        {/* قسم تليجرام الرسمي (@heartqdbot) */}
+        {/* قسم تليجرام الرسمي (@Tarqa3bot) */}
         {activeTab === 'signin' && (
           <div className="mb-4 p-3.5 rounded-2xl bg-gradient-to-b from-[#24A1DE]/10 to-[#24A1DE]/5 border border-[#24A1DE]/25">
             <div className="flex items-center justify-between mb-2">

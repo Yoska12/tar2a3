@@ -246,7 +246,7 @@ export const App: React.FC = () => {
     setLastResult(result);
     localScoreStorage.saveAttempt(result);
 
-    // إرسال إشعار فوري عبر بوت تليجرام @heartqdbot إذا كان حساب الطالب مربوطاً
+    // إرسال إشعار فوري عبر بوت تليجرام @Tarqa3bot إذا كان حساب الطالب مربوطاً
     if (currentUser?.telegramId) {
       sendQuizCompletedNotification(
         currentUser.telegramId,

@@ -1,15 +1,15 @@
-// 🚀 تكامل بوت تليجرام الرسمي لمنصة طرقع (@heartqdbot)
+// 🚀 تكامل بوت تليجرام الرسمي لمنصة طرقع (@Tarqa3bot)
 // Telegram Bot API Integration & Login Verification
 
 export const TELEGRAM_BOT_TOKEN = 
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TELEGRAM_BOT_TOKEN) ||
   (typeof process !== 'undefined' && process.env?.TELEGRAM_BOT_TOKEN) ||
-  '8978106095:AAEDS6L3u0g3jHAKMk9YUksjkqKu8nt8QlU';
+  '8848350461:AAGTM9m-RQpCmJ-MKLrUlbygXYUzEWhO-R4';
 
 export const TELEGRAM_BOT_USERNAME = 
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TELEGRAM_BOT_USERNAME) ||
   (typeof process !== 'undefined' && process.env?.TELEGRAM_BOT_USERNAME) ||
-  'heartqdbot';
+  'Tarqa3bot';
 
 export const TELEGRAM_BOT_URL = `https://t.me/${TELEGRAM_BOT_USERNAME}`;
 const TELEGRAM_API_URL = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;

@@ -263,7 +263,7 @@ export const authService = {
     return { user: newUser, isDemo: true };
   },
 
-  // تسجيل الدخول والربط عبر تليجرام الرسمي (@heartqdbot)
+  // تسجيل الدخول والربط عبر تليجرام الرسمي (@Tarqa3bot)
   signInWithTelegram: async (tgData: {
     id: number;
     first_name: string;

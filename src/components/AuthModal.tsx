@@ -117,7 +117,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       if (onUserLoggedIn) onUserLoggedIn(result.user);
       setTimeout(() => onClose(), 1000);
     } catch (err: any) {
-      setAuthError(err?.message || 'حدث خطأ أثناء إنشاء الحساب');
+      if (err?.message?.includes('Email signups are disabled')) {
+        setAuthError('إنشاء الحسابات الجديدة بالبريد معطل حالياً في إعدادات Supabase (يرجى تفعيل Allow new users to sign up من لوحة تحكم Supabase)');
+      } else {
+        setAuthError(err?.message || 'حدث خطأ أثناء إنشاء الحساب');
+      }
     } finally {
       setIsLoading(false);
     }

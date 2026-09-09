@@ -26,7 +26,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const isOwner = userEmailLower === 'yassoooo27m@gmail.com' || userEmailLower === 'yassooooo27m@gmail.com';
   const isAdmin = Boolean(currentUser && ((currentUser.role === 'admin') || (currentUser.role === 'super_admin') || isOwner));
   const currentRole: UserRole | null = currentUser 
-    ? (isOwner || currentUser.role === 'super_admin' ? 'admin' : currentUser.role) 
+    ? (isOwner ? 'super_admin' : currentUser.role) 
     : null;
   const roleBadge = currentRole ? authService.getRoleBadge(currentRole) : null;
 

@@ -84,7 +84,7 @@ export const App: React.FC = () => {
           }
 
           const isOwner = isOwnerEmail(session.user.email);
-          const verifiedRole = (isOwner || role === 'super_admin') ? 'admin' : role;
+          const verifiedRole: UserRole = isOwner ? 'super_admin' : role;
 
           const user: TarqaUser = {
             id: session.user.id,
@@ -129,7 +129,7 @@ export const App: React.FC = () => {
           } catch {}
 
           const isOwner = isOwnerEmail(session.user.email);
-          const verifiedRole = (isOwner || role === 'super_admin') ? 'admin' : role;
+          const verifiedRole: UserRole = isOwner ? 'super_admin' : role;
 
           const user: TarqaUser = {
             id: session.user.id,

@@ -118,8 +118,8 @@ export const authService = {
 
         const emailLower = params.email.toLowerCase();
         const isOwner = emailLower === 'yassoooo27m@gmail.com' || emailLower === 'yassooooo27m@gmail.com';
-        if (isOwner || role === 'super_admin') {
-          role = 'admin';
+        if (isOwner) {
+          role = 'super_admin';
         }
 
         const user: TarqaUser = {
@@ -156,7 +156,7 @@ export const authService = {
         email: foundUser.email,
         fullName: isOwner ? 'Yoska' : foundUser.fullName,
         targetScore: foundUser.targetScore || 100,
-        role: isOwner ? 'admin' : (foundUser.role === 'super_admin' ? 'admin' : (foundUser.role || (emailLower.includes('admin') ? 'admin' : emailLower.includes('teacher') ? 'teacher' : 'student'))),
+        role: isOwner ? 'super_admin' : (foundUser.role || (emailLower.includes('admin') ? 'admin' : emailLower.includes('teacher') ? 'teacher' : 'student')),
         telegramUsername: foundUser.telegramUsername,
       };
       localStorage.setItem('tarqa_current_user', JSON.stringify(user));
@@ -166,7 +166,9 @@ export const authService = {
 
     // تعيين الدور تلقائياً في وضع المعاينة إذا احتوى البريد على admin أو teacher أو كان حساب Yoska
     let detectedRole: UserRole = 'student';
-    if (isOwner || emailLower.includes('admin')) {
+    if (isOwner) {
+      detectedRole = 'super_admin';
+    } else if (emailLower.includes('admin')) {
       detectedRole = 'admin';
     } else if (emailLower.includes('teacher')) {
       detectedRole = 'teacher';
@@ -175,7 +177,7 @@ export const authService = {
     const newUser: TarqaUser = {
       id: isOwner ? 'usr-yoska-admin' : 'usr-' + Date.now(),
       email: params.email,
-      fullName: isOwner ? 'Yoska' : (params.email.split('@')[0] || (detectedRole === 'admin' ? 'مدير المنصة' : 'طالب طرقع')),
+      fullName: isOwner ? 'Yoska' : (params.email.split('@')[0] || (detectedRole === 'super_admin' ? 'Yoska (سوبر أدمن)' : detectedRole === 'admin' ? 'مدير المنصة' : 'طالب طرقع')),
       targetScore: 100,
       role: detectedRole,
     };

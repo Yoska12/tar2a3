@@ -7,7 +7,7 @@ const INITIAL_DEMO_USERS: UserWithRole[] = [
     id: 'usr-admin-01',
     email: 'yassoooo27m@gmail.com',
     fullName: 'Yoska',
-    role: 'admin',
+    role: 'super_admin',
     targetScore: 100,
     telegramUsername: 'yassien_ahmed',
     telegramId: 987654321,
@@ -61,16 +61,13 @@ export const rolesService = {
           !['usr-admin-02', 'usr-teacher-03', 'usr-teacher-04', 'usr-student-05', 'usr-student-06', 'usr-student-07'].includes(u.id)
         );
 
-        // تحويل أي حساب برتبة super_admin سابقة إلى admin
-        usersList = usersList.map(u => u.role === 'super_admin' ? { ...u, role: 'admin' as UserRole } : u);
-
         const yoska = usersList.find((u) => 
           u.email.toLowerCase() === 'yassoooo27m@gmail.com' || 
           u.email.toLowerCase() === 'yassooooo27m@gmail.com'
         );
 
         if (yoska) {
-          yoska.role = 'admin';
+          yoska.role = 'super_admin';
           yoska.fullName = 'Yoska';
         } else {
           usersList.unshift(INITIAL_DEMO_USERS[0]);
@@ -155,11 +152,11 @@ export const rolesService = {
       return { success: true, updatedUser: targetUser };
     }
 
-    // تم إلغاء رتبة السوبر أدمن، لا يُسمح بالترقية إليها
-    if (newRole === 'super_admin') {
+    // منح رتبة السوبر أدمن محصور بمالك المنصة أو سوبر أدمن
+    if (newRole === 'super_admin' && !isOwner && currentUser?.role !== 'super_admin') {
       return {
         success: false,
-        error: 'تم إلغاء رتبة السوبر أدمن في المنصة؛ أعلى رتبة إدارية هي مسؤول المنصة (Admin).',
+        error: 'منح رتبة السوبر أدمن محصور بمالك المنصة والسوبر أدمن حصراً.',
       };
     }
 

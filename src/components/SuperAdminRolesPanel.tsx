@@ -128,11 +128,6 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
   const handleSelectRole = (user: UserWithRole, newRole: UserRole) => {
     if (user.role === newRole) return;
 
-    if (newRole === 'super_admin') {
-      showToast('تم إلغاء رتبة السوبر أدمن من المنصة. أعلى رتبة متاحة هي مسؤول المنصة (Admin).', 'warning');
-      return;
-    }
-
     setPendingChange({
       user,
       newRole,
@@ -360,10 +355,10 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
         <div className="flex items-center gap-1.5 w-full md:w-auto overflow-x-auto pb-1 md:pb-0 scrollbar-none">
           {[
             { id: 'all', label: 'الكل', count: stats.total },
+            { id: 'super_admin', label: '👑 سوبر أدمن', count: stats.superAdmin },
             { id: 'admin', label: '🛡️ مسؤول', count: stats.admin },
             { id: 'teacher', label: '🎓 معلم', count: stats.teacher },
             { id: 'student', label: '🎯 طالب', count: stats.student },
-            ...(stats.superAdmin > 0 ? [{ id: 'super_admin', label: '👑 سابق', count: stats.superAdmin }] : []),
           ].map((tab) => (
             <button
               key={tab.id}
@@ -514,6 +509,8 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                             className={`w-full px-3 py-1.5 rounded-xl text-xs font-bold appearance-none transition-all cursor-pointer text-center ${
                               !isAuthorizedAdmin
                                 ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed border border-slate-200 dark:border-slate-700'
+                                : user.role === 'super_admin'
+                                ? 'bg-rose-500/10 text-rose-600 border border-rose-500/40 hover:border-rose-500 font-black'
                                 : user.role === 'admin'
                                 ? 'bg-purple-500/10 text-purple-600 border border-purple-500/40 hover:border-purple-500'
                                 : user.role === 'teacher'
@@ -524,9 +521,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                             <option value="student">🎯 طالب (Student)</option>
                             <option value="teacher">🎓 معلم (Teacher)</option>
                             <option value="admin">🛡️ مسؤول (Admin)</option>
-                            {user.role === 'super_admin' && (
-                              <option value="super_admin" disabled>👑 سوبر أدمن (سابق)</option>
-                            )}
+                            <option value="super_admin">👑 سوبر أدمن (Super Admin)</option>
                           </select>
                         </div>
                       </td>

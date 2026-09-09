@@ -39,11 +39,11 @@ export async function updateUserRoleAction(
       return { success: false, error: 'لم يتم العثور على المستخدم' };
     }
 
-    // منع تعيين رتبة سوبر أدمن
-    if (newRole === 'super_admin') {
+    // منح رتبة السوبر أدمن محصور بمالك المنصة
+    if (newRole === 'super_admin' && !isOwner) {
       return {
         success: false,
-        error: 'تم إلغاء رتبة السوبر أدمن من المنصة. أعلى رتبة إدارية متاحة هي مسؤول المنصة (Admin).',
+        error: 'منح رتبة السوبر أدمن محصور بمالك المنصة حصراً.',
       };
     }
 

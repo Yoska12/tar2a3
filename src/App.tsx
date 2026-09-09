@@ -68,10 +68,13 @@ export const App: React.FC = () => {
           let telegramUsername = session.user.user_metadata?.telegram_username;
           let avatarUrl = session.user.user_metadata?.avatar_url;
 
+          let isBanned = false;
+          let banReason = '';
+
           try {
             const { data: profile } = await supabase
               .from('profiles')
-              .select('role, full_name, target_score, telegram_username, avatar_url')
+              .select('role, full_name, target_score, telegram_username, avatar_url, is_banned, ban_reason')
               .eq('id', session.user.id)
               .maybeSingle();
 
@@ -81,9 +84,19 @@ export const App: React.FC = () => {
               if (profile.target_score) targetScore = profile.target_score;
               if (profile.telegram_username) telegramUsername = profile.telegram_username;
               if (profile.avatar_url) avatarUrl = profile.avatar_url;
+              isBanned = Boolean(profile.is_banned);
+              banReason = profile.ban_reason || '';
             }
           } catch (e) {
             console.warn('[App] Failed to fetch profile from DB:', e);
+          }
+
+          if (isBanned) {
+            await supabase.auth.signOut();
+            setCurrentUser(null);
+            localStorage.removeItem('tarqa_current_user');
+            alert(`تم حظر هذا الحساب من قبل إدارة المنصة.${banReason ? `\nسبب الحظر: ${banReason}` : ''}`);
+            return;
           }
 
           const isOwner = isOwnerEmail(session.user.email);
@@ -97,6 +110,7 @@ export const App: React.FC = () => {
             role: verifiedRole,
             telegramUsername,
             avatarUrl,
+            isBanned: false,
           };
           localStorage.setItem('tarqa_current_user', JSON.stringify(user));
           setCurrentUser(user);
@@ -115,11 +129,13 @@ export const App: React.FC = () => {
           let targetScore = Number(session.user.user_metadata?.target_score) || 100;
           let telegramUsername = session.user.user_metadata?.telegram_username;
           let avatarUrl = session.user.user_metadata?.avatar_url;
+          let isBanned = false;
+          let banReason = '';
 
           try {
             const { data: profile } = await supabase
               .from('profiles')
-              .select('role, full_name, target_score, telegram_username, avatar_url')
+              .select('role, full_name, target_score, telegram_username, avatar_url, is_banned, ban_reason')
               .eq('id', session.user.id)
               .maybeSingle();
 
@@ -129,8 +145,18 @@ export const App: React.FC = () => {
               if (profile.target_score) targetScore = profile.target_score;
               if (profile.telegram_username) telegramUsername = profile.telegram_username;
               if (profile.avatar_url) avatarUrl = profile.avatar_url;
+              isBanned = Boolean(profile.is_banned);
+              banReason = profile.ban_reason || '';
             }
           } catch {}
+
+          if (isBanned) {
+            await supabase.auth.signOut();
+            setCurrentUser(null);
+            localStorage.removeItem('tarqa_current_user');
+            alert(`تم حظر هذا الحساب من قبل إدارة المنصة.${banReason ? `\nسبب الحظر: ${banReason}` : ''}`);
+            return;
+          }
 
           const isOwner = isOwnerEmail(session.user.email);
           const verifiedRole: UserRole = isOwner ? 'super_admin' : role;

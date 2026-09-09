@@ -133,6 +133,9 @@ export interface UserWithRole {
   avatarUrl?: string;
   createdAt: string;
   lastSignInAt?: string;
+  isBanned?: boolean;
+  banReason?: string;
+  bannedAt?: string;
 }
 
 export interface RoleChangeLog {

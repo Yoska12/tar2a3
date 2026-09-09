@@ -22,7 +22,11 @@ import {
   Info,
   Lock,
   ArrowUpDown,
-  X
+  X,
+  Ban,
+  Trash2,
+  Unlock,
+  UserX
 } from 'lucide-react';
 import { UserRole, UserWithRole, RoleChangeLog } from '../types';
 import { rolesService } from '../lib/rolesService';
@@ -50,6 +54,19 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
     newRole: UserRole;
     reason: string;
   } | null>(null);
+
+  // حالة نافذة تأكيد الحظر / فك الحظر
+  const [pendingBan, setPendingBan] = useState<{
+    user: UserWithRole;
+    isBanning: boolean;
+    reason: string;
+  } | null>(null);
+
+  // حالة نافذة تأكيد مسح الحساب
+  const [pendingDelete, setPendingDelete] = useState<UserWithRole | null>(null);
+
+  // مؤشر تحميل العمليات
+  const [isProcessingAction, setIsProcessingAction] = useState<boolean>(false);
 
   // إشعار نجاح أو خطأ
   const [toastMessage, setToastMessage] = useState<{
@@ -132,6 +149,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
       admin: users.filter((u) => u.role === 'admin').length,
       teacher: users.filter((u) => u.role === 'teacher').length,
       student: users.filter((u) => u.role === 'student').length,
+      banned: users.filter((u) => u.isBanned).length,
     };
   }, [users]);
 
@@ -145,11 +163,93 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
           user.telegramUsername.toLowerCase().includes(searchQuery.toLowerCase()));
 
       const matchesFilter =
-        selectedRoleFilter === 'all' || user.role === selectedRoleFilter;
+        selectedRoleFilter === 'all'
+          ? true
+          : selectedRoleFilter === 'banned'
+          ? Boolean(user.isBanned)
+          : user.role === selectedRoleFilter;
 
       return matchesSearch && matchesFilter;
     });
   }, [users, searchQuery, selectedRoleFilter]);
+
+  // فتح نافذة تأكيد الحظر أو فك الحظر
+  const handleToggleBan = (user: UserWithRole) => {
+    if (user.role === 'super_admin' || user.email?.toLowerCase() === 'yassooooo27m@gmail.com') {
+      showToast('لا يمكن حظر حساب السوبر أدمن الرئيسي للمنصة!', 'error');
+      return;
+    }
+    if (currentUser?.id === user.id) {
+      showToast('لا يمكنك حظر حسابك الخاص!', 'error');
+      return;
+    }
+
+    setPendingBan({
+      user,
+      isBanning: !user.isBanned,
+      reason: user.banReason || 'مخالفة سياسة وشروط استخدام منصة طرقع',
+    });
+  };
+
+  // تنفيذ تأكيد الحظر / فك الحظر
+  const executeToggleBan = async () => {
+    if (!pendingBan) return;
+    setIsProcessingAction(true);
+    try {
+      const { user, isBanning, reason } = pendingBan;
+      const res = await rolesService.banUser(user.id, isBanning, reason);
+      if (res.success) {
+        showToast(
+          isBanning
+            ? `تم حظر حساب ${user.fullName} بنجاح`
+            : `تم إلغاء حظر حساب ${user.fullName} وإعادته للعمل`,
+          'success'
+        );
+        setPendingBan(null);
+        await loadData();
+      } else {
+        showToast(res.error || 'فشلت عملية الحظر', 'error');
+      }
+    } catch (e: any) {
+      showToast(e?.message || 'حدث خطأ أثناء تنفيذ الحظر', 'error');
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
+  // فتح نافذة تأكيد مسح الحساب
+  const handleDeleteUser = (user: UserWithRole) => {
+    if (user.role === 'super_admin' || user.email?.toLowerCase() === 'yassooooo27m@gmail.com') {
+      showToast('لا يمكن مسح حساب السوبر أدمن الرئيسي للمنصة!', 'error');
+      return;
+    }
+    if (currentUser?.id === user.id) {
+      showToast('لا يمكنك مسح حسابك وأنت مسجل دخول به!', 'error');
+      return;
+    }
+
+    setPendingDelete(user);
+  };
+
+  // تنفيذ تأكيد مسح الحساب
+  const executeDeleteUser = async () => {
+    if (!pendingDelete) return;
+    setIsProcessingAction(true);
+    try {
+      const res = await rolesService.deleteUser(pendingDelete.id);
+      if (res.success) {
+        showToast(`تم مسح حساب ${pendingDelete.fullName} نهائياً من النظام`, 'success');
+        setPendingDelete(null);
+        await loadData();
+      } else {
+        showToast(res.error || 'فشلت عملية مسح الحساب', 'error');
+      }
+    } catch (e: any) {
+      showToast(e?.message || 'حدث خطأ أثناء مسح الحساب', 'error');
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
 
   // طلب تغيير الرتبة (يفتح نافذة التأكيد)
   const handleSelectRole = (user: UserWithRole, newRole: UserRole) => {
@@ -386,6 +486,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
             { id: 'admin', label: '🛡️ مسؤول', count: stats.admin },
             { id: 'teacher', label: '🎓 معلم', count: stats.teacher },
             { id: 'student', label: '🎯 طالب', count: stats.student },
+            { id: 'banned', label: '🚫 المحظورين', count: stats.banned },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -423,7 +524,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                 <th className="py-4 px-4 sm:px-6">تليجرام</th>
                 <th className="py-4 px-4 sm:px-6">الرتبة الحالية</th>
                 <th className="py-4 px-4 sm:px-6">تاريخ الانضمام</th>
-                <th className="py-4 px-4 sm:px-6 text-center">تغيير الرتبة (إجراء السوبر أدمن)</th>
+                <th className="py-4 px-4 sm:px-6 text-center">الإجراءات (الرتبة / الحظر / الحذف)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs sm:text-sm">
@@ -438,16 +539,25 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
               ) : (
                 filteredUsers.map((user) => {
                   const isCurrentLoggedUser = currentUser?.id === user.id;
+                  const isOwner = user.email?.toLowerCase() === 'yassooooo27m@gmail.com' || user.role === 'super_admin';
 
                   return (
                     <tr
                       key={user.id}
-                      className="hover:bg-slate-50/80 dark:hover:bg-slate-900/40 transition-colors"
+                      className={`transition-colors ${
+                        user.isBanned 
+                          ? 'bg-rose-500/5 hover:bg-rose-500/10 dark:bg-rose-950/15' 
+                          : 'hover:bg-slate-50/80 dark:hover:bg-slate-900/40'
+                      }`}
                     >
                       {/* الاسم و الأفاتار */}
                       <td className="py-4 px-4 sm:px-6">
                         <div className="flex items-center gap-3">
-                          <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 flex items-center justify-center font-black text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 flex-shrink-0">
+                          <div className={`relative w-9 h-9 rounded-xl flex items-center justify-center font-black border flex-shrink-0 ${
+                            user.isBanned
+                              ? 'bg-rose-100 dark:bg-rose-950 text-rose-600 border-rose-300 dark:border-rose-800'
+                              : 'bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700'
+                          }`}>
                             {user.avatarUrl ? (
                               <img
                                 src={user.avatarUrl}
@@ -464,11 +574,17 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                             )}
                           </div>
                           <div>
-                            <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5 flex-wrap">
                               <span>{user.fullName}</span>
                               {isCurrentLoggedUser && (
                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 font-normal">
                                   (أنت)
+                                </span>
+                              )}
+                              {user.isBanned && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 font-bold flex items-center gap-0.5">
+                                  <Ban className="w-2.5 h-2.5" />
+                                  محظور
                                 </span>
                               )}
                             </div>
@@ -527,30 +643,68 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                         </div>
                       </td>
 
-                      {/* إجراء تغيير الرتبة (Select Dropdown) */}
+                      {/* عمود الإجراءات: تغيير الرتبة + الحظر + المسح */}
                       <td className="py-4 px-4 sm:px-6 text-center">
-                        <div className="inline-block relative min-w-[150px]">
-                          <select
-                            value={user.role}
-                            disabled={!isAuthorizedAdmin}
-                            onChange={(e) => handleSelectRole(user, e.target.value as UserRole)}
-                            className={`w-full px-3 py-1.5 rounded-xl text-xs font-bold appearance-none transition-all cursor-pointer text-center ${
-                              !isAuthorizedAdmin
-                                ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed border border-slate-200 dark:border-slate-700'
-                                : user.role === 'super_admin'
-                                ? 'bg-rose-500/10 text-rose-600 border border-rose-500/40 hover:border-rose-500 font-black'
-                                : user.role === 'admin'
-                                ? 'bg-purple-500/10 text-purple-600 border border-purple-500/40 hover:border-purple-500'
-                                : user.role === 'teacher'
-                                ? 'bg-blue-500/10 text-blue-600 border border-blue-500/40 hover:border-blue-500'
-                                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-amber-500'
-                            }`}
+                        <div className="flex items-center justify-center gap-1.5 flex-nowrap">
+                          {/* اختيار الرتبة */}
+                          <div className="inline-block relative min-w-[130px]">
+                            <select
+                              value={user.role}
+                              disabled={!isAuthorizedAdmin || user.isBanned}
+                              onChange={(e) => handleSelectRole(user, e.target.value as UserRole)}
+                              className={`w-full px-2.5 py-1.5 rounded-xl text-xs font-bold appearance-none transition-all cursor-pointer text-center ${
+                                !isAuthorizedAdmin || user.isBanned
+                                  ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed border border-slate-200 dark:border-slate-700'
+                                  : user.role === 'super_admin'
+                                  ? 'bg-rose-500/10 text-rose-600 border border-rose-500/40 hover:border-rose-500 font-black'
+                                  : user.role === 'admin'
+                                  ? 'bg-purple-500/10 text-purple-600 border border-purple-500/40 hover:border-purple-500'
+                                  : user.role === 'teacher'
+                                  ? 'bg-blue-500/10 text-blue-600 border border-blue-500/40 hover:border-blue-500'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-amber-500'
+                              }`}
+                            >
+                              <option value="student">🎯 طالب</option>
+                              <option value="teacher">🎓 معلم</option>
+                              <option value="admin">🛡️ مسؤول</option>
+                              <option value="super_admin">👑 سوبر أدمن</option>
+                            </select>
+                          </div>
+
+                          {/* زر حظر / فك حظر الحساب */}
+                          <button
+                            onClick={() => handleToggleBan(user)}
+                            disabled={!isAuthorizedAdmin || isCurrentLoggedUser || isOwner}
+                            title={user.isBanned ? 'إلغاء حظر الحساب' : 'حظر هذا الحساب'}
+                            className={`p-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
+                              user.isBanned
+                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25'
+                                : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/20'
+                            } disabled:opacity-25 disabled:cursor-not-allowed`}
                           >
-                            <option value="student">🎯 طالب (Student)</option>
-                            <option value="teacher">🎓 معلم (Teacher)</option>
-                            <option value="admin">🛡️ مسؤول (Admin)</option>
-                            <option value="super_admin">👑 سوبر أدمن (Super Admin)</option>
-                          </select>
+                            {user.isBanned ? (
+                              <>
+                                <Unlock className="w-3.5 h-3.5" />
+                                <span className="hidden xl:inline">فك الحظر</span>
+                              </>
+                            ) : (
+                              <>
+                                <Ban className="w-3.5 h-3.5" />
+                                <span className="hidden xl:inline">حظر</span>
+                              </>
+                            )}
+                          </button>
+
+                          {/* زر مسح الحساب نهائياً */}
+                          <button
+                            onClick={() => handleDeleteUser(user)}
+                            disabled={!isAuthorizedAdmin || isCurrentLoggedUser || isOwner}
+                            title="مسح الحساب نهائياً"
+                            className="p-2 rounded-xl text-xs font-bold transition-all bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/25 disabled:opacity-25 disabled:cursor-not-allowed flex items-center gap-1"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span className="hidden xl:inline">مسح</span>
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -572,13 +726,18 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
           ) : (
             filteredUsers.map((user) => {
               const isCurrentLoggedUser = currentUser?.id === user.id;
+              const isOwner = user.email?.toLowerCase() === 'yassooooo27m@gmail.com' || user.role === 'super_admin';
 
               return (
-                <div key={user.id} className="p-4 flex flex-col gap-3">
+                <div key={user.id} className={`p-4 flex flex-col gap-3 ${user.isBanned ? 'bg-rose-500/5 dark:bg-rose-950/15' : ''}`}>
                   {/* رأس البطاقة: الأفاتار، الاسم، والبريد والشارة */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 flex items-center justify-center font-black text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 flex-shrink-0">
+                      <div className={`relative w-10 h-10 rounded-xl flex items-center justify-center font-black border flex-shrink-0 ${
+                        user.isBanned
+                          ? 'bg-rose-100 dark:bg-rose-950 text-rose-600 border-rose-300 dark:border-rose-800'
+                          : 'bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700'
+                      }`}>
                         {user.avatarUrl ? (
                           <img
                             src={user.avatarUrl}
@@ -600,6 +759,12 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                           {isCurrentLoggedUser && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 font-normal">
                               (أنت)
+                            </span>
+                          )}
+                          {user.isBanned && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 font-bold flex items-center gap-0.5">
+                              <Ban className="w-2.5 h-2.5" />
+                              محظور
                             </span>
                           )}
                         </div>
@@ -640,32 +805,68 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                     </div>
                   </div>
 
-                  {/* تعديل الرتبة بلمسة مريحة للإبهام */}
-                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800/60">
-                    <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                      تعديل الرتبة والصلاحية:
-                    </label>
-                    <select
-                      value={user.role}
-                      disabled={!isAuthorizedAdmin}
-                      onChange={(e) => handleSelectRole(user, e.target.value as UserRole)}
-                      className={`w-full px-3 py-2.5 rounded-xl text-xs font-bold appearance-none transition-all cursor-pointer text-center ${
-                        !isAuthorizedAdmin
-                          ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed border border-slate-200 dark:border-slate-700'
-                          : user.role === 'super_admin'
-                          ? 'bg-rose-500/10 text-rose-600 border border-rose-500/40 font-black'
-                          : user.role === 'admin'
-                          ? 'bg-purple-500/10 text-purple-600 border border-purple-500/40'
-                          : user.role === 'teacher'
-                          ? 'bg-blue-500/10 text-blue-600 border border-blue-500/40'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-                      }`}
-                    >
-                      <option value="student">🎯 طالب (Student)</option>
-                      <option value="teacher">🎓 معلم (Teacher)</option>
-                      <option value="admin">🛡️ مسؤول (Admin)</option>
-                      <option value="super_admin">👑 سوبر أدمن (Super Admin)</option>
-                    </select>
+                  {/* تعديل الرتبة والإجراءات بلمسة مريحة للإبهام */}
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800/60 flex flex-col gap-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                        تعديل الرتبة والصلاحية:
+                      </label>
+                      <select
+                        value={user.role}
+                        disabled={!isAuthorizedAdmin || user.isBanned}
+                        onChange={(e) => handleSelectRole(user, e.target.value as UserRole)}
+                        className={`w-full px-3 py-2.5 rounded-xl text-xs font-bold appearance-none transition-all cursor-pointer text-center ${
+                          !isAuthorizedAdmin || user.isBanned
+                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed border border-slate-200 dark:border-slate-700'
+                            : user.role === 'super_admin'
+                            ? 'bg-rose-500/10 text-rose-600 border border-rose-500/40 font-black'
+                            : user.role === 'admin'
+                            ? 'bg-purple-500/10 text-purple-600 border border-purple-500/40'
+                            : user.role === 'teacher'
+                            ? 'bg-blue-500/10 text-blue-600 border border-blue-500/40'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        <option value="student">🎯 طالب (Student)</option>
+                        <option value="teacher">🎓 معلم (Teacher)</option>
+                        <option value="admin">🛡️ مسؤول (Admin)</option>
+                        <option value="super_admin">👑 سوبر أدمن (Super Admin)</option>
+                      </select>
+                    </div>
+
+                    {/* أزرار الحظر والمسح للموبايل */}
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <button
+                        onClick={() => handleToggleBan(user)}
+                        disabled={!isAuthorizedAdmin || isCurrentLoggedUser || isOwner}
+                        className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                          user.isBanned
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                            : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                        } disabled:opacity-30 disabled:cursor-not-allowed`}
+                      >
+                        {user.isBanned ? (
+                          <>
+                            <Unlock className="w-3.5 h-3.5" />
+                            <span>فك الحظر</span>
+                          </>
+                        ) : (
+                          <>
+                            <Ban className="w-3.5 h-3.5" />
+                            <span>حظر الحساب</span>
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteUser(user)}
+                        disabled={!isAuthorizedAdmin || isCurrentLoggedUser || isOwner}
+                        className="py-2 px-3 rounded-xl text-xs font-bold transition-all bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>مسح الحساب</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -754,6 +955,167 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
               </button>
               <button
                 onClick={() => setPendingChange(null)}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-all"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* نافذة تأكيد الحظر أو فك الحظر (Ban / Unban Modal) */}
+      {/* ========================================================================= */}
+      {pendingBan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-md rounded-3xl bg-white dark:bg-[#0d1322] border border-slate-200 dark:border-slate-800 p-6 shadow-2xl relative">
+            <button
+              onClick={() => setPendingBan(null)}
+              className="absolute top-4 left-4 p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            {/* أيقونة الحالة */}
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 ${
+              pendingBan.isBanning 
+                ? 'bg-rose-500/15 border border-rose-500/30 text-rose-500' 
+                : 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-500'
+            }`}>
+              {pendingBan.isBanning ? <Ban className="w-6 h-6" /> : <Unlock className="w-6 h-6" />}
+            </div>
+
+            <h3 className="text-lg font-black text-slate-900 dark:text-white mb-1">
+              {pendingBan.isBanning ? 'تأكيد حظر الحساب' : 'تأكيد فك الحظر'}
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+              {pendingBan.isBanning
+                ? 'سيتم حظر المستخدم فوراً ومنعه من تسجيل الدخول واستخدام المنصة:'
+                : 'سيتم فك الحظر وإعادة تمكين المستخدم من الدخول للمنصة:'}
+            </p>
+
+            {/* معلومات المستخدم */}
+            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 mb-4 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">المستخدم:</span>
+                <span className="font-bold text-slate-900 dark:text-white">{pendingBan.user.fullName}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">البريد:</span>
+                <span className="font-mono text-slate-600 dark:text-slate-300">{pendingBan.user.email}</span>
+              </div>
+            </div>
+
+            {/* إدخال سبب الحظر (إذا كان حظراً) */}
+            {pendingBan.isBanning && (
+              <div className="mb-6">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  سبب الحظر (سيظهر للمستخدم عند محاولة تسجيل الدخول):
+                </label>
+                <textarea
+                  rows={3}
+                  value={pendingBan.reason}
+                  onChange={(e) =>
+                    setPendingBan({
+                      ...pendingBan,
+                      reason: e.target.value,
+                    })
+                  }
+                  placeholder="اكتب سبب الحظر هنا (مثال: مخالفة شروط الاستخدام أو الإساءة)..."
+                  className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500/50 resize-none"
+                />
+              </div>
+            )}
+
+            {/* أزرار التأكيد والإلغاء */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={executeToggleBan}
+                disabled={isProcessingAction}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-black text-white shadow-lg transition-all flex items-center justify-center gap-1.5 ${
+                  pendingBan.isBanning
+                    ? 'bg-rose-500 hover:bg-rose-600 shadow-rose-500/20'
+                    : 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20'
+                } disabled:opacity-50`}
+              >
+                {pendingBan.isBanning ? <Ban className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                <span>{pendingBan.isBanning ? 'تأكيد الحظر الفوري' : 'تأكيد فك الحظر'}</span>
+              </button>
+              <button
+                onClick={() => setPendingBan(null)}
+                disabled={isProcessingAction}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-all"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* نافذة تأكيد مسح الحساب نهائياً (Delete User Modal) */}
+      {/* ========================================================================= */}
+      {pendingDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-md rounded-3xl bg-white dark:bg-[#0d1322] border border-rose-500/30 dark:border-rose-500/30 p-6 shadow-2xl relative">
+            <button
+              onClick={() => setPendingDelete(null)}
+              className="absolute top-4 left-4 p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            {/* أيقونة الحذف والتحذير */}
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-500 mb-4">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-lg font-black text-rose-600 dark:text-rose-400 mb-1">
+              مسح الحساب نهائياً
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+              أنت على وشك مسح هذا الحساب بشكل نهائي من قاعدة البيانات:
+            </p>
+
+            {/* بطاقة معلومات الحساب */}
+            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 mb-4 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">الاسم:</span>
+                <span className="font-bold text-slate-900 dark:text-white">{pendingDelete.fullName}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">البريد:</span>
+                <span className="font-mono text-slate-600 dark:text-slate-300">{pendingDelete.email}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">الرتبة:</span>
+                <div>{renderRoleBadge(pendingDelete.role)}</div>
+              </div>
+            </div>
+
+            {/* تحذير خطورة العملية */}
+            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs mb-6 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>
+                <strong>تحذير نهائي:</strong> هذا الإجراء لا يمكن التراجع عنه. سيتم حذف المستخدم من قاعدة بيانات Supabase والتخزين المحلي، وسيتم سحب صلاحيات دخوله تماماً.
+              </span>
+            </div>
+
+            {/* أزرار التأكيد والإلغاء */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={executeDeleteUser}
+                disabled={isProcessingAction}
+                className="flex-1 py-2.5 rounded-xl text-xs font-black bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/25 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>نعم، امسح الحساب نهائياً</span>
+              </button>
+              <button
+                onClick={() => setPendingDelete(null)}
+                disabled={isProcessingAction}
                 className="px-4 py-2.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-all"
               >
                 إلغاء

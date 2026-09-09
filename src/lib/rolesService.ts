@@ -56,6 +56,9 @@ export const rolesService = {
               avatarUrl: d.avatar_url,
               createdAt: d.created_at || d.updated_at || new Date().toISOString(),
               lastSignInAt: d.last_sign_in_at || d.updated_at || d.created_at,
+              isBanned: Boolean(d.is_banned),
+              banReason: d.ban_reason || undefined,
+              bannedAt: d.banned_at || undefined,
             };
           });
         }
@@ -268,5 +271,151 @@ export const rolesService = {
       success: true,
       updatedUser: { ...targetUser, role: newRole },
     };
+  },
+
+  // حظر أو فك حظر حساب (Ban / Unban User)
+  banUser: async (
+    targetUserId: string,
+    isBanned: boolean,
+    reason?: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const currentUser = authService.getCurrentUser();
+    const userEmail = currentUser?.email?.trim().toLowerCase();
+    const isOwner = userEmail === 'yassooooo27m@gmail.com';
+    const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || isOwner;
+
+    if (!isAdmin) {
+      return { success: false, error: 'غير مصرح: صلاحية الحظر محصورة بمسؤولي المنصة.' };
+    }
+
+    if (currentUser?.id === targetUserId) {
+      return { success: false, error: 'لا يمكنك حظر حسابك الخاص!' };
+    }
+
+    const users = await rolesService.getUsers();
+    const target = users.find((u) => u.id === targetUserId);
+    if (!target) {
+      return { success: false, error: 'لم يتم العثور على المستخدم المطلوب' };
+    }
+
+    if (target.email?.toLowerCase() === 'yassooooo27m@gmail.com' || target.role === 'super_admin') {
+      return { success: false, error: 'خطأ أمني: لا يمكن حظر حساب السوبر أدمن الرئيسي للمنصة.' };
+    }
+
+    // 1. تحديث Supabase
+    if (isSupabaseConfigured) {
+      try {
+        const { error: rpcError } = await supabase.rpc('admin_toggle_ban_user', {
+          target_user_id: targetUserId,
+          p_is_banned: isBanned,
+          p_reason: reason || null,
+        });
+
+        if (rpcError) {
+          await supabase
+            .from('profiles')
+            .update({
+              is_banned: isBanned,
+              ban_reason: isBanned ? (reason || 'مخالفة سياسة واستخدام المنصة') : null,
+              banned_at: isBanned ? new Date().toISOString() : null,
+            })
+            .eq('id', targetUserId);
+        }
+      } catch (err) {
+        console.warn('Supabase ban update error:', err);
+      }
+    }
+
+    // 2. تحديث الحالة المحلية
+    const updatedUsers = users.map((u) => {
+      if (u.id === targetUserId) {
+        return {
+          ...u,
+          isBanned,
+          banReason: isBanned ? (reason || 'مخالفة سياسة واستخدام المنصة') : undefined,
+          bannedAt: isBanned ? new Date().toISOString() : undefined,
+        };
+      }
+      return u;
+    });
+    localStorage.setItem('tarqa_all_users_roles', JSON.stringify(updatedUsers));
+
+    try {
+      const reg = localStorage.getItem('tarqa_registered_users');
+      if (reg) {
+        const regList = JSON.parse(reg).map((u: any) => {
+          if (u.id === targetUserId || (u.email && target.email && u.email.toLowerCase() === target.email.toLowerCase())) {
+            return {
+              ...u,
+              isBanned,
+              banReason: isBanned ? (reason || 'مخالفة سياسة واستخدام المنصة') : undefined,
+            };
+          }
+          return u;
+        });
+        localStorage.setItem('tarqa_registered_users', JSON.stringify(regList));
+      }
+    } catch {}
+
+    window.dispatchEvent(new Event('tarqa_roles_changed'));
+    return { success: true };
+  },
+
+  // مسح حساب مستخدم نهائياً (Delete User)
+  deleteUser: async (targetUserId: string): Promise<{ success: boolean; error?: string }> => {
+    const currentUser = authService.getCurrentUser();
+    const userEmail = currentUser?.email?.trim().toLowerCase();
+    const isOwner = userEmail === 'yassooooo27m@gmail.com';
+    const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || isOwner;
+
+    if (!isAdmin) {
+      return { success: false, error: 'غير مصرح: صلاحية الحذف محصورة بمسؤولي المنصة.' };
+    }
+
+    if (currentUser?.id === targetUserId) {
+      return { success: false, error: 'لا يمكنك مسح حسابك وأنت مسجل دخول به!' };
+    }
+
+    const users = await rolesService.getUsers();
+    const target = users.find((u) => u.id === targetUserId);
+    if (!target) {
+      return { success: false, error: 'لم يتم العثور على المستخدم' };
+    }
+
+    if (target.email?.toLowerCase() === 'yassooooo27m@gmail.com' || target.role === 'super_admin') {
+      return { success: false, error: 'خطأ أمني: لا يمكن مسح حساب السوبر أدمن الرئيسي للمنصة.' };
+    }
+
+    // 1. الحذف من Supabase
+    if (isSupabaseConfigured) {
+      try {
+        const { error: rpcError } = await supabase.rpc('admin_delete_user', {
+          target_user_id: targetUserId,
+        });
+
+        if (rpcError) {
+          await supabase.from('profiles').delete().eq('id', targetUserId);
+        }
+      } catch (err) {
+        console.warn('Supabase user delete error:', err);
+      }
+    }
+
+    // 2. الحذف من التخزين المحلي
+    const updatedUsers = users.filter((u) => u.id !== targetUserId && u.email?.toLowerCase() !== target.email?.toLowerCase());
+    localStorage.setItem('tarqa_all_users_roles', JSON.stringify(updatedUsers));
+
+    try {
+      const reg = localStorage.getItem('tarqa_registered_users');
+      if (reg) {
+        const regList = JSON.parse(reg).filter(
+          (u: any) => u.id !== targetUserId && u.email?.toLowerCase() !== target.email?.toLowerCase()
+        );
+        localStorage.setItem('tarqa_registered_users', JSON.stringify(regList));
+      }
+    } catch {}
+
+    window.dispatchEvent(new Event('tarqa_roles_changed'));
+    return { success: true };
   },
 };

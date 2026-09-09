@@ -30,6 +30,8 @@ export interface TarqaUser {
   telegramUsername?: string;
   telegramId?: number;
   avatarUrl?: string;
+  isBanned?: boolean;
+  banReason?: string;
 }
 
 // دالة مركزية لمزامنة وإدراج أي مستخدم يسجل أو يدخل في لوحة الأعضاء فوراً
@@ -205,6 +207,30 @@ export const authService = {
           role = 'super_admin';
         }
 
+        // استعلام ملف المستخدم من Supabase للتحقق من الرتبة وحالة الحظر
+        let isBanned = false;
+        let banReason: string | undefined = undefined;
+
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('role, full_name, target_score, telegram_username, avatar_url, is_banned, ban_reason')
+            .eq('id', data.user.id)
+            .maybeSingle();
+
+          if (profile) {
+            if (profile.role) role = profile.role as UserRole;
+            isBanned = Boolean(profile.is_banned);
+            banReason = profile.ban_reason || undefined;
+          }
+        } catch {}
+
+        if (isBanned) {
+          await supabase.auth.signOut();
+          localStorage.removeItem('tarqa_current_user');
+          throw new Error(`تم حظر هذا الحساب من قبل إدارة المنصة.${banReason ? ` سبب الحظر: ${banReason}` : ''}`);
+        }
+
         const user: TarqaUser = {
           id: data.user.id,
           email: data.user.email || params.email,
@@ -213,6 +239,7 @@ export const authService = {
           role,
           telegramUsername: data.user.user_metadata?.telegram_username,
           avatarUrl: data.user.user_metadata?.avatar_url,
+          isBanned: false,
         };
 
         localStorage.setItem('tarqa_current_user', JSON.stringify(user));
@@ -235,6 +262,11 @@ export const authService = {
       if (foundUser.password !== params.password) {
         throw new Error('كلمة المرور غير صحيحة، يرجى إعادة المحاولة');
       }
+
+      if (foundUser.isBanned) {
+        throw new Error(`تم حظر هذا الحساب من قبل إدارة المنصة.${foundUser.banReason ? ` سبب الحظر: ${foundUser.banReason}` : ''}`);
+      }
+
       const user: TarqaUser = {
         id: foundUser.id,
         email: foundUser.email,
@@ -242,6 +274,7 @@ export const authService = {
         targetScore: foundUser.targetScore || 100,
         role: isOwner ? 'super_admin' : (foundUser.role || (emailLower.includes('admin') ? 'admin' : emailLower.includes('teacher') ? 'teacher' : 'student')),
         telegramUsername: foundUser.telegramUsername,
+        isBanned: false,
       };
       localStorage.setItem('tarqa_current_user', JSON.stringify(user));
       syncUserToMembersDashboard(user);
@@ -395,7 +428,7 @@ export const authService = {
     // مزامنة والتحقق من حسابات Supabase إذا كانت مفعلة
     if (isSupabaseConfigured) {
       try {
-        let query = supabase.from('profiles').select('id, email, full_name, role, target_score, telegram_id, telegram_username');
+        let query = supabase.from('profiles').select('id, email, full_name, role, target_score, telegram_id, telegram_username, is_banned, ban_reason');
         if (tgData.id && rawUsername) {
           query = query.or(`telegram_id.eq.${tgData.id},telegram_username.eq.${rawUsername}`);
         } else if (tgData.id) {
@@ -405,15 +438,33 @@ export const authService = {
         }
         const { data: existingProfile } = await query.maybeSingle();
         if (existingProfile) {
+          if (existingProfile.is_banned) {
+            throw new Error(`تم حظر هذا الحساب من قبل إدارة المنصة.${existingProfile.ban_reason ? ` سبب الحظر: ${existingProfile.ban_reason}` : ''}`);
+          }
           userId = existingProfile.id || userId;
           if (existingProfile.email) email = existingProfile.email;
           if (existingProfile.role) role = existingProfile.role as UserRole;
           if (existingProfile.full_name) fullName = existingProfile.full_name;
           if (existingProfile.target_score) targetScore = existingProfile.target_score;
         }
-      } catch (err) {
+      } catch (err: any) {
+        if (err?.message?.includes('تم حظر')) throw err;
         console.warn('Supabase telegram profile lookup note:', err);
       }
+    }
+
+    // التحقق أيضاً من التخزين المحلي
+    try {
+      const localUsers = JSON.parse(localStorage.getItem('tarqa_all_users_roles') || '[]');
+      const localMatch = localUsers.find((u: any) => 
+        (u.telegramId && u.telegramId === tgData.id) ||
+        (rawUsername && u.telegramUsername && u.telegramUsername.toLowerCase() === rawUsername.toLowerCase())
+      );
+      if (localMatch?.isBanned) {
+        throw new Error(`تم حظر هذا الحساب من قبل إدارة المنصة.${localMatch.banReason ? ` سبب الحظر: ${localMatch.banReason}` : ''}`);
+      }
+    } catch (err: any) {
+      if (err?.message?.includes('تم حظر')) throw err;
     }
 
     const user: TarqaUser = {

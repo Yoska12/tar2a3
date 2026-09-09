@@ -1,9 +1,8 @@
-import { NextRequest } from 'next/server';
 import { apiSuccess, apiBadRequest, apiError } from '@/server/lib/response';
 import { randomQuestionsQuerySchema } from '@/server/types/quiz.types';
 import { QuestionService } from '@/server/services/question.service';
 
-export async function GET(req: NextRequest) {
+export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const rawParams = {

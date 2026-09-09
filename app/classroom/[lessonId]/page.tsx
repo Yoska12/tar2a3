@@ -4,7 +4,11 @@ import React, { useState } from 'react';
 import { ClassroomView } from '@/components/ClassroomView';
 import { mockFoundationModules } from '@/data/foundationModules';
 import { CourseModule, Lesson } from '@/types';
-import { useRouter } from 'next/navigation';
+const navigate = (url: string) => {
+  if (typeof window !== 'undefined') {
+    window.location.href = url;
+  }
+};
 
 interface ClassroomPageProps {
   params: {
@@ -13,7 +17,6 @@ interface ClassroomPageProps {
 }
 
 export default function ClassroomPage({ params }: ClassroomPageProps) {
-  const router = useRouter();
   const [modules, setModules] = useState<CourseModule[]>(mockFoundationModules);
 
   // البحث عن الدرس والباب المطابق
@@ -34,7 +37,7 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
 
   const handleSelectLesson = (lesson: Lesson) => {
     setCurrentLesson(lesson);
-    router.push(`/classroom/${lesson.id}`);
+    navigate(`/classroom/${lesson.id}`);
   };
 
   const handleCompleteLesson = (lessonId: string) => {
@@ -48,22 +51,16 @@ export default function ClassroomPage({ params }: ClassroomPageProps) {
     );
   };
 
-  const handleStartQuiz = (quizId: string) => {
-    router.push(`/quiz/${quizId}`);
-  };
-
-  const handleBackToRoadmap = () => {
-    router.push('/');
-  };
-
   return (
-    <ClassroomView
-      currentModule={currentModule}
-      currentLesson={currentLesson}
-      onSelectLesson={handleSelectLesson}
-      onCompleteLesson={handleCompleteLesson}
-      onStartQuiz={handleStartQuiz}
-      onBackToRoadmap={handleBackToRoadmap}
-    />
+    <main className="min-h-screen bg-slate-50 dark:bg-[#070b14]">
+      <ClassroomView
+        currentModule={currentModule}
+        currentLesson={currentLesson}
+        onSelectLesson={handleSelectLesson}
+        onCompleteLesson={handleCompleteLesson}
+        onBackToRoadmap={() => navigate('/')}
+        onStartQuiz={() => navigate('/quiz')}
+      />
+    </main>
   );
 }

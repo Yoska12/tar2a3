@@ -3,10 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import { StudentDashboard } from '@/components/StudentDashboard';
 import { authService, TarqaUser, supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { useRouter } from 'next/navigation';
+const navigate = (url: string) => {
+  if (typeof window !== 'undefined') {
+    window.location.href = url;
+  }
+};
 
 export default function DashboardPage() {
-  const router = useRouter();
   const [currentUser, setCurrentUser] = useState<TarqaUser | null>(() => authService.getCurrentUser());
   const [isLoading, setIsLoading] = useState(true);
 
@@ -16,7 +19,7 @@ export default function DashboardPage() {
         if (!user) {
           setCurrentUser(null);
           localStorage.removeItem('tarqa_current_user');
-          router.replace('/login?redirect=/dashboard');
+          navigate('/login?redirect=/dashboard');
         } else {
           setCurrentUser(authService.getCurrentUser());
         }
@@ -25,11 +28,11 @@ export default function DashboardPage() {
     } else {
       const u = authService.getCurrentUser();
       if (!u) {
-        router.replace('/login?redirect=/dashboard');
+        navigate('/login?redirect=/dashboard');
       }
       setIsLoading(false);
     }
-  }, [router]);
+  }, []);
 
   if (isLoading) {
     return (

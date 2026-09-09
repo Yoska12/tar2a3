@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { SuperAdminRolesPanel } from '@/components/SuperAdminRolesPanel';
 import { authService, TarqaUser, supabase, isSupabaseConfigured } from '@/lib/supabase';
-import Link from 'next/link';
 import { ArrowRight, ShieldCheck, Crown } from 'lucide-react';
 
 export default function AdminRolesPage() {
@@ -62,19 +61,19 @@ export default function AdminRolesPage() {
       <div className="border-b border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-[#070b14]/70 backdrop-blur-md sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-slate-500">
-            <Link
+            <a
               href="/"
               className="hover:text-slate-900 dark:hover:text-white transition-colors flex items-center gap-1"
             >
               <span>الرئيسية</span>
-            </Link>
+            </a>
             <span>/</span>
-            <Link
+            <a
               href="/admin"
               className="hover:text-slate-900 dark:hover:text-white transition-colors"
             >
               لوحة الإدارة
-            </Link>
+            </a>
             <span>/</span>
             <span className="text-purple-600 dark:text-purple-400 font-bold flex items-center gap-1">
               <ShieldCheck className="w-3.5 h-3.5 text-purple-500" />
@@ -82,13 +81,13 @@ export default function AdminRolesPage() {
             </span>
           </div>
 
-          <Link
+          <a
             href="/admin"
             className="text-xs font-bold text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center gap-1 transition-colors"
           >
             <span>العودة للوحة الإدارة</span>
             <ArrowRight className="w-3.5 h-3.5 rotate-180" />
-          </Link>
+          </a>
         </div>
       </div>
 

@@ -5,10 +5,13 @@ import { AdminPanel } from '@/components/AdminPanel';
 import { mockCategories, mockQuestions } from '@/data/mockQuestions';
 import { Question } from '@/types';
 import { authService, supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { useRouter } from 'next/navigation';
+const navigate = (url: string) => {
+  if (typeof window !== 'undefined') {
+    window.location.href = url;
+  }
+};
 
 export default function AdminPage() {
-  const router = useRouter();
   const [questions, setQuestions] = useState<Question[]>(mockQuestions);
   const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -17,7 +20,7 @@ export default function AdminPage() {
     if (isSupabaseConfigured) {
       supabase.auth.getUser().then(async ({ data: { user } }) => {
         if (!user) {
-          router.replace('/login?redirect=/admin');
+          navigate('/login?redirect=/admin');
           return;
         }
 
@@ -26,7 +29,7 @@ export default function AdminPage() {
         const role = (isOwner || rawRole === 'super_admin') ? 'admin' : rawRole;
 
         if (role !== 'admin' && role !== 'teacher') {
-          router.replace('/unauthorized?required=admin');
+          navigate('/unauthorized?required=admin');
           return;
         }
 
@@ -36,13 +39,13 @@ export default function AdminPage() {
     } else {
       const u = authService.getCurrentUser();
       if (!u || (u.role !== 'admin' && u.role !== 'teacher')) {
-        router.replace('/login?redirect=/admin');
+        navigate('/login?redirect=/admin');
       } else {
         setIsAuthorized(true);
       }
       setIsLoading(false);
     }
-  }, [router]);
+  }, []);
 
   if (isLoading) {
     return (

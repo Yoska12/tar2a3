@@ -1,14 +1,14 @@
 'use client';
 
 import React, { Suspense } from 'react';
-import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import { ShieldAlert, ArrowRight, Home, LayoutDashboard, Lock } from 'lucide-react';
 
 function UnauthorizedContent() {
-  const searchParams = useSearchParams();
-  const requiredRole = searchParams?.get('required') || 'admin';
-  const currentRole = searchParams?.get('current') || 'student';
+  const searchParams = typeof window !== 'undefined' 
+    ? new URLSearchParams(window.location.search) 
+    : new URLSearchParams();
+  const requiredRole = searchParams.get('required') || 'admin';
+  const currentRole = searchParams.get('current') || 'student';
 
   const roleLabels: Record<string, string> = {
     admin: 'مشرف عام (Admin)',
@@ -62,21 +62,21 @@ function UnauthorizedContent() {
 
         {/* أزرار التوجيه */}
         <div className="flex flex-col sm:flex-row gap-3">
-          <Link
+          <a
             href="/dashboard"
             className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-sm transition-all shadow-lg shadow-amber-500/20 active:scale-95"
           >
             <LayoutDashboard className="w-4 h-4" />
             <span>لوحة الطالب</span>
-          </Link>
+          </a>
 
-          <Link
+          <a
             href="/"
             className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-semibold text-sm transition-all active:scale-95"
           >
             <Home className="w-4 h-4" />
             <span>الرئيسية</span>
-          </Link>
+          </a>
         </div>
 
         <div className="mt-6 pt-6 border-t border-neutral-800/80 text-center">

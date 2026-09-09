@@ -1,6 +1,7 @@
-import { NextRequest } from 'next/server';
 import { getSupabaseAdminClient } from './db';
 import { UserRole } from '../types/api.types';
+
+export type NextRequest = Request & { cookies?: { get: (name: string) => { value: string } | undefined } | any };
 
 export interface AuthenticatedUser {
   id: string;

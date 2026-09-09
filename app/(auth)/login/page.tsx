@@ -3,7 +3,22 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useSearchParams } from 'next/navigation';
+function useClientSearchParams() {
+  const [params, setParams] = useState<URLSearchParams>(() => {
+    if (typeof window !== 'undefined') {
+      return new URLSearchParams(window.location.search);
+    }
+    return new URLSearchParams();
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setParams(new URLSearchParams(window.location.search));
+    }
+  }, []);
+
+  return params;
+}
 import {
   Lock,
   Mail,
@@ -38,7 +53,7 @@ function LoginFormContent({
     ? process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
     : 'TarqaBot',
 }: AuthPageProps) {
-  const searchParams = useSearchParams();
+  const searchParams = useClientSearchParams();
   const redirectUrl = searchParams?.get('redirect') || searchParams?.get('redirectTo') || undefined;
   const urlError = searchParams?.get('error');
 

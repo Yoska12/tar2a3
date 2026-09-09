@@ -1,10 +1,9 @@
-import { NextRequest } from 'next/server';
 import { getAuthenticatedUser } from '@/server/lib/auth';
 import { apiSuccess, apiBadRequest, apiUnauthorized, apiError } from '@/server/lib/response';
 import { startQuizSchema } from '@/server/types/quiz.types';
 import { QuizService } from '@/server/services/quiz.service';
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
     // 1. التحقق من توثيق وهوية المستخدم
     const user = await getAuthenticatedUser(req);

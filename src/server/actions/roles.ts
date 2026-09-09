@@ -1,10 +1,8 @@
-'use server';
-
-import { createClient } from '@/lib/supabase/server';
+import { supabase } from '@/lib/supabase';
 import { UserRole, UserWithRole, RoleChangeLog } from '@/types';
 
 /**
- * Server Action لتحديث رتبة مستخدم بواسطة السوبر أدمن حصراً
+ * دالة لتحديث رتبة مستخدم بواسطة مسؤول المنصة حصراً
  */
 export async function updateUserRoleAction(
   targetUserId: string,
@@ -12,7 +10,6 @@ export async function updateUserRoleAction(
   reason?: string
 ): Promise<{ success: boolean; error?: string; message?: string }> {
   try {
-    const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {

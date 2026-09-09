@@ -1,18 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { verifyTelegramAuth, sendWelcomeTelegramMessage } from '@/lib/telegram';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
     const body = await req.json();
 
     // 1. التحقق الأمني من توقيع تليجرام
     const verification = verifyTelegramAuth(body);
     if (!verification.isValid || !verification.user) {
-      return NextResponse.json(
+      return Response.json(
         { success: false, error: verification.error || 'فشل التحقق من صحة بيانات تليجرام' },
         { status: 401 }
       );
@@ -24,7 +23,7 @@ export async function POST(req: NextRequest) {
 
     // 2. الاتصال بـ Supabase بصلاحيات Service Role لإدارة الحسابات
     if (!supabaseUrl || !supabaseServiceRoleKey) {
-      return NextResponse.json(
+      return Response.json(
         { 
           success: false, 
           error: 'بيانات خادم Supabase غير مكتملة (تأكد من إعداد SUPABASE_SERVICE_ROLE_KEY).' 
@@ -74,7 +73,7 @@ export async function POST(req: NextRequest) {
         if (existingUser) {
           userId = existingUser.id;
         } else {
-          return NextResponse.json(
+          return Response.json(
             { success: false, error: createError.message },
             { status: 500 }
           );
@@ -98,13 +97,13 @@ export async function POST(req: NextRequest) {
     });
 
     if (linkError) {
-      return NextResponse.json(
+      return Response.json(
         { success: false, error: linkError.message },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({
+    return Response.json({
       success: true,
       message: 'تم تسجيل الدخول بنجاح عبر تليجرام',
       user: {
@@ -118,7 +117,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error('[API Telegram Auth Error]:', error);
-    return NextResponse.json(
+    return Response.json(
       { success: false, error: error?.message || 'حدث خطأ داخلي أثناء المعالجة' },
       { status: 500 }
     );

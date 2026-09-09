@@ -1,9 +1,8 @@
-import { NextRequest } from 'next/server';
 import { apiSuccess, apiBadRequest, apiError } from '@/server/lib/response';
 import { QuizService } from '@/server/services/quiz.service';
 
 export async function GET(
-  req: NextRequest,
+  req: Request,
   context: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {

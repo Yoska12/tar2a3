@@ -1,8 +1,4 @@
-'use server';
-
-import { createClient } from '@/lib/supabase/server';
-import { revalidatePath } from 'next/cache';
-import { cookies } from 'next/headers';
+import { supabase } from '@/lib/supabase';
 import { signInSchema, signUpSchema, SignInInput, SignUpInput } from '@/lib/validations/auth';
 
 export interface AuthActionResult {
@@ -102,7 +98,6 @@ export async function loginAction(params: {
   }
 
   try {
-    const supabase = await createClient();
     const cleanEmail = params.email.trim().toLowerCase();
     const isPrimaryOwner = cleanEmail === 'yassooooo27m@gmail.com';
 
@@ -140,21 +135,22 @@ export async function loginAction(params: {
       ? 'Yassien Ahmed'
       : (data.user.user_metadata?.full_name || 'طالب طرقع');
 
-    // حفظ نسخة في كوكي tarqa_session لضمان بقاء الجلسة حتى لو حدث خلل في توكن Supabase
-    const cookieStore = await cookies();
-    cookieStore.set('tarqa_session', JSON.stringify({
+    // حفظ نسخة في الجلسة المحلية لضمان بقاء الجلسة
+    const sessionData = JSON.stringify({
       id: data.user.id,
       email: cleanEmail,
       fullName,
       role,
       targetScore: Number(data.user.user_metadata?.target_score) || 100,
       telegramUsername: data.user.user_metadata?.telegram_username,
-    }), {
-      path: '/',
-      httpOnly: false,
-      maxAge: 60 * 60 * 24 * 7,
-      sameSite: 'lax',
     });
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('tarqa_session', sessionData);
+      localStorage.setItem('tarqa_current_user', sessionData);
+    }
+    if (typeof document !== 'undefined') {
+      document.cookie = `tarqa_session=${encodeURIComponent(sessionData)}; path=/; max-age=604800; SameSite=Lax`;
+    }
 
     // 4. تحديد وجهة التوجيه الآمنة
     let targetRedirect = '/dashboard';
@@ -172,7 +168,6 @@ export async function loginAction(params: {
     }
 
     // 5. إعادة تحديث مسارات Next.js
-    revalidatePath('/', 'layout');
 
     return {
       success: true,
@@ -226,7 +221,6 @@ export async function signupAction(params: {
   }
 
   try {
-    const supabase = await createClient();
     const cleanEmail = params.email.trim().toLowerCase();
     const isPrimaryOwner = cleanEmail === 'yassooooo27m@gmail.com';
     const initialRole = isPrimaryOwner ? 'admin' : 'student';
@@ -264,24 +258,23 @@ export async function signupAction(params: {
       };
     }
 
-    // تسجيل طبيعي ناجح: حفظ الجلسة في الكوكي
-    const cookieStore = await cookies();
+    // تسجيل طبيعي ناجح: حفظ الجلسة في التخزين المحلي
     const activeId = data.user?.id || (isPrimaryOwner ? 'usr-yassien-admin' : 'usr-' + Date.now());
-    cookieStore.set('tarqa_session', JSON.stringify({
+    const newSessionData = JSON.stringify({
       id: activeId,
       email: cleanEmail,
       fullName,
       role: initialRole,
       targetScore: params.targetScore || 100,
       telegramUsername: params.telegramUsername,
-    }), {
-      path: '/',
-      httpOnly: false,
-      maxAge: 60 * 60 * 24 * 7,
-      sameSite: 'lax',
     });
-
-    revalidatePath('/', 'layout');
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('tarqa_session', newSessionData);
+      localStorage.setItem('tarqa_current_user', newSessionData);
+    }
+    if (typeof document !== 'undefined') {
+      document.cookie = `tarqa_session=${encodeURIComponent(newSessionData)}; path=/; max-age=604800; SameSite=Lax`;
+    }
 
     return {
       success: true,
@@ -304,22 +297,15 @@ export async function signupAction(params: {
   }
 }
 
-/**
- * Server Action: تسجيل الخروج (logoutAction) وتفريغ الجلسة بالكامل
- */
 export async function logoutAction(): Promise<{ success: boolean; redirectTo: string; error?: string }> {
   try {
-    const supabase = await createClient();
     await supabase.auth.signOut();
-    const cookieStore = await cookies();
-    cookieStore.delete('tarqa_session');
-    revalidatePath('/', 'layout');
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('tarqa_current_user');
+      localStorage.removeItem('tarqa_session');
+    }
     return { success: true, redirectTo: '/login' };
   } catch (err: any) {
-    try {
-      const cookieStore = await cookies();
-      cookieStore.delete('tarqa_session');
-    } catch {}
     return { success: false, redirectTo: '/login', error: err?.message };
   }
 }

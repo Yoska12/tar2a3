@@ -1,11 +1,10 @@
-import { NextRequest } from 'next/server';
 import { getAuthenticatedUser } from '@/server/lib/auth';
 import { apiSuccess, apiBadRequest, apiUnauthorized, apiError } from '@/server/lib/response';
 import { bookmarkQuestionSchema } from '@/server/types/quiz.types';
 import { QuestionService } from '@/server/services/question.service';
 
 export async function POST(
-  req: NextRequest,
+  req: Request,
   context: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {

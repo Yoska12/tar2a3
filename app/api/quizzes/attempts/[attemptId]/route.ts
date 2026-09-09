@@ -1,10 +1,9 @@
-import { NextRequest } from 'next/server';
 import { getAuthenticatedUser } from '@/server/lib/auth';
 import { apiSuccess, apiBadRequest, apiUnauthorized, apiForbidden, apiNotFound, apiError } from '@/server/lib/response';
 import { QuizService } from '@/server/services/quiz.service';
 
 export async function GET(
-  req: NextRequest,
+  req: Request,
   context: { params: Promise<{ attemptId: string }> | { attemptId: string } }
 ) {
   try {

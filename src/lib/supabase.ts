@@ -1,16 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 import { UserRole } from '../types';
 
-// قراءة بيانات الاتصال بـ Supabase من متغيرات البيئة أو القيم المعتمدة
-const supabaseUrl = 
-  import.meta.env.VITE_SUPABASE_URL || 
-  import.meta.env.NEXT_PUBLIC_SUPABASE_URL || 
-  'https://djkwgwdlygxqcateivbc.supabase.co';
+// قراءة بيانات الاتصال بـ Supabase من متغيرات بيئة Vite
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://djkwgwdlygxqcateivbc.supabase.co';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_kC-Ok9GoiYyg3ffh0rpyXg_mS8fY8Gm';
 
-const supabaseAnonKey = 
-  import.meta.env.VITE_SUPABASE_ANON_KEY || 
-  import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 
-  'sb_publishable_kC-Ok9GoiYyg3ffh0rpyXg_mS8fY8Gm';
+if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+  console.warn('Supabase URL or Anon Key is missing in environment variables.');
+}
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl && 
@@ -19,10 +16,9 @@ export const isSupabaseConfigured = Boolean(
   supabaseUrl.startsWith('https://')
 );
 
-export const supabase = createClient(
-  isSupabaseConfigured ? supabaseUrl : 'https://djkwgwdlygxqcateivbc.supabase.co',
-  isSupabaseConfigured ? supabaseAnonKey : 'sb_publishable_kC-Ok9GoiYyg3ffh0rpyXg_mS8fY8Gm'
-);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export { createClient };
+export default supabase;
 
 export interface TarqaUser {
   id: string;

@@ -1,15 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { supabase } from '@/lib/supabase';
 import { UserRole } from '@/types';
 
 // 1. GET: جلب قائمة المستخدمين وإحصائيات الرتب وسجل التدقيق
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
-    const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
+      return Response.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
     }
 
     const isYassien = user?.email?.trim().toLowerCase() === 'yassooooo27m@gmail.com';
@@ -18,7 +16,7 @@ export async function GET(request: NextRequest) {
 
     // التحقق من الصلاحية: مسؤولو المنصة (Admins)
     if (userRole !== 'admin') {
-      return NextResponse.json(
+      return Response.json(
         { error: 'غير مصرح: الوصول لبيانات الرتب محصور بمسؤولي المنصة (Admins) فقط.' },
         { status: 403 }
       );
@@ -31,7 +29,7 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false });
 
     if (profilesError) {
-      return NextResponse.json({ error: profilesError.message }, { status: 500 });
+      return Response.json({ error: profilesError.message }, { status: 500 });
     }
 
     // تسوية أي رتبة سوبر أدمن سابقة إلى مسؤول المنصة
@@ -63,24 +61,23 @@ export async function GET(request: NextRequest) {
       student: profiles.filter((p) => p.role === 'student').length,
     };
 
-    return NextResponse.json({
+    return Response.json({
       users: profiles,
       stats,
       logs,
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'خطأ في الخادم' }, { status: 500 });
+    return Response.json({ error: error.message || 'خطأ في الخادم' }, { status: 500 });
   }
 }
 
 // 2. PATCH / POST: تعديل رتبة مستخدم وتسجيل العملية في سجل التدقيق
-export async function PATCH(request: NextRequest) {
+export async function PATCH(request: Request) {
   try {
-    const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
+      return Response.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
     }
 
     const isYassien = user?.email?.trim().toLowerCase() === 'yassooooo27m@gmail.com';
@@ -89,7 +86,7 @@ export async function PATCH(request: NextRequest) {
 
     // التحقق من رتبة المسؤول
     if (userRole !== 'admin') {
-      return NextResponse.json(
+      return Response.json(
         { error: 'عملية غير مصرح بها: ترقية وسحب الرتب محصورة بمسؤولي المنصة (Admins) حصراً.' },
         { status: 403 }
       );
@@ -99,7 +96,7 @@ export async function PATCH(request: NextRequest) {
     const { targetUserId, newRole, reason } = body;
 
     if (!targetUserId || !newRole) {
-      return NextResponse.json(
+      return Response.json(
         { error: 'البيانات غير مكتملة: targetUserId و newRole مطلوبان.' },
         { status: 400 }
       );
@@ -107,7 +104,7 @@ export async function PATCH(request: NextRequest) {
 
     // منع تعيين رتبة سوبر أدمن
     if (newRole === 'super_admin') {
-      return NextResponse.json(
+      return Response.json(
         { error: 'تم إلغاء رتبة السوبر أدمن من المنصة. أعلى رتبة إدارية هي مسؤول المنصة (Admin).' },
         { status: 400 }
       );
@@ -115,7 +112,7 @@ export async function PATCH(request: NextRequest) {
 
     const validRoles: UserRole[] = ['student', 'teacher', 'admin'];
     if (!validRoles.includes(newRole)) {
-      return NextResponse.json({ error: 'الرتبة المحددة غير صالحة.' }, { status: 400 });
+      return Response.json({ error: 'الرتبة المحددة غير صالحة.' }, { status: 400 });
     }
 
     // التحقق من المستخدم المستهدف
@@ -126,7 +123,7 @@ export async function PATCH(request: NextRequest) {
       .single();
 
     if (fetchError || !targetProfile) {
-      return NextResponse.json({ error: 'لم يتم العثور على المستخدم المستهدف.' }, { status: 404 });
+      return Response.json({ error: 'لم يتم العثور على المستخدم المستهدف.' }, { status: 404 });
     }
 
     // تحديث رتبة المستخدم في profiles
@@ -136,7 +133,7 @@ export async function PATCH(request: NextRequest) {
       .eq('id', targetUserId);
 
     if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+      return Response.json({ error: updateError.message }, { status: 500 });
     }
 
     // تسجيل العملية في جدول التدقيق role_change_logs
@@ -148,12 +145,12 @@ export async function PATCH(request: NextRequest) {
       reason: reason || 'تعديل عبر واجهة إدارة الرتب',
     });
 
-    return NextResponse.json({
+    return Response.json({
       success: true,
       message: `تم تحديث رتبة ${targetProfile.full_name || 'المستخدم'} بنجاح إلى ${newRole}`,
       updatedRole: newRole,
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'فشل في تحديث الرتبة' }, { status: 500 });
+    return Response.json({ error: error.message || 'فشل في تحديث الرتبة' }, { status: 500 });
   }
 }

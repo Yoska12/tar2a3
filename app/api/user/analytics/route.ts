@@ -1,9 +1,8 @@
-import { NextRequest } from 'next/server';
 import { getAuthenticatedUser } from '@/server/lib/auth';
 import { apiSuccess, apiUnauthorized, apiError } from '@/server/lib/response';
 import { AnalyticsService } from '@/server/services/analytics.service';
 
-export async function GET(req: NextRequest) {
+export async function GET(req: Request) {
   try {
     const user = await getAuthenticatedUser(req);
     if (!user) {

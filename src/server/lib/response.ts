@@ -1,12 +1,11 @@
-import { NextResponse } from 'next/server';
 import { ApiResponse } from '../types/api.types';
 
 // ==============================================================================
-// 🚀 استجابات JSON موحدة واحترافية لكافة نقاط النهاية
+// 🚀 استجابات JSON موحدة واحترافية متوافقة مع Web API القياسي
 // ==============================================================================
 
-export function apiSuccess<T>(data: T, status = 200, init?: ResponseInit): NextResponse<ApiResponse<T>> {
-  return NextResponse.json(
+export function apiSuccess<T>(data: T, status = 200, init?: ResponseInit): Response {
+  return Response.json(
     {
       success: true,
       data,
@@ -21,8 +20,8 @@ export function apiSuccess<T>(data: T, status = 200, init?: ResponseInit): NextR
 export function apiError(
   message = 'حدث خطأ غير متوقع في الخادم',
   status = 500
-): NextResponse<ApiResponse<null>> {
-  return NextResponse.json(
+): Response {
+  return Response.json(
     {
       success: false,
       error: message,
@@ -34,18 +33,18 @@ export function apiError(
   );
 }
 
-export function apiBadRequest(message: string): NextResponse<ApiResponse<null>> {
+export function apiBadRequest(message: string): Response {
   return apiError(message, 400);
 }
 
-export function apiUnauthorized(message = 'يجب تسجيل الدخول أولاً للوصول إلى هذا المسار'): NextResponse<ApiResponse<null>> {
+export function apiUnauthorized(message = 'يجب تسجيل الدخول أولاً للوصول إلى هذا المسار'): Response {
   return apiError(message, 401);
 }
 
-export function apiForbidden(message = 'ليس لديك صلاحية الوصول إلى هذه النتيجة'): NextResponse<ApiResponse<null>> {
+export function apiForbidden(message = 'ليس لديك صلاحية الوصول إلى هذه النتيجة'): Response {
   return apiError(message, 403);
 }
 
-export function apiNotFound(message = 'العنصر المطلوب غير موجود'): NextResponse<ApiResponse<null>> {
+export function apiNotFound(message = 'العنصر المطلوب غير موجود'): Response {
   return apiError(message, 404);
 }

@@ -1,9 +1,8 @@
-import { NextRequest } from 'next/server';
 import { apiSuccess, apiBadRequest, apiError } from '@/server/lib/response';
 import { TelegramService } from '@/server/services/telegram.service';
 import { TelegramWebhookUpdate } from '@/server/types/telegram.types';
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => null)) as TelegramWebhookUpdate;
     if (!body || typeof body.update_id === 'undefined') {

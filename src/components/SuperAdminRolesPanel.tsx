@@ -193,7 +193,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
 
   // التحقق من صلاحية العارض الحالي (مسؤول المنصة Admin)
   const currentEmailLower = currentUser?.email?.trim().toLowerCase();
-  const isAuthorizedAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || currentEmailLower === 'yassoooo27m@gmail.com' || currentEmailLower === 'yassooooo27m@gmail.com';
+  const isAuthorizedAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || currentEmailLower === 'yassooooo27m@gmail.com';
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 font-cairo">

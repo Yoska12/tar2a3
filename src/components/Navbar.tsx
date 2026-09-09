@@ -23,7 +23,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onLogout,
 }) => {
   const userEmailLower = currentUser?.email?.trim().toLowerCase();
-  const isOwner = userEmailLower === 'yassoooo27m@gmail.com' || userEmailLower === 'yassooooo27m@gmail.com';
+  const isOwner = userEmailLower === 'yassooooo27m@gmail.com';
   const isAdmin = Boolean(currentUser && ((currentUser.role === 'admin') || (currentUser.role === 'super_admin') || isOwner));
   const currentRole: UserRole | null = currentUser 
     ? (isOwner ? 'super_admin' : currentUser.role) 

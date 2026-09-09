@@ -37,7 +37,7 @@ import { localScoreStorage, authService, TarqaUser, supabase, isSupabaseConfigur
 const isOwnerEmail = (email?: string | null) => {
   if (!email) return false;
   const e = email.trim().toLowerCase();
-  return e === 'yassoooo27m@gmail.com' || e === 'yassooooo27m@gmail.com';
+  return e === 'yassooooo27m@gmail.com';
 };
 
 export const App: React.FC = () => {

@@ -17,7 +17,7 @@ export async function updateUserRoleAction(
     }
 
     const userEmailLower = user.email?.trim().toLowerCase();
-    const isOwner = userEmailLower === 'yassoooo27m@gmail.com' || userEmailLower === 'yassooooo27m@gmail.com';
+    const isOwner = userEmailLower === 'yassooooo27m@gmail.com';
     const rawRole = (user.app_metadata?.role as UserRole) || (user.user_metadata?.role as UserRole);
     const callerRole = isOwner ? 'admin' : (rawRole === 'super_admin' ? 'admin' : rawRole);
 

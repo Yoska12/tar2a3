@@ -5,7 +5,7 @@ import { UserRole, UserWithRole, RoleChangeLog } from '../types';
 const INITIAL_DEMO_USERS: UserWithRole[] = [
   {
     id: 'usr-admin-01',
-    email: 'yassoooo27m@gmail.com',
+    email: 'yassooooo27m@gmail.com',
     fullName: 'Yoska',
     role: 'super_admin',
     targetScore: 100,
@@ -62,7 +62,6 @@ export const rolesService = {
         );
 
         const yoska = usersList.find((u) => 
-          u.email.toLowerCase() === 'yassoooo27m@gmail.com' || 
           u.email.toLowerCase() === 'yassooooo27m@gmail.com'
         );
 
@@ -131,7 +130,7 @@ export const rolesService = {
 
     // 1. التحقق من صلاحية مسؤول المنصة (Admin)
     const userEmail = currentUser?.email?.trim().toLowerCase();
-    const isOwner = userEmail === 'yassoooo27m@gmail.com' || userEmail === 'yassooooo27m@gmail.com';
+    const isOwner = userEmail === 'yassooooo27m@gmail.com';
     const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || isOwner;
     if (!isAdmin) {
       return {

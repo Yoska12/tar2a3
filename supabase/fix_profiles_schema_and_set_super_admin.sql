@@ -68,7 +68,7 @@ SET
   email_confirmed_at = COALESCE(email_confirmed_at, NOW()),
   raw_user_meta_data = COALESCE(raw_user_meta_data, '{}'::jsonb) || '{"role": "super_admin", "full_name": "Yoska"}'::jsonb,
   raw_app_meta_data = COALESCE(raw_app_meta_data, '{}'::jsonb) || '{"role": "super_admin"}'::jsonb
-WHERE LOWER(TRIM(email)) IN ('yassoooo27m@gmail.com', 'yassooooo27m@gmail.com');
+WHERE LOWER(TRIM(email)) = 'yassooooo27m@gmail.com';
 
 -- ------------------------------------------------------------------------------
 -- 5. إدراج أو تحديث البروفايل في public.profiles برتبة super_admin واسم Yoska
@@ -82,7 +82,7 @@ SELECT
   'super_admin',
   100
 FROM auth.users u
-WHERE LOWER(TRIM(u.email)) IN ('yassoooo27m@gmail.com', 'yassooooo27m@gmail.com')
+WHERE LOWER(TRIM(u.email)) = 'yassooooo27m@gmail.com'
 ON CONFLICT (id) DO UPDATE 
 SET 
   role = 'super_admin',
@@ -127,4 +127,4 @@ SELECT
   u.raw_user_meta_data->>'role' as auth_metadata_role
 FROM auth.users u
 JOIN public.profiles p ON p.id = u.id
-WHERE LOWER(TRIM(u.email)) IN ('yassoooo27m@gmail.com', 'yassooooo27m@gmail.com');
+WHERE LOWER(TRIM(u.email)) = 'yassooooo27m@gmail.com';

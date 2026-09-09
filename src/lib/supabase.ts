@@ -117,7 +117,7 @@ export const authService = {
           'student';
 
         const emailLower = params.email.toLowerCase();
-        const isOwner = emailLower === 'yassoooo27m@gmail.com' || emailLower === 'yassooooo27m@gmail.com';
+        const isOwner = emailLower === 'yassooooo27m@gmail.com';
         if (isOwner) {
           role = 'super_admin';
         }
@@ -144,7 +144,7 @@ export const authService = {
     // 2. وضع المعاينة المحلي (Local Demo Mode) - يعمل 100% دون انقطاع
     const users: any[] = JSON.parse(localStorage.getItem('tarqa_registered_users') || '[]');
     const emailLower = params.email.toLowerCase();
-    const isOwner = emailLower === 'yassoooo27m@gmail.com' || emailLower === 'yassooooo27m@gmail.com';
+    const isOwner = emailLower === 'yassooooo27m@gmail.com';
     const foundUser = users.find((u) => u.email.toLowerCase() === emailLower);
 
     if (foundUser) {

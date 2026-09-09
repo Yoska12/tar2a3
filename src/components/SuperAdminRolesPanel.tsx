@@ -41,6 +41,13 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
   currentUser,
   onNavigateBack,
 }) => {
+  // استنتاج المستخدم الحالي وصلاحياته الموثوقة (مع أخذ السوبر أدمن والمالك بعين الاعتبار)
+  const currentLoggedUser = currentUser || authService.getCurrentUser();
+  const currentEmailLower = currentLoggedUser?.email?.trim().toLowerCase();
+  const isOwner = currentEmailLower === 'yassooooo27m@gmail.com';
+  const isSuperAdmin = currentLoggedUser?.role === 'super_admin' || isOwner;
+  const isAuthorizedAdmin = currentLoggedUser?.role === 'admin' || isSuperAdmin;
+
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [auditLogs, setAuditLogs] = useState<RoleChangeLog[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -173,13 +180,17 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
     });
   }, [users, searchQuery, selectedRoleFilter]);
 
-  // فتح نافذة تأكيد الحظر أو فك الحظر
+  // فتح نافذة تأكيد الحظر أو فك الحظر (محصورة بالسوبر أدمن فقط)
   const handleToggleBan = (user: UserWithRole) => {
+    if (!isSuperAdmin) {
+      showToast('صلاحية الحظر وفك الحظر محصورة برتبة السوبر أدمن (Super Admin) فقط!', 'error');
+      return;
+    }
     if (user.role === 'super_admin' || user.email?.toLowerCase() === 'yassooooo27m@gmail.com') {
       showToast('لا يمكن حظر حساب السوبر أدمن الرئيسي للمنصة!', 'error');
       return;
     }
-    if (currentUser?.id === user.id) {
+    if (currentLoggedUser?.id === user.id) {
       showToast('لا يمكنك حظر حسابك الخاص!', 'error');
       return;
     }
@@ -217,13 +228,17 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
     }
   };
 
-  // فتح نافذة تأكيد مسح الحساب
+  // فتح نافذة تأكيد مسح الحساب (محصورة بالسوبر أدمن فقط)
   const handleDeleteUser = (user: UserWithRole) => {
+    if (!isSuperAdmin) {
+      showToast('صلاحية مسح الحسابات محصورة برتبة السوبر أدمن (Super Admin) فقط!', 'error');
+      return;
+    }
     if (user.role === 'super_admin' || user.email?.toLowerCase() === 'yassooooo27m@gmail.com') {
       showToast('لا يمكن مسح حساب السوبر أدمن الرئيسي للمنصة!', 'error');
       return;
     }
-    if (currentUser?.id === user.id) {
+    if (currentLoggedUser?.id === user.id) {
       showToast('لا يمكنك مسح حسابك وأنت مسجل دخول به!', 'error');
       return;
     }
@@ -318,20 +333,37 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
     }
   };
 
-  // التحقق من صلاحية العارض الحالي (مسؤول المنصة Admin)
-  const currentEmailLower = currentUser?.email?.trim().toLowerCase();
-  const isAuthorizedAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || currentEmailLower === 'yassooooo27m@gmail.com';
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 font-cairo">
-      {/* تنبيه إذا لم يكن المستخدم الحالي مسؤولاً */}
-      {!isAuthorizedAdmin && (
+      {/* تنبيه الصلاحيات وإشعار رتبة السوبر أدمن */}
+      {!isAuthorizedAdmin ? (
         <div className="mb-6 p-4 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-900 dark:text-amber-200 flex items-center gap-3">
           <AlertTriangle className="w-6 h-6 text-amber-500 flex-shrink-0" />
           <div className="text-sm">
             <span className="font-bold">تنبيه صلاحيات: </span>
-            أنت تستعرض هذه اللوحة برتبة (<span className="font-bold underline">{authService.getRoleBadge(currentUser?.role).label}</span>). تعديل الرتب وسحب الصلاحيات محصور بمسؤولي المنصة (Admins) المعتمدين.
+            أنت تستعرض هذه اللوحة برتبة (<span className="font-bold underline">{authService.getRoleBadge(currentLoggedUser?.role).label}</span>). تعديل الرتب وسحب الصلاحيات محصور بمسؤولي المنصة (Admins) المعتمدين.
           </div>
+        </div>
+      ) : !isSuperAdmin ? (
+        <div className="mb-6 p-4 rounded-2xl bg-purple-500/15 border border-purple-500/40 text-purple-900 dark:text-purple-200 flex items-center gap-3">
+          <ShieldCheck className="w-6 h-6 text-purple-500 flex-shrink-0" />
+          <div className="text-sm">
+            <span className="font-bold">حساب مسؤول منصة (Admin): </span>
+            يمكنك تعديل رتب الأعضاء. بينما صلاحيات <strong className="text-rose-600 dark:text-rose-400">حظر الحسابات والمسح النهائي</strong> محصورة برتبة <strong>السوبر أدمن (Super Admin)</strong> فقط لسلامة وأمان المنصة.
+          </div>
+        </div>
+      ) : (
+        <div className="mb-6 p-3.5 px-4 rounded-2xl bg-gradient-to-r from-rose-500/10 via-purple-500/10 to-amber-500/10 border border-rose-500/25 text-slate-800 dark:text-slate-200 flex items-center justify-between gap-3 flex-wrap shadow-sm">
+          <div className="flex items-center gap-2.5 text-xs sm:text-sm">
+            <span className="p-1 rounded-lg bg-rose-500/20 text-rose-500">👑</span>
+            <span>
+              <strong className="text-rose-600 dark:text-rose-400">صلاحيات السوبر أدمن مفعلة:</strong> لديك كامل الصلاحية لحظر وفك حظر الحسابات، المسح النهائي للمستخدمين، وتعديل الرتب وتوثيق العمليات.
+            </span>
+          </div>
+          <span className="text-[11px] font-black px-3 py-1 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 flex items-center gap-1">
+            <Crown className="w-3 h-3 text-rose-500" />
+            Super Admin
+          </span>
         </div>
       )}
 
@@ -538,8 +570,8 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                 </tr>
               ) : (
                 filteredUsers.map((user) => {
-                  const isCurrentLoggedUser = currentUser?.id === user.id;
-                  const isOwner = user.email?.toLowerCase() === 'yassooooo27m@gmail.com' || user.role === 'super_admin';
+                  const isCurrentLoggedUser = currentLoggedUser?.id === user.id;
+                  const isTargetSuperAdminOrOwner = user.email?.toLowerCase() === 'yassooooo27m@gmail.com' || user.role === 'super_admin';
 
                   return (
                     <tr
@@ -674,8 +706,18 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                           {/* زر حظر / فك حظر الحساب */}
                           <button
                             onClick={() => handleToggleBan(user)}
-                            disabled={!isAuthorizedAdmin || isCurrentLoggedUser || isOwner}
-                            title={user.isBanned ? 'إلغاء حظر الحساب' : 'حظر هذا الحساب'}
+                            disabled={!isSuperAdmin || isCurrentLoggedUser || isTargetSuperAdminOrOwner}
+                            title={
+                              !isSuperAdmin
+                                ? 'صلاحية الحظر محصورة بالسوبر أدمن (Super Admin) فقط'
+                                : isCurrentLoggedUser
+                                ? 'لا يمكنك حظر حسابك الخاص'
+                                : isTargetSuperAdminOrOwner
+                                ? 'لا يمكن حظر السوبر أدمن'
+                                : user.isBanned
+                                ? 'إلغاء حظر الحساب'
+                                : 'حظر هذا الحساب'
+                            }
                             className={`p-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
                               user.isBanned
                                 ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25'
@@ -698,8 +740,16 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                           {/* زر مسح الحساب نهائياً */}
                           <button
                             onClick={() => handleDeleteUser(user)}
-                            disabled={!isAuthorizedAdmin || isCurrentLoggedUser || isOwner}
-                            title="مسح الحساب نهائياً"
+                            disabled={!isSuperAdmin || isCurrentLoggedUser || isTargetSuperAdminOrOwner}
+                            title={
+                              !isSuperAdmin
+                                ? 'صلاحية مسح الحساب محصورة بالسوبر أدمن (Super Admin) فقط'
+                                : isCurrentLoggedUser
+                                ? 'لا يمكنك مسح حسابك وأنت مسجل دخول به'
+                                : isTargetSuperAdminOrOwner
+                                ? 'لا يمكن مسح السوبر أدمن'
+                                : 'مسح الحساب نهائياً'
+                            }
                             className="p-2 rounded-xl text-xs font-bold transition-all bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/25 disabled:opacity-25 disabled:cursor-not-allowed flex items-center gap-1"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -725,8 +775,8 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
             </div>
           ) : (
             filteredUsers.map((user) => {
-              const isCurrentLoggedUser = currentUser?.id === user.id;
-              const isOwner = user.email?.toLowerCase() === 'yassooooo27m@gmail.com' || user.role === 'super_admin';
+              const isCurrentLoggedUser = currentLoggedUser?.id === user.id;
+              const isTargetSuperAdminOrOwner = user.email?.toLowerCase() === 'yassooooo27m@gmail.com' || user.role === 'super_admin';
 
               return (
                 <div key={user.id} className={`p-4 flex flex-col gap-3 ${user.isBanned ? 'bg-rose-500/5 dark:bg-rose-950/15' : ''}`}>
@@ -838,7 +888,16 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                     <div className="grid grid-cols-2 gap-2 pt-1">
                       <button
                         onClick={() => handleToggleBan(user)}
-                        disabled={!isAuthorizedAdmin || isCurrentLoggedUser || isOwner}
+                        disabled={!isSuperAdmin || isCurrentLoggedUser || isTargetSuperAdminOrOwner}
+                        title={
+                          !isSuperAdmin
+                            ? 'صلاحية الحظر محصورة بالسوبر أدمن (Super Admin) فقط'
+                            : isCurrentLoggedUser
+                            ? 'لا يمكنك حظر حسابك الخاص'
+                            : isTargetSuperAdminOrOwner
+                            ? 'لا يمكن حظر السوبر أدمن'
+                            : undefined
+                        }
                         className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
                           user.isBanned
                             ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
@@ -860,7 +919,16 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
 
                       <button
                         onClick={() => handleDeleteUser(user)}
-                        disabled={!isAuthorizedAdmin || isCurrentLoggedUser || isOwner}
+                        disabled={!isSuperAdmin || isCurrentLoggedUser || isTargetSuperAdminOrOwner}
+                        title={
+                          !isSuperAdmin
+                            ? 'صلاحية مسح الحساب محصورة بالسوبر أدمن (Super Admin) فقط'
+                            : isCurrentLoggedUser
+                            ? 'لا يمكنك مسح حسابك'
+                            : isTargetSuperAdminOrOwner
+                            ? 'لا يمكن مسح السوبر أدمن'
+                            : undefined
+                        }
                         className="py-2 px-3 rounded-xl text-xs font-bold transition-all bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -978,12 +1046,17 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
             </button>
 
             {/* أيقونة الحالة */}
-            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 ${
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-3 ${
               pendingBan.isBanning 
                 ? 'bg-rose-500/15 border border-rose-500/30 text-rose-500' 
                 : 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-500'
             }`}>
               {pendingBan.isBanning ? <Ban className="w-6 h-6" /> : <Unlock className="w-6 h-6" />}
+            </div>
+
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 mb-2">
+              <Crown className="w-3 h-3 text-rose-500" />
+              <span>صلاحية حصرية للسوبر أدمن (Super Admin)</span>
             </div>
 
             <h3 className="text-lg font-black text-slate-900 dark:text-white mb-1">
@@ -1068,8 +1141,13 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
             </button>
 
             {/* أيقونة الحذف والتحذير */}
-            <div className="w-12 h-12 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-500 mb-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-500 mb-3">
               <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 mb-2">
+              <Crown className="w-3 h-3 text-rose-500" />
+              <span>صلاحية حصرية للسوبر أدمن (Super Admin)</span>
             </div>
 
             <h3 className="text-lg font-black text-rose-600 dark:text-rose-400 mb-1">

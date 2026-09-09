@@ -273,7 +273,7 @@ export const rolesService = {
     };
   },
 
-  // حظر أو فك حظر حساب (Ban / Unban User)
+  // حظر أو فك حظر حساب (Ban / Unban User) - مقتصر حصراً على السوبر أدمن
   banUser: async (
     targetUserId: string,
     isBanned: boolean,
@@ -282,10 +282,10 @@ export const rolesService = {
     const currentUser = authService.getCurrentUser();
     const userEmail = currentUser?.email?.trim().toLowerCase();
     const isOwner = userEmail === 'yassooooo27m@gmail.com';
-    const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || isOwner;
+    const isSuperAdmin = currentUser?.role === 'super_admin' || isOwner;
 
-    if (!isAdmin) {
-      return { success: false, error: 'غير مصرح: صلاحية الحظر محصورة بمسؤولي المنصة.' };
+    if (!isSuperAdmin) {
+      return { success: false, error: 'غير مصرح: صلاحية حظر الحسابات محصورة برتبة السوبر أدمن (Super Admin) فقط.' };
     }
 
     if (currentUser?.id === targetUserId) {
@@ -361,15 +361,15 @@ export const rolesService = {
     return { success: true };
   },
 
-  // مسح حساب مستخدم نهائياً (Delete User)
+  // مسح حساب مستخدم نهائياً (Delete User) - مقتصر حصراً على السوبر أدمن
   deleteUser: async (targetUserId: string): Promise<{ success: boolean; error?: string }> => {
     const currentUser = authService.getCurrentUser();
     const userEmail = currentUser?.email?.trim().toLowerCase();
     const isOwner = userEmail === 'yassooooo27m@gmail.com';
-    const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || isOwner;
+    const isSuperAdmin = currentUser?.role === 'super_admin' || isOwner;
 
-    if (!isAdmin) {
-      return { success: false, error: 'غير مصرح: صلاحية الحذف محصورة بمسؤولي المنصة.' };
+    if (!isSuperAdmin) {
+      return { success: false, error: 'غير مصرح: صلاحية مسح الحسابات محصورة برتبة السوبر أدمن (Super Admin) فقط.' };
     }
 
     if (currentUser?.id === targetUserId) {

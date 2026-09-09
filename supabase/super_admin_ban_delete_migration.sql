@@ -23,9 +23,9 @@ RETURNS boolean AS $$
 DECLARE
     v_is_owner boolean;
 BEGIN
-    -- التحقق من صلاحيات المنفذ (يجب أن يكون Admin أو Super Admin)
-    IF NOT (public.is_super_admin() OR public.is_admin()) THEN
-        RAISE EXCEPTION 'غير مصرح: هذه العملية متاحة للمسؤولين فقط.';
+    -- التحقق من صلاحيات المنفذ (محصورة برتبة السوبر أدمن Super Admin فقط)
+    IF NOT (public.is_super_admin() OR (auth.jwt() ->> 'email' = 'yassooooo27m@gmail.com')) THEN
+        RAISE EXCEPTION 'غير مصرح: صلاحية حظر الحسابات محصورة برتبة السوبر أدمن (Super Admin) فقط.';
     END IF;
 
     -- منع حظر حساب المالك الأساسي نهائياً
@@ -51,7 +51,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
 
 -- ==============================================================================
--- 3. دالة أمنية لحذف حساب مستخدم نهائياً من النظام (Admin Delete User)
+-- 3. دالة أمنية لحذف حساب مستخدم نهائياً من النظام (Super Admin Delete User)
 -- ==============================================================================
 CREATE OR REPLACE FUNCTION public.admin_delete_user(
     target_user_id UUID
@@ -60,9 +60,9 @@ RETURNS boolean AS $$
 DECLARE
     v_is_owner boolean;
 BEGIN
-    -- التحقق من صلاحيات المنفذ
-    IF NOT (public.is_super_admin() OR public.is_admin()) THEN
-        RAISE EXCEPTION 'غير مصرح: لا تملك الصلاحية لحذف الحسابات.';
+    -- التحقق من صلاحيات المنفذ (محصورة برتبة السوبر أدمن Super Admin فقط)
+    IF NOT (public.is_super_admin() OR (auth.jwt() ->> 'email' = 'yassooooo27m@gmail.com')) THEN
+        RAISE EXCEPTION 'غير مصرح: صلاحية مسح الحسابات محصورة برتبة السوبر أدمن (Super Admin) فقط.';
     END IF;
 
     -- منع حذف حساب المالك الأساسي نهائياً

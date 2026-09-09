@@ -153,7 +153,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       if (onUserLoggedIn) onUserLoggedIn(result.user);
       setTimeout(() => onClose(), 800);
     } catch (err: any) {
-      setAuthError(err?.message || 'حدث خطأ أثناء تسجيل الدخول');
+      const msg = err?.message || '';
+      if (msg.includes('Invalid login credentials')) {
+        setAuthError('البريد الإلكتروني أو كلمة المرور غير صحيحة. إذا كان حسابك جديداً، يرجى التحقق من رسالة تفعيل البريد أو إعادة المحاولة.');
+      } else if (msg.includes('Email not confirmed')) {
+        setAuthError('يرجى تأكيد بريدك الإلكتروني أولاً عبر الرابط المرسل لبريدك، أو تواصل مع إدارة المنصة.');
+      } else {
+        setAuthError(msg || 'حدث خطأ أثناء تسجيل الدخول');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -176,15 +183,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setAuthSuccess(
         result.isDemo
           ? `تم إنشاء الحساب بنجاح! تم تحديد هدفك: ${data.targetScore || 100} 🎯`
-          : `تم إنشاء الحساب بنجاح في Supabase! هدفنا 100 🎯`
+          : `تم إنشاء الحساب بنجاح! تم حفظ بياناتك وهدفك 100 🎯`
       );
       if (onUserLoggedIn) onUserLoggedIn(result.user);
       setTimeout(() => onClose(), 1000);
     } catch (err: any) {
-      if (err?.message?.includes('Email signups are disabled')) {
+      const msg = err?.message || '';
+      if (msg.includes('Email signups are disabled')) {
         setAuthError('إنشاء الحسابات الجديدة بالبريد معطل حالياً في إعدادات Supabase (يرجى تفعيل Allow new users to sign up من لوحة تحكم Supabase)');
+      } else if (msg.includes('User already registered') || msg.includes('already registered')) {
+        setAuthError('هذا البريد الإلكتروني مسجل بالفعل مسبقاً! انتقل لتبويب "تسجيل الدخول" للدخول به مباشرة.');
       } else {
-        setAuthError(err?.message || 'حدث خطأ أثناء إنشاء الحساب');
+        setAuthError(msg || 'حدث خطأ أثناء إنشاء الحساب');
       }
     } finally {
       setIsLoading(false);

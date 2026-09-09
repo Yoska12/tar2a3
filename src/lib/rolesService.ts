@@ -33,11 +33,16 @@ export const rolesService = {
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('*')
-          .order('created_at', { ascending: false });
+          .select('*');
 
         if (!error && data && data.length > 0) {
-          supabaseUsers = data.map((d: any) => {
+          const sorted = [...data].sort((a: any, b: any) => {
+            const tA = new Date(a.created_at || a.updated_at || 0).getTime();
+            const tB = new Date(b.created_at || b.updated_at || 0).getTime();
+            return tB - tA;
+          });
+
+          supabaseUsers = sorted.map((d: any) => {
             const email = d.email || (d.telegram_username ? `@${d.telegram_username}` : `${d.id.substring(0, 8)}@user.tarqa`);
             const isOwner = email.toLowerCase() === 'yassooooo27m@gmail.com';
             return {
@@ -49,8 +54,8 @@ export const rolesService = {
               telegramUsername: d.telegram_username,
               telegramId: d.telegram_id,
               avatarUrl: d.avatar_url,
-              createdAt: d.created_at || new Date().toISOString(),
-              lastSignInAt: d.last_sign_in_at || d.created_at,
+              createdAt: d.created_at || d.updated_at || new Date().toISOString(),
+              lastSignInAt: d.last_sign_in_at || d.updated_at || d.created_at,
             };
           });
         }

@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured, authService, syncUserToMembersDashboard } from './supabase';
+import { supabase, isSupabaseConfigured, authService, syncUserToMembersDashboard, isValidUuid } from './supabase';
 import { UserRole, UserWithRole, RoleChangeLog } from '../types';
 
 // الحساب الإداري المعتمد لمالك المنصة (Yoska)
@@ -144,24 +144,27 @@ export const rolesService = {
   getAuditLogs: async (): Promise<RoleChangeLog[]> => {
     if (isSupabaseConfigured) {
       try {
-        const { data, error } = await supabase
-          .from('role_change_logs')
-          .select('id, admin_id, target_user_id, old_role, new_role, reason, created_at')
-          .order('created_at', { ascending: false });
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session) {
+          const { data, error } = await supabase
+            .from('role_change_logs')
+            .select('id, admin_id, target_user_id, old_role, new_role, reason, created_at')
+            .order('created_at', { ascending: false });
 
-        if (!error && data && data.length > 0) {
-          return data.map((l: any) => ({
-            id: l.id,
-            adminId: l.admin_id,
-            targetUserId: l.target_user_id,
-            oldRole: (l.old_role === 'super_admin' ? 'admin' : l.old_role) as UserRole,
-            newRole: (l.new_role === 'super_admin' ? 'admin' : l.new_role) as UserRole,
-            reason: l.reason,
-            createdAt: l.created_at,
-          }));
+          if (!error && data && data.length > 0) {
+            return data.map((l: any) => ({
+              id: l.id,
+              adminId: l.admin_id,
+              targetUserId: l.target_user_id,
+              oldRole: (l.old_role === 'super_admin' ? 'admin' : l.old_role) as UserRole,
+              newRole: (l.new_role === 'super_admin' ? 'admin' : l.new_role) as UserRole,
+              reason: l.reason,
+              createdAt: l.created_at,
+            }));
+          }
         }
       } catch (err) {
-        console.warn('Failed to fetch audit logs from Supabase:', err);
+        // تجاهل أخطاء الجلسة غير النشطة
       }
     }
 
@@ -221,14 +224,47 @@ export const rolesService = {
     // 3. محاولة التحديث في Supabase إن كان متاحاً
     if (isSupabaseConfigured) {
       try {
-        const { error } = await supabase
-          .from('profiles')
-          .update({ role: newRole })
-          .eq('id', targetUserId);
+        let supabaseTargetId: string | null = isValidUuid(targetUserId) ? targetUserId : null;
 
-        if (error) throw error;
+        // إذا لم يكن المعرف UUID (حساب محلي)، نحاول العثور على حسابه الحقيقي في Supabase عبر البريد
+        if (!supabaseTargetId && targetUser.email && !targetUser.email.includes('@user.tarqa')) {
+          try {
+            const { data: matchedProfile } = await supabase
+              .from('profiles')
+              .select('id')
+              .eq('email', targetUser.email.toLowerCase())
+              .maybeSingle();
+
+            if (matchedProfile?.id && isValidUuid(matchedProfile.id)) {
+              supabaseTargetId = matchedProfile.id;
+            }
+          } catch {}
+        }
+
+        if (supabaseTargetId) {
+          const { data: sessionData } = await supabase.auth.getSession();
+          // نطلب التحديث من Supabase فقط إذا كانت هناك جلسة مصادقة نشطة لتجنب 403
+          if (sessionData?.session) {
+            const { error: rpcError } = await supabase.rpc('admin_update_user_role', {
+              target_user_id: supabaseTargetId,
+              new_role: newRole,
+              reason: reason || null,
+            });
+
+            if (rpcError) {
+              const { error } = await supabase
+                .from('profiles')
+                .update({ role: newRole })
+                .eq('id', supabaseTargetId);
+
+              if (error && error.code !== '42501') {
+                console.warn('Supabase role update note:', error.message);
+              }
+            }
+          }
+        }
       } catch (err: any) {
-        console.warn('Supabase role update error:', err);
+        console.warn('Supabase role update note:', err?.message || err);
       }
     }
 
@@ -305,24 +341,43 @@ export const rolesService = {
     // 1. تحديث Supabase
     if (isSupabaseConfigured) {
       try {
-        const { error: rpcError } = await supabase.rpc('admin_toggle_ban_user', {
-          target_user_id: targetUserId,
-          p_is_banned: isBanned,
-          p_reason: reason || null,
-        });
+        let supabaseTargetId: string | null = isValidUuid(targetUserId) ? targetUserId : null;
+        if (!supabaseTargetId && target.email && !target.email.includes('@user.tarqa')) {
+          try {
+            const { data: matchedProfile } = await supabase
+              .from('profiles')
+              .select('id')
+              .eq('email', target.email.toLowerCase())
+              .maybeSingle();
+            if (matchedProfile?.id && isValidUuid(matchedProfile.id)) {
+              supabaseTargetId = matchedProfile.id;
+            }
+          } catch {}
+        }
 
-        if (rpcError) {
-          await supabase
-            .from('profiles')
-            .update({
-              is_banned: isBanned,
-              ban_reason: isBanned ? (reason || 'مخالفة سياسة واستخدام المنصة') : null,
-              banned_at: isBanned ? new Date().toISOString() : null,
-            })
-            .eq('id', targetUserId);
+        if (supabaseTargetId) {
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (sessionData?.session) {
+            const { error: rpcError } = await supabase.rpc('admin_toggle_ban_user', {
+              target_user_id: supabaseTargetId,
+              p_is_banned: isBanned,
+              p_reason: reason || null,
+            });
+
+            if (rpcError) {
+              await supabase
+                .from('profiles')
+                .update({
+                  is_banned: isBanned,
+                  ban_reason: isBanned ? (reason || 'مخالفة سياسة واستخدام المنصة') : null,
+                  banned_at: isBanned ? new Date().toISOString() : null,
+                })
+                .eq('id', supabaseTargetId);
+            }
+          }
         }
       } catch (err) {
-        console.warn('Supabase ban update error:', err);
+        console.warn('Supabase ban update note:', err);
       }
     }
 
@@ -389,15 +444,34 @@ export const rolesService = {
     // 1. الحذف من Supabase
     if (isSupabaseConfigured) {
       try {
-        const { error: rpcError } = await supabase.rpc('admin_delete_user', {
-          target_user_id: targetUserId,
-        });
+        let supabaseTargetId: string | null = isValidUuid(targetUserId) ? targetUserId : null;
+        if (!supabaseTargetId && target.email && !target.email.includes('@user.tarqa')) {
+          try {
+            const { data: matchedProfile } = await supabase
+              .from('profiles')
+              .select('id')
+              .eq('email', target.email.toLowerCase())
+              .maybeSingle();
+            if (matchedProfile?.id && isValidUuid(matchedProfile.id)) {
+              supabaseTargetId = matchedProfile.id;
+            }
+          } catch {}
+        }
 
-        if (rpcError) {
-          await supabase.from('profiles').delete().eq('id', targetUserId);
+        if (supabaseTargetId) {
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (sessionData?.session) {
+            const { error: rpcError } = await supabase.rpc('admin_delete_user', {
+              target_user_id: supabaseTargetId,
+            });
+
+            if (rpcError) {
+              await supabase.from('profiles').delete().eq('id', supabaseTargetId);
+            }
+          }
         }
       } catch (err) {
-        console.warn('Supabase user delete error:', err);
+        console.warn('Supabase user delete note:', err);
       }
     }
 

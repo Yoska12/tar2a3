@@ -21,6 +21,11 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 export { createClient };
 export default supabase;
 
+export const isValidUuid = (val?: string): boolean => {
+  if (!val) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+};
+
 export interface TarqaUser {
   id: string;
   email: string;
@@ -86,31 +91,34 @@ export const syncUserToMembersDashboard = async (user: TarqaUser) => {
     console.warn('[syncUserToMembersDashboard] local sync error:', e);
   }
 
-  // 2. المزامنة مع جدول profiles في Supabase إذا كانت مفعلة
-  if (isSupabaseConfigured && record.id && !record.id.startsWith('usr-') && !record.id.startsWith('tg-')) {
+  // 2. المزامنة مع جدول profiles في Supabase إذا كانت مفعلة وتوفرت جلسة مصادقة ومعرف UUID صالح
+  if (isSupabaseConfigured && record.id && isValidUuid(record.id)) {
     try {
-      const payload: any = {
-        id: record.id,
-        full_name: record.fullName,
-        role: record.role,
-        target_score: record.targetScore,
-        telegram_username: record.telegramUsername || null,
-        telegram_id: record.telegramId || null,
-        avatar_url: record.avatarUrl || '',
-        updated_at: new Date().toISOString(),
-      };
-      if (record.email && !record.email.includes('@user.tarqa')) {
-        payload.email = record.email;
-      }
+      const { data: sessionData } = await supabase.auth.getSession();
+      // استدعاء Supabase فقط في حال وجود جلسة صالحة لتجنب أخطاء 403 RLS
+      if (sessionData?.session) {
+        const payload: any = {
+          id: record.id,
+          full_name: record.fullName,
+          role: record.role,
+          target_score: record.targetScore,
+          telegram_username: record.telegramUsername || null,
+          telegram_id: record.telegramId || null,
+          avatar_url: record.avatarUrl || '',
+          updated_at: new Date().toISOString(),
+        };
+        if (record.email && !record.email.includes('@user.tarqa')) {
+          payload.email = record.email;
+        }
 
-      const { error } = await supabase.from('profiles').upsert(payload);
-      if (error) {
-        // إذا فشل بسبب عدم وجود عمود email
-        delete payload.email;
-        await supabase.from('profiles').upsert(payload);
+        const { error } = await supabase.from('profiles').upsert(payload);
+        if (error && error.code !== '42501') {
+          delete payload.email;
+          await supabase.from('profiles').upsert(payload);
+        }
       }
-    } catch (err) {
-      console.warn('[syncUserToMembersDashboard] Supabase upsert note:', err);
+    } catch {
+      // تفادي تنبيهات الكونسول غير المفيدة
     }
   }
 };

@@ -16,9 +16,10 @@ export async function updateUserRoleAction(
       return { success: false, error: 'يجب تسجيل الدخول أولاً' };
     }
 
-    const isYassien = user.email?.trim().toLowerCase() === 'yassooooo27m@gmail.com';
+    const userEmailLower = user.email?.trim().toLowerCase();
+    const isOwner = userEmailLower === 'yassoooo27m@gmail.com' || userEmailLower === 'yassooooo27m@gmail.com';
     const rawRole = (user.app_metadata?.role as UserRole) || (user.user_metadata?.role as UserRole);
-    const callerRole = isYassien ? 'admin' : (rawRole === 'super_admin' ? 'admin' : rawRole);
+    const callerRole = isOwner ? 'admin' : (rawRole === 'super_admin' ? 'admin' : rawRole);
 
     if (callerRole !== 'admin') {
       return {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Users,
   Database,
@@ -25,6 +25,8 @@ import {
 } from 'lucide-react';
 import { MathRenderer } from './MathRenderer';
 import { Question, Category, OptionId, Difficulty, QuizMode } from '../types';
+import { rolesService } from '../lib/rolesService';
+import { localScoreStorage } from '../lib/supabase';
 
 interface AdminPanelProps {
   questions: Question[];
@@ -77,6 +79,63 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [quizDurationMinutes, setQuizDurationMinutes] = useState(20);
   const [selectedQuizQuestionIds, setSelectedQuizQuestionIds] = useState<string[]>([]);
   const [quizCreatedSuccess, setQuizCreatedSuccess] = useState(false);
+
+  // إحصائيات المنصة الحقيقية 100%
+  const [platformStats, setPlatformStats] = useState({
+    totalUsers: 0,
+    studentsCount: 0,
+    totalAttempts: 0,
+    todayAttempts: 0,
+    averageScore: 0,
+    hasScores: false,
+  });
+
+  useEffect(() => {
+    const loadRealStats = async () => {
+      try {
+        const users = await rolesService.getUsers();
+        const storedAttempts = localScoreStorage.getAttempts();
+        const realAttempts = Array.isArray(storedAttempts) 
+          ? storedAttempts.filter((a: any) => !['att-1', 'att-2', 'att-3', 'att-4'].includes(a.id))
+          : [];
+
+        const todayStr = new Date().toISOString().split('T')[0];
+        const todayAttempts = realAttempts.filter((a: any) => {
+          const d = a.completed_at ? new Date(a.completed_at).toISOString().split('T')[0] : '';
+          return d === todayStr;
+        });
+
+        const scores = realAttempts.map((a: any) => Number(a.score) || 0);
+        const avg = scores.length > 0
+          ? Math.round(scores.reduce((a: number, b: number) => a + b, 0) / scores.length)
+          : 0;
+
+        setPlatformStats({
+          totalUsers: users.length,
+          studentsCount: users.filter((u) => u.role === 'student').length,
+          totalAttempts: realAttempts.length,
+          todayAttempts: todayAttempts.length,
+          averageScore: avg,
+          hasScores: scores.length > 0,
+        });
+      } catch (err) {
+        console.warn('Failed to load real stats in AdminPanel:', err);
+      }
+    };
+
+    loadRealStats();
+
+    const handleDataChanged = () => {
+      loadRealStats();
+    };
+
+    window.addEventListener('tarqa_roles_changed', handleDataChanged);
+    window.addEventListener('tarqa_user_changed', handleDataChanged);
+    return () => {
+      window.removeEventListener('tarqa_roles_changed', handleDataChanged);
+      window.removeEventListener('tarqa_user_changed', handleDataChanged);
+    };
+  }, []);
 
   // تصفية الأسئلة
   const filteredQuestions = questions.filter((q) => {
@@ -193,9 +252,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <Users className="w-6 h-6" />
           </div>
           <div>
-            <span className="text-xs text-slate-500 font-medium">الطلاب النشطون</span>
-            <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">1,248</div>
-            <span className="text-[11px] text-emerald-500 font-bold">+12% هذا الشهر</span>
+            <span className="text-xs text-slate-500 font-medium">المستخدمون المسجلون</span>
+            <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">{platformStats.totalUsers}</div>
+            <span className="text-[11px] text-amber-600 dark:text-amber-400 font-bold">
+              {platformStats.studentsCount > 0 ? `${platformStats.studentsCount} طالب مسجل` : 'بيانات حقيقية موثقة'}
+            </span>
           </div>
         </div>
 
@@ -206,7 +267,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <div>
             <span className="text-xs text-slate-500 font-medium">إجمالي بنك الأسئلة</span>
             <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">{questions.length}</div>
-            <span className="text-[11px] text-blue-500 font-bold">مقسمة على 6 محاور</span>
+            <span className="text-[11px] text-blue-500 font-bold">
+              مقسمة على {categories.filter(c => c.id !== 'all').length} أقسام كمي
+            </span>
           </div>
         </div>
 
@@ -215,9 +278,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <CheckSquare className="w-6 h-6" />
           </div>
           <div>
-            <span className="text-xs text-slate-500 font-medium">اختبارات اليوم</span>
-            <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">89</div>
-            <span className="text-[11px] text-emerald-500 font-bold">بمعدل إكمال 94%</span>
+            <span className="text-xs text-slate-500 font-medium">المحاولات المكتملة</span>
+            <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">{platformStats.totalAttempts}</div>
+            <span className="text-[11px] text-emerald-500 font-bold">
+              {platformStats.todayAttempts > 0 ? `${platformStats.todayAttempts} محاولة اليوم` : 'سجل الاختبارات الفعلي'}
+            </span>
           </div>
         </div>
 
@@ -227,8 +292,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
           <div>
             <span className="text-xs text-slate-500 font-medium">متوسط الدرجات</span>
-            <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">84.2%</div>
-            <span className="text-[11px] text-amber-500 font-bold">هدفنا 100 🎯</span>
+            <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">
+              {platformStats.hasScores ? `${platformStats.averageScore}%` : '--'}
+            </div>
+            <span className="text-[11px] text-amber-500 font-bold">
+              {platformStats.hasScores ? `بناءً على ${platformStats.totalAttempts} اختبار` : 'لا توجد اختبارات مسجلة بعد'}
+            </span>
           </div>
         </div>
 

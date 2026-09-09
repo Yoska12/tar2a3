@@ -34,6 +34,12 @@ import { mockCategories, mockQuestions } from './data/mockQuestions';
 import { QuizSettings, QuizResult, Category, Question, CourseModule, Lesson, UserRole } from './types';
 import { localScoreStorage, authService, TarqaUser, supabase, isSupabaseConfigured } from './lib/supabase';
 
+const isOwnerEmail = (email?: string | null) => {
+  if (!email) return false;
+  const e = email.trim().toLowerCase();
+  return e === 'yassoooo27m@gmail.com' || e === 'yassooooo27m@gmail.com';
+};
+
 export const App: React.FC = () => {
   // وضع الشاشة: home | quiz | result | dashboard | admin | classroom | admin-lectures | admin-roles
   const [currentView, setCurrentView] = useState<'home' | 'quiz' | 'result' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles'>('home');
@@ -77,13 +83,13 @@ export const App: React.FC = () => {
             console.warn('[App] Failed to fetch profile from DB:', e);
           }
 
-          const isOwner = session.user.email?.trim().toLowerCase() === 'yassooooo27m@gmail.com';
+          const isOwner = isOwnerEmail(session.user.email);
           const verifiedRole = (isOwner || role === 'super_admin') ? 'admin' : role;
 
           const user: TarqaUser = {
             id: session.user.id,
             email: session.user.email || '',
-            fullName: isOwner ? 'Yassien Ahmed' : fullName,
+            fullName: isOwner ? (fullName && fullName !== 'طالب طرقع' ? fullName : 'Yoska') : fullName,
             targetScore,
             role: verifiedRole,
             telegramUsername,
@@ -122,13 +128,13 @@ export const App: React.FC = () => {
             }
           } catch {}
 
-          const isOwner = session.user.email?.trim().toLowerCase() === 'yassooooo27m@gmail.com';
+          const isOwner = isOwnerEmail(session.user.email);
           const verifiedRole = (isOwner || role === 'super_admin') ? 'admin' : role;
 
           const user: TarqaUser = {
             id: session.user.id,
             email: session.user.email || '',
-            fullName: isOwner ? 'Yassien Ahmed' : fullName,
+            fullName: isOwner ? (fullName && fullName !== 'طالب طرقع' ? fullName : 'Yoska') : fullName,
             targetScore,
             role: verifiedRole,
             telegramUsername,
@@ -369,7 +375,7 @@ export const App: React.FC = () => {
       {/* ======================================================================= */}
       {currentView === 'admin' && (
         <main className="flex-1 w-full">
-          {currentUser?.role === 'admin' || currentUser?.role === 'teacher' || currentUser?.role === 'super_admin' || currentUser?.email?.trim().toLowerCase() === 'yassooooo27m@gmail.com' ? (
+          {currentUser?.role === 'admin' || currentUser?.role === 'teacher' || currentUser?.role === 'super_admin' || isOwnerEmail(currentUser?.email) ? (
             <AdminPanel
               questions={allQuestions}
               categories={mockCategories}
@@ -430,7 +436,7 @@ export const App: React.FC = () => {
       {/* ======================================================================= */}
       {currentView === 'admin-lectures' && (
         <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-8">
-          {currentUser?.role === 'admin' || currentUser?.role === 'teacher' || currentUser?.role === 'super_admin' || currentUser?.email?.trim().toLowerCase() === 'yassooooo27m@gmail.com' ? (
+          {currentUser?.role === 'admin' || currentUser?.role === 'teacher' || currentUser?.role === 'super_admin' || isOwnerEmail(currentUser?.email) ? (
             <LecturesCMS
               modules={modules}
               onAddLesson={(modId, newLesson) => {
@@ -514,7 +520,7 @@ export const App: React.FC = () => {
       {/* ======================================================================= */}
       {currentView === 'admin-roles' && (
         <main className="flex-1 w-full">
-          {currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || currentUser?.email?.trim().toLowerCase() === 'yassooooo27m@gmail.com' ? (
+          {currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || isOwnerEmail(currentUser?.email) ? (
             <SuperAdminRolesPanel
               currentUser={currentUser}
               onNavigateBack={() => {

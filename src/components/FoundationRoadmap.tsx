@@ -35,6 +35,10 @@ export const FoundationRoadmap: React.FC<FoundationRoadmapProps> = ({
     (acc, m) => acc + m.lessons.filter((l) => l.isCompleted).length,
     0
   );
+  const totalAttachments = modules.reduce(
+    (acc, m) => acc + m.lessons.reduce((lAcc, l) => lAcc + (l.attachments?.length || 0), 0),
+    0
+  );
   const progressPercentage = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
 
   return (
@@ -74,7 +78,7 @@ export const FoundationRoadmap: React.FC<FoundationRoadmapProps> = ({
               <span>•</span>
               <span>⏱️ {Math.round(totalDuration / 60)} ساعة شرح مركز</span>
               <span>•</span>
-              <span>📑 15+ مذكرة PDF وملخص</span>
+              <span>📑 {totalAttachments} مذكرة وملف PDF</span>
             </div>
           </div>
         </div>
@@ -85,7 +89,7 @@ export const FoundationRoadmap: React.FC<FoundationRoadmapProps> = ({
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
             <Layers className="w-5 h-5 text-amber-500" />
-            <span>خارطة الأبواب التأسيسية (5 أبواب شاملة)</span>
+            <span>خارطة الأبواب التأسيسية ({modules.length} أبواب شاملة)</span>
           </h2>
           <span className="text-xs font-bold text-slate-400">
             خطوة بخطوة بالترتيب التراكمي

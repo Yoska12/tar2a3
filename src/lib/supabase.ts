@@ -116,15 +116,16 @@ export const authService = {
           (data.user.user_metadata?.role as UserRole) || 
           'student';
 
-        const isYassien = params.email.toLowerCase() === 'yassooooo27m@gmail.com';
-        if (isYassien || role === 'super_admin') {
+        const emailLower = params.email.toLowerCase();
+        const isOwner = emailLower === 'yassoooo27m@gmail.com' || emailLower === 'yassooooo27m@gmail.com';
+        if (isOwner || role === 'super_admin') {
           role = 'admin';
         }
 
         const user: TarqaUser = {
           id: data.user.id,
           email: data.user.email || params.email,
-          fullName: isYassien ? 'Yassien Ahmed' : (data.user.user_metadata?.full_name || 'طالب طرقع'),
+          fullName: isOwner ? 'Yoska' : (data.user.user_metadata?.full_name || 'طالب طرقع'),
           targetScore: Number(data.user.user_metadata?.target_score) || 100,
           role,
           telegramUsername: data.user.user_metadata?.telegram_username,
@@ -142,8 +143,9 @@ export const authService = {
 
     // 2. وضع المعاينة المحلي (Local Demo Mode) - يعمل 100% دون انقطاع
     const users: any[] = JSON.parse(localStorage.getItem('tarqa_registered_users') || '[]');
-    const isYassien = params.email.toLowerCase() === 'yassooooo27m@gmail.com';
-    const foundUser = users.find((u) => u.email.toLowerCase() === params.email.toLowerCase());
+    const emailLower = params.email.toLowerCase();
+    const isOwner = emailLower === 'yassoooo27m@gmail.com' || emailLower === 'yassooooo27m@gmail.com';
+    const foundUser = users.find((u) => u.email.toLowerCase() === emailLower);
 
     if (foundUser) {
       if (foundUser.password !== params.password) {
@@ -152,9 +154,9 @@ export const authService = {
       const user: TarqaUser = {
         id: foundUser.id,
         email: foundUser.email,
-        fullName: isYassien ? 'Yassien Ahmed' : foundUser.fullName,
+        fullName: isOwner ? 'Yoska' : foundUser.fullName,
         targetScore: foundUser.targetScore || 100,
-        role: isYassien ? 'admin' : (foundUser.role === 'super_admin' ? 'admin' : (foundUser.role || (params.email.toLowerCase().includes('admin') ? 'admin' : params.email.toLowerCase().includes('teacher') ? 'teacher' : 'student'))),
+        role: isOwner ? 'admin' : (foundUser.role === 'super_admin' ? 'admin' : (foundUser.role || (emailLower.includes('admin') ? 'admin' : emailLower.includes('teacher') ? 'teacher' : 'student'))),
         telegramUsername: foundUser.telegramUsername,
       };
       localStorage.setItem('tarqa_current_user', JSON.stringify(user));
@@ -162,18 +164,18 @@ export const authService = {
       return { user, isDemo: true };
     }
 
-    // تعيين الدور تلقائياً في وضع المعاينة إذا احتوى البريد على admin أو teacher أو كان حساب Yassien
+    // تعيين الدور تلقائياً في وضع المعاينة إذا احتوى البريد على admin أو teacher أو كان حساب Yoska
     let detectedRole: UserRole = 'student';
-    if (isYassien || params.email.toLowerCase().includes('admin')) {
+    if (isOwner || emailLower.includes('admin')) {
       detectedRole = 'admin';
-    } else if (params.email.toLowerCase().includes('teacher')) {
+    } else if (emailLower.includes('teacher')) {
       detectedRole = 'teacher';
     }
 
     const newUser: TarqaUser = {
-      id: isYassien ? 'usr-yassien-admin' : 'usr-' + Date.now(),
+      id: isOwner ? 'usr-yoska-admin' : 'usr-' + Date.now(),
       email: params.email,
-      fullName: isYassien ? 'Yassien Ahmed' : (params.email.split('@')[0] || (detectedRole === 'admin' ? 'مدير المنصة' : 'طالب طرقع')),
+      fullName: isOwner ? 'Yoska' : (params.email.split('@')[0] || (detectedRole === 'admin' ? 'مدير المنصة' : 'طالب طرقع')),
       targetScore: 100,
       role: detectedRole,
     };
@@ -328,7 +330,18 @@ export const localScoreStorage = {
   },
   getAttempts: () => {
     try {
-      return JSON.parse(localStorage.getItem('tarqa_attempts') || '[]');
+      const stored = localStorage.getItem('tarqa_attempts');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          const realOnly = parsed.filter((a: any) => !['att-1', 'att-2', 'att-3', 'att-4'].includes(a.id));
+          if (realOnly.length !== parsed.length) {
+            localStorage.setItem('tarqa_attempts', JSON.stringify(realOnly));
+          }
+          return realOnly;
+        }
+      }
+      return [];
     } catch {
       return [];
     }

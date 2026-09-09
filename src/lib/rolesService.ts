@@ -1,108 +1,23 @@
 import { supabase, isSupabaseConfigured, authService } from './supabase';
 import { UserRole, UserWithRole, RoleChangeLog } from '../types';
 
-// بيانات أولية للمستخدمين للاختبار والمعاينة الفورية (Initial Demo Users)
+// الحساب الإداري المعتمد لمالك المنصة (Yoska)
 const INITIAL_DEMO_USERS: UserWithRole[] = [
   {
     id: 'usr-admin-01',
-    email: 'yassooooo27m@gmail.com',
-    fullName: 'Yassien Ahmed',
+    email: 'yassoooo27m@gmail.com',
+    fullName: 'Yoska',
     role: 'admin',
     targetScore: 100,
     telegramUsername: 'yassien_ahmed',
     telegramId: 987654321,
     createdAt: '2024-01-01T10:00:00Z',
-    lastSignInAt: '2024-05-18T14:30:00Z',
-  },
-  {
-    id: 'usr-admin-02',
-    email: 'admin@tarqa.app',
-    fullName: 'أ. عبد الرحمن الشريف',
-    role: 'admin',
-    targetScore: 100,
-    telegramUsername: 'abdulrahman_sharif',
-    telegramId: 876543210,
-    createdAt: '2024-01-15T12:00:00Z',
-    lastSignInAt: '2024-05-18T11:20:00Z',
-  },
-  {
-    id: 'usr-teacher-03',
-    email: 'reem.teacher@tarqa.app',
-    fullName: 'م. ريم الغامدي',
-    role: 'teacher',
-    targetScore: 100,
-    telegramUsername: 'reem_math',
-    telegramId: 765432109,
-    createdAt: '2024-02-01T09:00:00Z',
-    lastSignInAt: '2024-05-17T18:45:00Z',
-  },
-  {
-    id: 'usr-teacher-04',
-    email: 'fahad.math@tarqa.app',
-    fullName: 'أ. فهد العتيبي (الحساب الذهني)',
-    role: 'teacher',
-    targetScore: 100,
-    telegramUsername: 'fahad_speed',
-    telegramId: 654321098,
-    createdAt: '2024-02-10T15:00:00Z',
-    lastSignInAt: '2024-05-16T20:10:00Z',
-  },
-  {
-    id: 'usr-student-05',
-    email: 'mohammed@student.com',
-    fullName: 'محمد الدوسري',
-    role: 'student',
-    targetScore: 98,
-    telegramUsername: 'mohammed_d',
-    createdAt: '2024-03-05T16:00:00Z',
-    lastSignInAt: '2024-05-18T08:00:00Z',
-  },
-  {
-    id: 'usr-student-06',
-    email: 'sara@student.com',
-    fullName: 'سارة الشهري',
-    role: 'student',
-    targetScore: 100,
-    telegramUsername: 'sara_q',
-    createdAt: '2024-03-12T11:00:00Z',
-    lastSignInAt: '2024-05-17T22:15:00Z',
-  },
-  {
-    id: 'usr-student-07',
-    email: 'khaled@student.com',
-    fullName: 'خالد المطيري',
-    role: 'student',
-    targetScore: 95,
-    telegramUsername: 'khaled_m',
-    createdAt: '2024-04-01T13:30:00Z',
-    lastSignInAt: '2024-05-15T19:00:00Z',
+    lastSignInAt: new Date().toISOString(),
   },
 ];
 
-const INITIAL_LOGS: RoleChangeLog[] = [
-  {
-    id: 'log-001',
-    adminId: 'usr-super-admin-01',
-    adminName: 'سلطان القحطاني',
-    targetUserId: 'usr-admin-02',
-    targetUserName: 'أ. عبد الرحمن الشريف',
-    oldRole: 'teacher',
-    newRole: 'admin',
-    reason: 'ترقية لإدارة محتوى ومحاضرات منصة التأسيس',
-    createdAt: new Date(Date.now() - 3600000 * 48).toISOString(),
-  },
-  {
-    id: 'log-002',
-    adminId: 'usr-super-admin-01',
-    adminName: 'سلطان القحطاني',
-    targetUserId: 'usr-teacher-03',
-    targetUserName: 'م. ريم الغامدي',
-    oldRole: 'student',
-    newRole: 'teacher',
-    reason: 'اعتماد معلمة لشروحات مسار الهندسة والزوايا',
-    createdAt: new Date(Date.now() - 3600000 * 24).toISOString(),
-  },
-];
+// سجل التدقيق المبدئي (يبدأ فارغاً ويُسجل العمليات الحقيقية فقط)
+const INITIAL_LOGS: RoleChangeLog[] = [];
 
 export const rolesService = {
   // جلب كافة المستخدمين
@@ -133,32 +48,38 @@ export const rolesService = {
       }
     }
 
-    // القراءة من التخزين المحلي أو البيانات الأولية
+    // القراءة من التخزين المحلي بعد تنظيف أي حسابات وهمية سابقة
     try {
       const stored = localStorage.getItem('tarqa_all_users_roles');
-      let usersList: UserWithRole[] = stored ? JSON.parse(stored) : INITIAL_DEMO_USERS;
-      
-      // تحويل أي حساب برتبة super_admin سابقة إلى admin
-      usersList = usersList.map(u => u.role === 'super_admin' ? { ...u, role: 'admin' as UserRole } : u);
+      if (stored) {
+        let usersList: UserWithRole[] = JSON.parse(stored);
+        
+        // إزالة الحسابات الوهمية التجريبية السابقة (@tarqa.app و @student.com)
+        usersList = usersList.filter(u => 
+          (!u.email.endsWith('@tarqa.app') || u.email.startsWith('tg_')) && 
+          !u.email.endsWith('@student.com') &&
+          !['usr-admin-02', 'usr-teacher-03', 'usr-teacher-04', 'usr-student-05', 'usr-student-06', 'usr-student-07'].includes(u.id)
+        );
 
-      const yassien = usersList.find((u) => u.email.toLowerCase() === 'yassooooo27m@gmail.com');
-      if (yassien) {
-        yassien.role = 'admin';
-        yassien.fullName = 'Yassien Ahmed';
-      } else {
-        usersList.unshift({
-          id: 'usr-admin-01',
-          email: 'yassooooo27m@gmail.com',
-          fullName: 'Yassien Ahmed',
-          role: 'admin',
-          targetScore: 100,
-          telegramUsername: 'yassien_ahmed',
-          createdAt: '2024-01-01T10:00:00Z',
-        });
+        // تحويل أي حساب برتبة super_admin سابقة إلى admin
+        usersList = usersList.map(u => u.role === 'super_admin' ? { ...u, role: 'admin' as UserRole } : u);
+
+        const yoska = usersList.find((u) => 
+          u.email.toLowerCase() === 'yassoooo27m@gmail.com' || 
+          u.email.toLowerCase() === 'yassooooo27m@gmail.com'
+        );
+
+        if (yoska) {
+          yoska.role = 'admin';
+          yoska.fullName = 'Yoska';
+        } else {
+          usersList.unshift(INITIAL_DEMO_USERS[0]);
+        }
+
+        localStorage.setItem('tarqa_all_users_roles', JSON.stringify(usersList));
+        return usersList;
       }
-      localStorage.setItem('tarqa_all_users_roles', JSON.stringify(usersList));
-      return usersList;
-    } catch {}
+    } catch { }
 
     localStorage.setItem('tarqa_all_users_roles', JSON.stringify(INITIAL_DEMO_USERS));
     return INITIAL_DEMO_USERS;
@@ -192,9 +113,12 @@ export const rolesService = {
     try {
       const stored = localStorage.getItem('tarqa_role_logs');
       if (stored) {
-        return JSON.parse(stored);
+        const logs: RoleChangeLog[] = JSON.parse(stored);
+        const realLogs = logs.filter(l => !['log-001', 'log-002'].includes(l.id));
+        localStorage.setItem('tarqa_role_logs', JSON.stringify(realLogs));
+        return realLogs;
       }
-    } catch {}
+    } catch { }
 
     localStorage.setItem('tarqa_role_logs', JSON.stringify(INITIAL_LOGS));
     return INITIAL_LOGS;
@@ -209,7 +133,9 @@ export const rolesService = {
     const currentUser = authService.getCurrentUser();
 
     // 1. التحقق من صلاحية مسؤول المنصة (Admin)
-    const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || currentUser?.email?.trim().toLowerCase() === 'yassooooo27m@gmail.com';
+    const userEmail = currentUser?.email?.trim().toLowerCase();
+    const isOwner = userEmail === 'yassoooo27m@gmail.com' || userEmail === 'yassooooo27m@gmail.com';
+    const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || isOwner;
     if (!isAdmin) {
       return {
         success: false,
@@ -262,20 +188,20 @@ export const rolesService = {
     localStorage.setItem('tarqa_all_users_roles', JSON.stringify(updatedUsers));
 
     // إذا تم تعديل المستخدم المسجل حالياً، نحدث جلسته أيضاً
-    if (currentUser.id === targetUserId) {
+    if (currentUser && currentUser.id === targetUserId) {
       authService.switchRole(newRole);
     }
 
     // 5. تسجيل العملية في سجل التدقيق (Audit Log)
     const newLog: RoleChangeLog = {
       id: 'log-' + Date.now(),
-      adminId: currentUser.id,
-      adminName: currentUser.fullName || 'السوبر أدمن',
+      adminId: currentUser?.id || 'usr-admin-01',
+      adminName: currentUser?.fullName || 'مسؤول المنصة',
       targetUserId: targetUser.id,
       targetUserName: targetUser.fullName,
       oldRole: targetUser.role,
       newRole,
-      reason: reason || 'تعديل الصلاحية عبر لوحة تحكم السوبر أدمن',
+      reason: reason || 'تعديل الصلاحية عبر لوحة إدارة المنصة',
       createdAt: new Date().toISOString(),
     };
 

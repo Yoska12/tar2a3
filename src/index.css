@@ -3,9 +3,10 @@
 @tailwind utilities;
 
 @layer base {
-  body {
+  html, body {
     font-family: 'Cairo', sans-serif;
     -webkit-tap-highlight-color: transparent;
+    overflow-x: hidden;
   }
 }
 

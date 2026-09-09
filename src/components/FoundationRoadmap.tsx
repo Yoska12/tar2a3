@@ -73,7 +73,7 @@ export const FoundationRoadmap: React.FC<FoundationRoadmapProps> = ({
                 style={{ width: `${progressPercentage}%` }}
               />
             </div>
-            <div className="flex items-center gap-4 text-[11px] text-slate-400 pt-1 font-medium">
+            <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400 pt-1 font-medium">
               <span>✅ {completedLessons} من {totalLessons} محاضرة مكتملة</span>
               <span>•</span>
               <span>⏱️ {Math.round(totalDuration / 60)} ساعة شرح مركز</span>
@@ -216,10 +216,10 @@ export const FoundationRoadmap: React.FC<FoundationRoadmapProps> = ({
                         </div>
 
                         {/* أزرار الإجراء السريع */}
-                        <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                        <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800/60">
                           <button
                             onClick={() => onSelectLesson(mod, lesson)}
-                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-sm active:scale-95"
+                            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-sm active:scale-95"
                           >
                             <Play className="w-3.5 h-3.5 fill-current" />
                             <span>شاهد المحاضرة</span>

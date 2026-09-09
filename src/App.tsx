@@ -29,6 +29,7 @@ import { ClassroomView } from './components/ClassroomView';
 import { FoundationRoadmap } from './components/FoundationRoadmap';
 import { LecturesCMS } from './components/LecturesCMS';
 import { SuperAdminRolesPanel } from './components/SuperAdminRolesPanel';
+import { MobileBottomNav } from './components/MobileBottomNav';
 import { mockFoundationModules } from './data/foundationModules';
 import { mockCategories, mockQuestions } from './data/mockQuestions';
 import { QuizSettings, QuizResult, Category, Question, CourseModule, Lesson, UserRole } from './types';
@@ -50,6 +51,7 @@ export const App: React.FC = () => {
   const [activeLesson, setActiveLesson] = useState<Lesson>(mockFoundationModules[0].lessons[0]);
   const [isAuthOpen, setIsAuthOpen] = useState<boolean>(false);
   const [authInitialTab, setAuthInitialTab] = useState<'signin' | 'signup'>('signin');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<TarqaUser | null>(() => {
     return authService.getCurrentUser();
   });
@@ -278,6 +280,50 @@ export const App: React.FC = () => {
     );
   };
 
+  // دالة موحدة للتنقل بين التبويبات والشاشات
+  const handleTabSelect = (tab: 'home' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles') => {
+    setActiveTab(tab);
+    if (tab === 'speed') {
+      startSpeedChallenge();
+    } else if (tab === 'dashboard') {
+      if (!currentUser) {
+        setAuthInitialTab('signin');
+        setIsAuthOpen(true);
+      } else {
+        setCurrentView('dashboard');
+      }
+    } else if (tab === 'admin') {
+      if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'teacher' && currentUser.role !== 'super_admin' && !isOwnerEmail(currentUser?.email))) {
+        setAuthInitialTab('signin');
+        setIsAuthOpen(true);
+      } else {
+        setCurrentView('admin');
+      }
+    } else if (tab === 'admin-lectures') {
+      if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'teacher' && currentUser.role !== 'super_admin' && !isOwnerEmail(currentUser?.email))) {
+        setAuthInitialTab('signin');
+        setIsAuthOpen(true);
+      } else {
+        setCurrentView('admin-lectures');
+      }
+    } else if (tab === 'admin-roles') {
+      if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'super_admin' && !isOwnerEmail(currentUser?.email))) {
+        setAuthInitialTab('signin');
+        setIsAuthOpen(true);
+      } else {
+        setCurrentView('admin-roles');
+      }
+    } else {
+      setCurrentView('home');
+      if (tab === 'categories') {
+        setTimeout(() => {
+          const el = document.getElementById('categories');
+          if (el) el.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#070b14] text-slate-900 dark:text-slate-100 flex flex-col font-cairo">
 
@@ -285,42 +331,7 @@ export const App: React.FC = () => {
       <Navbar
         darkMode={darkMode}
         onToggleDarkMode={toggleDarkMode}
-        onSelectTab={(tab) => {
-          setActiveTab(tab);
-          if (tab === 'speed') {
-            startSpeedChallenge();
-          } else if (tab === 'dashboard') {
-            if (!currentUser) {
-              setAuthInitialTab('signin');
-              setIsAuthOpen(true);
-            } else {
-              setCurrentView('dashboard');
-            }
-          } else if (tab === 'admin') {
-            if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'teacher')) {
-              setAuthInitialTab('signin');
-              setIsAuthOpen(true);
-            } else {
-              setCurrentView('admin');
-            }
-          } else if (tab === 'admin-lectures') {
-            if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'teacher')) {
-              setAuthInitialTab('signin');
-              setIsAuthOpen(true);
-            } else {
-              setCurrentView('admin-lectures');
-            }
-          } else if (tab === 'admin-roles') {
-            if (!currentUser || currentUser.role !== 'admin') {
-              setAuthInitialTab('signin');
-              setIsAuthOpen(true);
-            } else {
-              setCurrentView('admin-roles');
-            }
-          } else {
-            setCurrentView('home');
-          }
-        }}
+        onSelectTab={handleTabSelect}
         activeTab={activeTab}
         onOpenAuth={(tab = 'signin') => {
           setAuthInitialTab(tab);
@@ -333,6 +344,8 @@ export const App: React.FC = () => {
           setCurrentView('home');
           setActiveTab('home');
         }}
+        isMobileMenuOpen={isMobileMenuOpen}
+        onToggleMobileMenu={() => setIsMobileMenuOpen((prev) => !prev)}
       />
 
       {/* نافذة تسجيل الدخول وحساب جديد */}
@@ -374,7 +387,7 @@ export const App: React.FC = () => {
       {/* 3. لوحة تحكم الطالب (Student Dashboard) */}
       {/* ======================================================================= */}
       {currentView === 'dashboard' && (
-        <main className="flex-1 w-full">
+        <main className="flex-1 w-full pb-24 md:pb-8">
           <StudentDashboard
             currentUser={currentUser}
             onStartMock={startMockExam}
@@ -388,7 +401,7 @@ export const App: React.FC = () => {
       {/* 4. لوحة تحكم الإدارة وبنك الأسئلة (Admin & Content Management Panel) */}
       {/* ======================================================================= */}
       {currentView === 'admin' && (
-        <main className="flex-1 w-full">
+        <main className="flex-1 w-full pb-24 md:pb-8">
           {currentUser?.role === 'admin' || currentUser?.role === 'teacher' || currentUser?.role === 'super_admin' || isOwnerEmail(currentUser?.email) ? (
             <AdminPanel
               questions={allQuestions}
@@ -449,7 +462,7 @@ export const App: React.FC = () => {
       {/* 5. لوحة تحكم المحاضرات والمذكرات المستقلة (Lectures CMS) */}
       {/* ======================================================================= */}
       {currentView === 'admin-lectures' && (
-        <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-8">
+        <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-8 pb-24 md:pb-8">
           {currentUser?.role === 'admin' || currentUser?.role === 'teacher' || currentUser?.role === 'super_admin' || isOwnerEmail(currentUser?.email) ? (
             <LecturesCMS
               modules={modules}
@@ -533,7 +546,7 @@ export const App: React.FC = () => {
       {/* 5.5. لوحة إدارة الرتب والصلاحيات (Admin Roles Panel) */}
       {/* ======================================================================= */}
       {currentView === 'admin-roles' && (
-        <main className="flex-1 w-full">
+        <main className="flex-1 w-full pb-24 md:pb-8">
           {currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || isOwnerEmail(currentUser?.email) ? (
             <SuperAdminRolesPanel
               currentUser={currentUser}
@@ -576,7 +589,7 @@ export const App: React.FC = () => {
       {/* 6. غرفة المحاضرة ومشغل الفيديو والمذكرات (Classroom UI) */}
       {/* ======================================================================= */}
       {currentView === 'classroom' && (
-        <main className="flex-1 w-full">
+        <main className="flex-1 w-full pb-24 md:pb-8">
           <ClassroomView
             currentModule={activeModule}
             currentLesson={activeLesson}
@@ -592,7 +605,7 @@ export const App: React.FC = () => {
       {/* 7. الصفحة الرئيسية ومسار التأسيس (Foundation Roadmap) */}
       {/* ======================================================================= */}
       {currentView === 'home' && (
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col gap-12">
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col gap-12 pb-24 md:pb-8">
 
           {/* مسار التأسيس التفاعلي من الصفر حتى الاحتراف */}
           <FoundationRoadmap
@@ -649,10 +662,10 @@ export const App: React.FC = () => {
                 </p>
 
                 {/* أزرار الإجراءات الرئيسية */}
-                <div className="flex flex-wrap items-center gap-3 pt-2">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2 w-full sm:w-auto">
                   <button
                     onClick={startMockExam}
-                    className="flex items-center gap-2 px-6 py-3.5 rounded-2xl font-black text-sm bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 shadow-md hover:shadow-glow transition-all transform hover:-translate-y-0.5"
+                    className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl font-black text-sm bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 shadow-md hover:shadow-glow transition-all transform hover:-translate-y-0.5 active:scale-98"
                   >
                     <Play className="w-4 h-4 fill-current" />
                     <span>ابدأ محاكي قياس (شامل)</span>
@@ -660,7 +673,7 @@ export const App: React.FC = () => {
 
                   <button
                     onClick={() => startPracticeMode()}
-                    className="flex items-center gap-2 px-6 py-3.5 rounded-2xl font-bold text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-all"
+                    className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl font-bold text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-all active:scale-98"
                   >
                     <Lightbulb className="w-4 h-4 text-amber-500" />
                     <span>وضع التدريب وحيل طرقع</span>
@@ -668,7 +681,7 @@ export const App: React.FC = () => {
 
                   <button
                     onClick={startSpeedChallenge}
-                    className="flex items-center gap-2 px-5 py-3.5 rounded-2xl font-bold text-sm bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30 transition-all"
+                    className="flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl font-bold text-sm bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30 transition-all active:scale-98"
                   >
                     <Zap className="w-4 h-4" />
                     <span>تحدي 45 ثانية</span>
@@ -866,6 +879,16 @@ export const App: React.FC = () => {
           </a>
         </div>
       </footer>
+
+      {/* الشريط السفلي العائم للهواتف الذكية (Mobile Bottom Navigation) */}
+      {currentView !== 'quiz' && (
+        <MobileBottomNav
+          activeTab={activeTab}
+          onSelectTab={handleTabSelect}
+          onOpenMenu={() => setIsMobileMenuOpen(true)}
+          currentUser={currentUser}
+        />
+      )}
 
     </div>
   );

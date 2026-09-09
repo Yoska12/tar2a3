@@ -388,8 +388,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           </div>
 
-          {/* جدول الأسئلة */}
-          <div className="overflow-x-auto">
+          {/* جدول الأسئلة للشاشات المتوسطة والكبيرة */}
+          <div className="overflow-x-auto hidden md:block">
             <table className="w-full text-right text-xs">
               <thead>
                 <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-bold">
@@ -463,6 +463,68 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* عرض الأسئلة على الهواتف الذكية (Mobile Question Cards) */}
+          <div className="block md:hidden divide-y divide-slate-100 dark:divide-slate-800/80">
+            {filteredQuestions.map((q, idx) => (
+              <div key={q.id} className="p-4 flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-xs font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
+                    #{idx + 1}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                      {q.categoryTitle || q.categoryId}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                        q.difficulty === 'Easy'
+                          ? 'bg-emerald-500/10 text-emerald-500'
+                          : q.difficulty === 'Medium'
+                          ? 'bg-blue-500/10 text-blue-500'
+                          : 'bg-rose-500/10 text-rose-500'
+                      }`}
+                    >
+                      {q.difficulty === 'Easy' ? 'سهل' : q.difficulty === 'Medium' ? 'متوسط' : 'صعب'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* نص المسألة والمعادلة */}
+                <div className="text-sm font-medium text-slate-800 dark:text-slate-200 leading-relaxed">
+                  <MathRenderer content={q.questionText} />
+                </div>
+
+                {/* الإجابة والمصدر والإجراءات */}
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/60">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400">الإجابة:</span>
+                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-black font-mono text-xs">
+                      {q.correctOption}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-medium">({q.source || 'تجميعات 1446'})</span>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleOpenEditModal(q)}
+                      className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-amber-500 transition active:scale-95"
+                      title="تعديل السؤال"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => onDeleteQuestion(q.id)}
+                      className="p-2 rounded-xl bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 transition active:scale-95"
+                      title="حذف السؤال"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
 
         </section>

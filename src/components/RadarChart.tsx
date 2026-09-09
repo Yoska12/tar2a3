@@ -59,11 +59,10 @@ export const RadarChart: React.FC<RadarChartProps> = ({
     .join(' ');
 
   return (
-    <div className="relative flex flex-col items-center justify-center select-none">
+    <div className="relative flex flex-col items-center justify-center select-none w-full max-w-full overflow-visible py-2">
       <svg
-        width={size}
-        height={size}
-        className="overflow-visible transition-all duration-300"
+        viewBox="-40 -35 400 390"
+        className="w-full max-w-[300px] sm:max-w-[340px] h-auto aspect-square overflow-visible transition-all duration-300"
       >
         <defs>
           {/* تدرج لوني ذهبي مميز لهوية طرقع */}

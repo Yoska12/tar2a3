@@ -384,9 +384,10 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
         </div>
       </div>
 
-      {/* جدول البيانات الرئيسي (Interactive Data Table) */}
+      {/* جدول البيانات الرئيسي (Interactive Data Table & Mobile Cards) */}
       <div className="rounded-2xl bg-white dark:bg-[#0c1222] border border-slate-200 dark:border-slate-800/80 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* العرض المكتبي والتابلت (Desktop & Tablet Table View) */}
+        <div className="overflow-x-auto hidden md:block">
           <table className="w-full text-right border-collapse">
             <thead>
               <tr className="bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 text-xs font-bold">
@@ -531,6 +532,118 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* العرض المخصص للهواتف الذكية (Mobile Cards View) */}
+        <div className="block md:hidden divide-y divide-slate-100 dark:divide-slate-800/80">
+          {filteredUsers.length === 0 ? (
+            <div className="p-8 text-center text-slate-400">
+              <Users className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <p className="font-bold text-sm">لم يتم العثور على أي مستخدمين مطابقين للبحث</p>
+              <p className="text-xs mt-1">جرب تغيير كلمات البحث أو إعادة ضبط الفلتر</p>
+            </div>
+          ) : (
+            filteredUsers.map((user) => {
+              const isCurrentLoggedUser = currentUser?.id === user.id;
+
+              return (
+                <div key={user.id} className="p-4 flex flex-col gap-3">
+                  {/* رأس البطاقة: الأفاتار، الاسم، والبريد والشارة */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 flex items-center justify-center font-black text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 flex-shrink-0">
+                        {user.avatarUrl ? (
+                          <img
+                            src={user.avatarUrl}
+                            alt={user.fullName}
+                            className="w-full h-full object-cover rounded-xl"
+                          />
+                        ) : (
+                          <span>{user.fullName.charAt(0) || 'م'}</span>
+                        )}
+                        {user.role === 'admin' && (
+                          <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-purple-500 rounded-full flex items-center justify-center text-[8px] text-white">
+                            🛡️
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-1.5 flex-wrap">
+                          <span className="truncate">{user.fullName}</span>
+                          {isCurrentLoggedUser && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 font-normal">
+                              (أنت)
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-400 font-mono truncate">
+                          {user.email}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* الشارة ومعلومات تليجرام والتاريخ */}
+                  <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
+                    <div>{renderRoleBadge(user.role)}</div>
+                    <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                      {user.telegramUsername ? (
+                        <a
+                          href={`https://t.me/${user.telegramUsername}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-sky-500 hover:underline font-mono text-xs"
+                        >
+                          <Send className="w-3 h-3 text-sky-400" />
+                          <span>@{user.telegramUsername}</span>
+                        </a>
+                      ) : (
+                        <span className="text-slate-400 text-[11px] italic">غير مربوط</span>
+                      )}
+                      <div className="flex items-center gap-1 text-[11px]">
+                        <Calendar className="w-3 h-3 text-slate-400" />
+                        <span>
+                          {new Date(user.createdAt).toLocaleDateString('ar-SA', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* تعديل الرتبة بلمسة مريحة للإبهام */}
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800/60">
+                    <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                      تعديل الرتبة والصلاحية:
+                    </label>
+                    <select
+                      value={user.role}
+                      disabled={!isAuthorizedAdmin}
+                      onChange={(e) => handleSelectRole(user, e.target.value as UserRole)}
+                      className={`w-full px-3 py-2.5 rounded-xl text-xs font-bold appearance-none transition-all cursor-pointer text-center ${
+                        !isAuthorizedAdmin
+                          ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed border border-slate-200 dark:border-slate-700'
+                          : user.role === 'super_admin'
+                          ? 'bg-rose-500/10 text-rose-600 border border-rose-500/40 font-black'
+                          : user.role === 'admin'
+                          ? 'bg-purple-500/10 text-purple-600 border border-purple-500/40'
+                          : user.role === 'teacher'
+                          ? 'bg-blue-500/10 text-blue-600 border border-blue-500/40'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      <option value="student">🎯 طالب (Student)</option>
+                      <option value="teacher">🎓 معلم (Teacher)</option>
+                      <option value="admin">🛡️ مسؤول (Admin)</option>
+                      <option value="super_admin">👑 سوبر أدمن (Super Admin)</option>
+                    </select>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 

@@ -34,3 +34,6 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 *.log
+
+# Legacy Next.js backup
+_legacy_nextjs/

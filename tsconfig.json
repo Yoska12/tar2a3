@@ -27,5 +27,5 @@
       "@/*": ["src/*", "./*"]
     }
   },
-  "include": ["src", "app", "utils", "page.tsx"]
+  "include": ["src"]
 }

@@ -32,6 +32,87 @@ export interface TarqaUser {
   avatarUrl?: string;
 }
 
+// دالة مركزية لمزامنة وإدراج أي مستخدم يسجل أو يدخل في لوحة الأعضاء فوراً
+export const syncUserToMembersDashboard = async (user: TarqaUser) => {
+  if (!user || (!user.id && !user.email)) return;
+
+  const normalizedEmail = (user.email || '').trim().toLowerCase();
+  const isOwner = normalizedEmail === 'yassooooo27m@gmail.com';
+  const role: UserRole = isOwner ? 'super_admin' : (user.role || 'student');
+  const fullName = isOwner 
+    ? (user.fullName && user.fullName !== 'طالب طرقع' ? user.fullName : 'Yoska') 
+    : (user.fullName || 'طالب طرقع');
+
+  const record = {
+    id: user.id || 'usr-' + Date.now(),
+    email: user.email || (user.telegramUsername ? `@${user.telegramUsername}` : 'user@tarqa.app'),
+    fullName,
+    role,
+    targetScore: user.targetScore || 100,
+    telegramUsername: user.telegramUsername,
+    telegramId: user.telegramId,
+    avatarUrl: user.avatarUrl,
+    createdAt: new Date().toISOString(),
+    lastSignInAt: new Date().toISOString(),
+  };
+
+  // 1. المزامنة الفورية في التخزين المحلي لظهور فوري بدون انتظار السيرفر
+  try {
+    const stored = localStorage.getItem('tarqa_all_users_roles');
+    let list: any[] = stored ? JSON.parse(stored) : [];
+    
+    // إزالة الحسابات الوهمية التجريبية
+    list = list.filter(u => 
+      !['usr-admin-02', 'usr-teacher-03', 'usr-teacher-04', 'usr-student-05', 'usr-student-06', 'usr-student-07'].includes(u.id) &&
+      !u.email?.endsWith('@student.com')
+    );
+
+    const idx = list.findIndex((u: any) => 
+      (u.id && record.id && u.id === record.id) ||
+      (u.email && record.email && u.email.toLowerCase() === record.email.toLowerCase())
+    );
+
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...record };
+    } else {
+      list.unshift(record);
+    }
+
+    localStorage.setItem('tarqa_all_users_roles', JSON.stringify(list));
+    window.dispatchEvent(new Event('tarqa_roles_changed'));
+  } catch (e) {
+    console.warn('[syncUserToMembersDashboard] local sync error:', e);
+  }
+
+  // 2. المزامنة مع جدول profiles في Supabase إذا كانت مفعلة
+  if (isSupabaseConfigured && record.id && !record.id.startsWith('usr-') && !record.id.startsWith('tg-')) {
+    try {
+      const payload: any = {
+        id: record.id,
+        full_name: record.fullName,
+        role: record.role,
+        target_score: record.targetScore,
+        telegram_username: record.telegramUsername || null,
+        telegram_id: record.telegramId || null,
+        avatar_url: record.avatarUrl || '',
+        updated_at: new Date().toISOString(),
+      };
+      if (record.email && !record.email.includes('@user.tarqa')) {
+        payload.email = record.email;
+      }
+
+      const { error } = await supabase.from('profiles').upsert(payload);
+      if (error) {
+        // إذا فشل بسبب عدم وجود عمود email
+        delete payload.email;
+        await supabase.from('profiles').upsert(payload);
+      }
+    } catch (err) {
+      console.warn('[syncUserToMembersDashboard] Supabase upsert note:', err);
+    }
+  }
+};
+
 // خدمة المصادقة الذكية: تدعم الاتصال الحي بـ Supabase + وضع المعاينة المحلي الفوري
 export const authService = {
   isConfigured: () => isSupabaseConfigured,
@@ -63,6 +144,7 @@ export const authService = {
     if (!current) return null;
     const updated: TarqaUser = { ...current, role: newRole };
     localStorage.setItem('tarqa_current_user', JSON.stringify(updated));
+    syncUserToMembersDashboard(updated);
     window.dispatchEvent(new Event('tarqa_user_changed'));
     return updated;
   },
@@ -134,6 +216,7 @@ export const authService = {
         };
 
         localStorage.setItem('tarqa_current_user', JSON.stringify(user));
+        syncUserToMembersDashboard(user);
         window.dispatchEvent(new Event('tarqa_user_changed'));
         return { user, isDemo: false };
       } catch (err: any) {
@@ -161,6 +244,7 @@ export const authService = {
         telegramUsername: foundUser.telegramUsername,
       };
       localStorage.setItem('tarqa_current_user', JSON.stringify(user));
+      syncUserToMembersDashboard(user);
       window.dispatchEvent(new Event('tarqa_user_changed'));
       return { user, isDemo: true };
     }
@@ -186,6 +270,7 @@ export const authService = {
     users.push({ ...newUser, password: params.password });
     localStorage.setItem('tarqa_registered_users', JSON.stringify(users));
     localStorage.setItem('tarqa_current_user', JSON.stringify(newUser));
+    syncUserToMembersDashboard(newUser);
     window.dispatchEvent(new Event('tarqa_user_changed'));
 
     return { user: newUser, isDemo: true };
@@ -221,6 +306,26 @@ export const authService = {
         if (error) throw error;
         if (!data.user) throw new Error('لم يتم إنشاء المستخدم');
 
+        // إنشاء أو تحديث صف المستخدم فوراً في جدول public.profiles
+        try {
+          const profilePayload: any = {
+            id: data.user.id,
+            email: params.email,
+            full_name: fullName,
+            target_score: params.targetScore || 100,
+            role: 'student',
+            telegram_username: params.telegramUsername || null,
+            updated_at: new Date().toISOString(),
+          };
+          const { error: profileError } = await supabase.from('profiles').upsert(profilePayload);
+          if (profileError) {
+            delete profilePayload.email;
+            await supabase.from('profiles').upsert(profilePayload);
+          }
+        } catch (profileErr) {
+          console.warn('[Profiles] direct upsert notice:', profileErr);
+        }
+
         const user: TarqaUser = {
           id: data.user.id,
           email: params.email,
@@ -231,6 +336,7 @@ export const authService = {
         };
 
         localStorage.setItem('tarqa_current_user', JSON.stringify(user));
+        syncUserToMembersDashboard(user);
         window.dispatchEvent(new Event('tarqa_user_changed'));
         return { user, isDemo: false };
       } catch (err: any) {
@@ -258,6 +364,7 @@ export const authService = {
     users.push({ ...newUser, password: params.password });
     localStorage.setItem('tarqa_registered_users', JSON.stringify(users));
     localStorage.setItem('tarqa_current_user', JSON.stringify(newUser));
+    syncUserToMembersDashboard(newUser);
     window.dispatchEvent(new Event('tarqa_user_changed'));
 
     return { user: newUser, isDemo: true };
@@ -321,6 +428,7 @@ export const authService = {
     };
 
     localStorage.setItem('tarqa_current_user', JSON.stringify(user));
+    syncUserToMembersDashboard(user);
     window.dispatchEvent(new Event('tarqa_user_changed'));
 
     // إرسال رسالة ترحيبية فورية للطالب عبر البوت إذا توفر الـ chatId

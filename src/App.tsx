@@ -33,7 +33,7 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { mockFoundationModules } from './data/foundationModules';
 import { mockCategories, mockQuestions } from './data/mockQuestions';
 import { QuizSettings, QuizResult, Category, Question, CourseModule, Lesson, UserRole } from './types';
-import { localScoreStorage, authService, TarqaUser, supabase, isSupabaseConfigured } from './lib/supabase';
+import { localScoreStorage, authService, TarqaUser, supabase, isSupabaseConfigured, syncUserToMembersDashboard } from './lib/supabase';
 import { sendQuizCompletedNotification, TELEGRAM_BOT_URL, TELEGRAM_BOT_USERNAME } from './lib/telegram';
 
 const isOwnerEmail = (email?: string | null) => {
@@ -100,6 +100,7 @@ export const App: React.FC = () => {
           };
           localStorage.setItem('tarqa_current_user', JSON.stringify(user));
           setCurrentUser(user);
+          syncUserToMembersDashboard(user);
         } else {
           // إذا لم تكن هناك جلسة نشطة موثقة في Supabase -> المستخدم زائر تماماً
           setCurrentUser(null);
@@ -145,6 +146,7 @@ export const App: React.FC = () => {
           };
           localStorage.setItem('tarqa_current_user', JSON.stringify(user));
           setCurrentUser(user);
+          syncUserToMembersDashboard(user);
         } else if (event === 'SIGNED_OUT' || !session) {
           setCurrentUser(null);
           localStorage.removeItem('tarqa_current_user');

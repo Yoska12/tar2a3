@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { UserRole, UserWithRole, RoleChangeLog } from '../types';
 import { rolesService } from '../lib/rolesService';
-import { authService, TarqaUser } from '../lib/supabase';
+import { authService, TarqaUser, supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface SuperAdminRolesPanelProps {
   currentUser?: TarqaUser | null;
@@ -77,12 +77,39 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
   useEffect(() => {
     loadData();
 
-    const handleRolesChanged = () => {
+    const handleDataChanged = () => {
       loadData();
     };
 
-    window.addEventListener('tarqa_roles_changed', handleRolesChanged);
-    return () => window.removeEventListener('tarqa_roles_changed', handleRolesChanged);
+    window.addEventListener('tarqa_roles_changed', handleDataChanged);
+    window.addEventListener('tarqa_user_changed', handleDataChanged);
+
+    // اشتراك في الوقت الحقيقي عبر Supabase Realtime لأي تسجيل جديد أو تعديل في جدول profiles
+    let channel: any = null;
+    if (isSupabaseConfigured && supabase) {
+      try {
+        channel = supabase
+          .channel('superadmin-profiles-realtime')
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'profiles' },
+            () => {
+              loadData();
+            }
+          )
+          .subscribe();
+      } catch (err) {
+        console.warn('Realtime subscription not supported or failed:', err);
+      }
+    }
+
+    return () => {
+      window.removeEventListener('tarqa_roles_changed', handleDataChanged);
+      window.removeEventListener('tarqa_user_changed', handleDataChanged);
+      if (channel && supabase) {
+        supabase.removeChannel(channel);
+      }
+    };
   }, []);
 
   const showToast = (text: string, type: 'success' | 'error' | 'warning') => {

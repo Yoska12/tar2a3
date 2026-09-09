@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured, authService } from './supabase';
+import { supabase, isSupabaseConfigured, authService, syncUserToMembersDashboard } from './supabase';
 import { UserRole, UserWithRole, RoleChangeLog } from '../types';
 
 // الحساب الإداري المعتمد لمالك المنصة (Yoska)
@@ -20,65 +20,116 @@ const INITIAL_DEMO_USERS: UserWithRole[] = [
 const INITIAL_LOGS: RoleChangeLog[] = [];
 
 export const rolesService = {
-  // جلب كافة المستخدمين
+  // مزامنة وتسجيل أي عضو جديد فوراً
+  registerOrSyncUser: (user: Partial<UserWithRole>) => {
+    syncUserToMembersDashboard(user as any);
+  },
+
+  // جلب كافة المستخدمين والأعضاء المسجلين
   getUsers: async (): Promise<UserWithRole[]> => {
+    let supabaseUsers: UserWithRole[] = [];
+
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('id, email, full_name, role, target_score, telegram_username, telegram_id, avatar_url, created_at, last_sign_in_at')
+          .select('*')
           .order('created_at', { ascending: false });
 
         if (!error && data && data.length > 0) {
-          return data.map((d: any) => ({
-            id: d.id,
-            email: d.email || `${d.id.substring(0, 8)}@user.tarqa`,
-            fullName: d.full_name || 'مستخدم طرقع',
-            role: (d.role as UserRole) || 'student',
-            targetScore: d.target_score || 100,
-            telegramUsername: d.telegram_username,
-            telegramId: d.telegram_id,
-            avatarUrl: d.avatar_url,
-            createdAt: d.created_at || new Date().toISOString(),
-            lastSignInAt: d.last_sign_in_at,
-          }));
+          supabaseUsers = data.map((d: any) => {
+            const email = d.email || (d.telegram_username ? `@${d.telegram_username}` : `${d.id.substring(0, 8)}@user.tarqa`);
+            const isOwner = email.toLowerCase() === 'yassooooo27m@gmail.com';
+            return {
+              id: d.id,
+              email,
+              fullName: isOwner ? (d.full_name && d.full_name !== 'طالب طرقع' ? d.full_name : 'Yoska') : (d.full_name || 'طالب طرقع'),
+              role: isOwner ? 'super_admin' : ((d.role as UserRole) || 'student'),
+              targetScore: d.target_score || 100,
+              telegramUsername: d.telegram_username,
+              telegramId: d.telegram_id,
+              avatarUrl: d.avatar_url,
+              createdAt: d.created_at || new Date().toISOString(),
+              lastSignInAt: d.last_sign_in_at || d.created_at,
+            };
+          });
         }
       } catch (err) {
         console.warn('Failed to fetch from Supabase, using local state:', err);
       }
     }
 
-    // القراءة من التخزين المحلي بعد تنظيف أي حسابات وهمية سابقة
+    // قراءة المستخدمين المسجلين محلياً
+    let localUsers: UserWithRole[] = [];
     try {
       const stored = localStorage.getItem('tarqa_all_users_roles');
       if (stored) {
-        let usersList: UserWithRole[] = JSON.parse(stored);
-        
-        // إزالة الحسابات الوهمية التجريبية السابقة (@tarqa.app و @student.com)
-        usersList = usersList.filter(u => 
-          (!u.email.endsWith('@tarqa.app') || u.email.startsWith('tg_')) && 
-          !u.email.endsWith('@student.com') &&
-          !['usr-admin-02', 'usr-teacher-03', 'usr-teacher-04', 'usr-student-05', 'usr-student-06', 'usr-student-07'].includes(u.id)
-        );
-
-        const yoska = usersList.find((u) => 
-          u.email.toLowerCase() === 'yassooooo27m@gmail.com'
-        );
-
-        if (yoska) {
-          yoska.role = 'super_admin';
-          yoska.fullName = 'Yoska';
-        } else {
-          usersList.unshift(INITIAL_DEMO_USERS[0]);
-        }
-
-        localStorage.setItem('tarqa_all_users_roles', JSON.stringify(usersList));
-        return usersList;
+        localUsers = JSON.parse(stored);
       }
-    } catch { }
+    } catch {}
 
-    localStorage.setItem('tarqa_all_users_roles', JSON.stringify(INITIAL_DEMO_USERS));
-    return INITIAL_DEMO_USERS;
+    // استيراد أي مستخدم جديد تم تسجيله في tarqa_registered_users
+    try {
+      const registered = localStorage.getItem('tarqa_registered_users');
+      if (registered) {
+        const regList = JSON.parse(registered);
+        if (Array.isArray(regList)) {
+          for (const ru of regList) {
+            if (!localUsers.some(u => u.id === ru.id || (u.email && ru.email && u.email.toLowerCase() === ru.email.toLowerCase()))) {
+              localUsers.push({
+                id: ru.id || 'usr-' + Date.now(),
+                email: ru.email,
+                fullName: ru.fullName || 'طالب طرقع',
+                role: ru.role || 'student',
+                targetScore: ru.targetScore || 100,
+                telegramUsername: ru.telegramUsername,
+                telegramId: ru.telegramId,
+                avatarUrl: ru.avatarUrl,
+                createdAt: ru.createdAt || new Date().toISOString(),
+              });
+            }
+          }
+        }
+      }
+    } catch {}
+
+    // دمج قوائم المستخدمين لضمان عدم ضياع أي مستخدم سجل جديداً
+    const userMap = new Map<string, UserWithRole>();
+
+    // 1. إضافة مستخدمي Supabase
+    for (const u of supabaseUsers) {
+      const key = (u.email ? u.email.toLowerCase() : '') || u.id;
+      userMap.set(key, u);
+    }
+
+    // 2. دمج المستخدمين المحليين
+    for (const u of localUsers) {
+      if (['usr-admin-02', 'usr-teacher-03', 'usr-teacher-04', 'usr-student-05', 'usr-student-06', 'usr-student-07'].includes(u.id)) continue;
+      if (u.email?.endsWith('@student.com')) continue;
+      if (u.email?.endsWith('@tarqa.app') && !u.email.startsWith('tg_')) continue;
+
+      const key = (u.email ? u.email.toLowerCase() : '') || u.id;
+      if (!userMap.has(key)) {
+        userMap.set(key, u);
+      }
+    }
+
+    let resultUsers = Array.from(userMap.values());
+
+    // ضمان وجود الحساب الإداري الرئيسي (Yoska) في رأس القائمة كسوبر أدمن
+    const yoska = resultUsers.find(u => u.email.toLowerCase() === 'yassooooo27m@gmail.com');
+    if (yoska) {
+      yoska.role = 'super_admin';
+      yoska.fullName = 'Yoska';
+    } else {
+      resultUsers.unshift(INITIAL_DEMO_USERS[0]);
+    }
+
+    try {
+      localStorage.setItem('tarqa_all_users_roles', JSON.stringify(resultUsers));
+    } catch {}
+
+    return resultUsers;
   },
 
   // جلب سجل التدقيق

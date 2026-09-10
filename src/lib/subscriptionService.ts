@@ -1,6 +1,6 @@
-import { UserRole, CourseModule, Lesson, CourseSubscription } from '../types';
+import { UserRole, CourseModule, Lesson, CourseSubscription, CourseFileItem } from '../types';
 import { TarqaUser, supabase, isSupabaseConfigured } from './supabase';
-import { mockFoundationModules } from '../data/foundationModules';
+import { mockFoundationModules, mockCourseFiles } from '../data/foundationModules';
 
 export const ANNUAL_SUBSCRIPTION_PRICE_SAR = 75;
 
@@ -206,7 +206,7 @@ export const activateAnnualSubscription = async (
 export const coursesStorage = {
   getModules(): CourseModule[] {
     try {
-      const raw = localStorage.getItem('tarqa_custom_modules');
+      const raw = localStorage.getItem('tarqa_custom_modules_v4');
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -219,7 +219,7 @@ export const coursesStorage = {
 
   saveModules(modules: CourseModule[]) {
     try {
-      localStorage.setItem('tarqa_custom_modules', JSON.stringify(modules));
+      localStorage.setItem('tarqa_custom_modules_v4', JSON.stringify(modules));
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('tarqa_courses_modules_changed', { detail: modules }));
       }
@@ -310,4 +310,60 @@ export const coursesStorage = {
     this.saveModules(updated);
     return updated;
   },
+
+  // إدارة قسم ملفات ومذكرات الدورة
+  getFiles(): CourseFileItem[] {
+    try {
+      const raw = localStorage.getItem('tarqa_custom_files_v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return mockCourseFiles;
+  },
+
+  saveFiles(files: CourseFileItem[]) {
+    try {
+      localStorage.setItem('tarqa_custom_files_v1', JSON.stringify(files));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('tarqa_courses_files_changed', { detail: files }));
+      }
+    } catch (e) {
+      console.warn('Failed to save files to local storage:', e);
+    }
+  },
+
+  addFile(newFile: CourseFileItem): CourseFileItem[] {
+    const current = this.getFiles();
+    const updated = [newFile, ...current];
+    this.saveFiles(updated);
+    return updated;
+  },
+
+  updateFile(updatedFile: CourseFileItem): CourseFileItem[] {
+    const current = this.getFiles();
+    const updated = current.map((f) => (f.id === updatedFile.id ? updatedFile : f));
+    this.saveFiles(updated);
+    return updated;
+  },
+
+  deleteFile(fileId: string): CourseFileItem[] {
+    const current = this.getFiles();
+    const updated = current.filter((f) => f.id !== fileId);
+    this.saveFiles(updated);
+    return updated;
+  },
+
+  toggleFilePreview(fileId: string): CourseFileItem[] {
+    const current = this.getFiles();
+    const updated = current.map((f) =>
+      f.id === fileId ? { ...f, isFreePreview: !f.isFreePreview } : f
+    );
+    this.saveFiles(updated);
+    return updated;
+  },
 };
+

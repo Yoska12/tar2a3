@@ -164,3 +164,16 @@ export interface RoleChangeLog {
   createdAt: string;
 }
 
+export interface CourseFileItem {
+  id: string;
+  title: string;
+  description: string;
+  fileUrl: string;
+  fileSize: string;
+  pagesCount?: string;
+  fileType: 'pdf' | 'worksheet' | 'summary' | 'book';
+  isFreePreview?: boolean;
+  downloadCount?: number;
+  uploadedAt?: string;
+}
+

@@ -423,6 +423,7 @@ export const App: React.FC = () => {
             onStartMock={startMockExam}
             onStartPractice={(cat) => startPracticeMode(cat)}
             onOpenAuth={() => setIsAuthOpen(true)}
+            onNavigateCourses={() => setCurrentView('courses')}
           />
         </main>
       )}

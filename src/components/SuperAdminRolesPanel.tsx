@@ -170,6 +170,8 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
       teacher: users.filter((u) => u.role === 'teacher').length,
       student: users.filter((u) => u.role === 'student').length,
       banned: users.filter((u) => u.isBanned).length,
+      subscribed: users.filter((u) => u.isSubscribed).length,
+      unsubscribed: users.filter((u) => !u.isSubscribed && u.role !== 'super_admin' && u.email?.toLowerCase() !== 'yassooooo27m@gmail.com').length,
     };
   }, [users]);
 
@@ -194,6 +196,10 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
           ? true
           : selectedRoleFilter === 'banned'
           ? Boolean(user.isBanned)
+          : selectedRoleFilter === 'subscribed'
+          ? Boolean(user.isSubscribed)
+          : selectedRoleFilter === 'unsubscribed'
+          ? !user.isSubscribed && user.role !== 'super_admin' && user.email?.toLowerCase() !== 'yassooooo27m@gmail.com'
           : user.role === selectedRoleFilter;
 
       return matchesSearch && matchesFilter;
@@ -365,6 +371,88 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
     }
   };
 
+  // شارة حالة الاشتراك
+  const renderSubscriptionBadge = (user: UserWithRole) => {
+    const isOwnerOrSuper = user.role === 'super_admin' || user.email?.toLowerCase() === 'yassooooo27m@gmail.com';
+    if (isOwnerOrSuper) {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold bg-amber-500/15 text-amber-600 dark:text-amber-300 border border-amber-500/30">
+          <Crown className="w-3.5 h-3.5 text-amber-500" />
+          <span>وصول إداري شامل 👑</span>
+        </span>
+      );
+    }
+    if (user.isSubscribed) {
+      return (
+        <div className="space-y-0.5">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            <span>مشترك بالباقة ✅</span>
+          </span>
+          {user.subscriptionExpiresAt && (
+            <div className="text-[10px] text-slate-400 font-mono">
+              ينتهي: {new Date(user.subscriptionExpiresAt).toLocaleDateString('ar-SA', { year: 'numeric', month: 'short', day: 'numeric' })}
+            </div>
+          )}
+        </div>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700">
+        <XCircle className="w-3.5 h-3.5 text-slate-400" />
+        <span>غير مشترك ⚪</span>
+      </span>
+    );
+  };
+
+  // إلغاء اشتراك مستخدم
+  const handleCancelSubscription = async (user: UserWithRole) => {
+    if (!isAuthorizedAdmin) {
+      showToast('صلاحية إدارة الاشتراكات محصورة بالإدارة فقط!', 'error');
+      return;
+    }
+    if (window.confirm(`هل أنت متأكد من رغبتك في إلغاء اشتراك الطالب "${user.fullName}" في باقة طرقع السنوية؟`)) {
+      setIsProcessingAction(true);
+      try {
+        const res = await rolesService.cancelSubscription(user.id, user.email);
+        if (res.success) {
+          showToast(`تم إلغاء اشتراك ${user.fullName} بنجاح`, 'success');
+          await loadData(true);
+        } else {
+          showToast('تعذر إلغاء الاشتراك', 'error');
+        }
+      } catch (e: any) {
+        showToast(e?.message || 'حدث خطأ أثناء إلغاء الاشتراك', 'error');
+      } finally {
+        setIsProcessingAction(false);
+      }
+    }
+  };
+
+  // تفعيل أو منح اشتراك سنوي لمستخدم
+  const handleGrantSubscription = async (user: UserWithRole) => {
+    if (!isAuthorizedAdmin) {
+      showToast('صلاحية إدارة الاشتراكات محصورة بالإدارة فقط!', 'error');
+      return;
+    }
+    if (window.confirm(`هل تريد تفعيل باقة طرقع السنوية الشاملة (365 يوماً) للطالب "${user.fullName}"؟`)) {
+      setIsProcessingAction(true);
+      try {
+        const res = await rolesService.grantSubscription(user, 365);
+        if (res.success) {
+          showToast(`تم تفعيل الاشتراك السنوي لـ ${user.fullName} بنجاح لمدة 365 يوماً`, 'success');
+          await loadData(true);
+        } else {
+          showToast('تعذر تفعيل الاشتراك', 'error');
+        }
+      } catch (e: any) {
+        showToast(e?.message || 'حدث خطأ أثناء تفعيل الاشتراك', 'error');
+      } finally {
+        setIsProcessingAction(false);
+      }
+    }
+  };
+
   return (
     <div className="relative min-h-screen max-w-7xl mx-auto px-4 sm:px-6 py-8 font-cairo">
       {/* تأثيرات الإضاءة الجمالية في الخلفية (Ambient Background Glow) */}
@@ -514,8 +602,8 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
         </div>
       )}
 
-      {/* بطاقات الإحصائيات الفخمة (6 Stats Cards) مع إمكانية الفلترة الفورية بالنقر عليها */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-8">
+      {/* بطاقات الإحصائيات الفخمة (7 Stats Cards) مع إمكانية الفلترة الفورية بالنقر عليها */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 sm:gap-4 mb-8">
         {/* 1. إجمالي الحسابات */}
         <div 
           onClick={() => setSelectedRoleFilter('all')}
@@ -540,7 +628,31 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
           </div>
         </div>
 
-        {/* 2. سوبر أدمن */}
+        {/* 2. المشتركون بالدورات Subscribed */}
+        <div 
+          onClick={() => setSelectedRoleFilter('subscribed')}
+          className={`p-4 rounded-3xl transition-all duration-300 cursor-pointer backdrop-blur-md border ${
+            selectedRoleFilter === 'subscribed'
+              ? 'bg-emerald-500/15 border-emerald-500/50 shadow-lg shadow-emerald-500/10 scale-[1.02]'
+              : 'bg-white/80 dark:bg-[#0c1324]/80 border-slate-200/80 dark:border-slate-800/80 hover:-translate-y-1 hover:shadow-md'
+          }`}
+        >
+          <div className="flex items-center justify-between text-emerald-500 mb-2.5">
+            <span className="text-xs font-bold">المشتركون بالباقة 🎓</span>
+            <div className="w-7 h-7 rounded-xl bg-emerald-500/15 flex items-center justify-center">
+              <Sparkles className="w-4 h-4 text-emerald-500" />
+            </div>
+          </div>
+          <div className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400">
+            {stats.subscribed}
+          </div>
+          <div className="text-[10px] text-emerald-500/80 mt-1 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            <span>75 ر.س / سنوياً</span>
+          </div>
+        </div>
+
+        {/* 3. سوبر أدمن */}
         <div 
           onClick={() => setSelectedRoleFilter('super_admin')}
           className={`p-4 rounded-3xl transition-all duration-300 cursor-pointer backdrop-blur-md border ${
@@ -564,7 +676,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
           </div>
         </div>
 
-        {/* 3. مسؤولو المنصة Admins */}
+        {/* 4. مسؤولو المنصة Admins */}
         <div 
           onClick={() => setSelectedRoleFilter('admin')}
           className={`p-4 rounded-3xl transition-all duration-300 cursor-pointer backdrop-blur-md border ${
@@ -584,11 +696,11 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
           </div>
           <div className="text-[10px] text-purple-500/80 mt-1 flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
-            <span>إدارة المحتوى والأسئلة</span>
+            <span>إدارة المحتوى</span>
           </div>
         </div>
 
-        {/* 4. المعلمين Teachers */}
+        {/* 5. المعلمين Teachers */}
         <div 
           onClick={() => setSelectedRoleFilter('teacher')}
           className={`p-4 rounded-3xl transition-all duration-300 cursor-pointer backdrop-blur-md border ${
@@ -608,11 +720,11 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
           </div>
           <div className="text-[10px] text-blue-500/80 mt-1 flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-            <span>المحاضرات والشروحات</span>
+            <span>المحاضرات</span>
           </div>
         </div>
 
-        {/* 5. الطلاب Students */}
+        {/* 6. الطلاب Students */}
         <div 
           onClick={() => setSelectedRoleFilter('student')}
           className={`p-4 rounded-3xl transition-all duration-300 cursor-pointer backdrop-blur-md border ${
@@ -632,11 +744,11 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
           </div>
           <div className="text-[10px] text-emerald-500/80 mt-1 flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            <span>تأسيس وتدريب كمي</span>
+            <span>تدريب وتأسيس</span>
           </div>
         </div>
 
-        {/* 6. المحظورون Banned */}
+        {/* 7. المحظورون Banned */}
         <div 
           onClick={() => setSelectedRoleFilter('banned')}
           className={`p-4 rounded-3xl transition-all duration-300 cursor-pointer backdrop-blur-md border ${
@@ -683,10 +795,12 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
           )}
         </div>
 
-        {/* فلاتر الرتب التفاعلية كـ Segmented Control */}
+        {/* فلاتر الرتب والاشتراكات كـ Segmented Control */}
         <div className="flex items-center gap-1.5 w-full lg:w-auto overflow-x-auto pb-1 lg:pb-0 scrollbar-none">
           {[
             { id: 'all', label: 'الكل', count: stats.total, icon: '👥' },
+            { id: 'subscribed', label: 'المشتركون 🎓', count: stats.subscribed, icon: '💎' },
+            { id: 'unsubscribed', label: 'غير المشتركين', count: stats.unsubscribed, icon: '⚪' },
             { id: 'super_admin', label: 'سوبر أدمن', count: stats.superAdmin, icon: '👑' },
             { id: 'admin', label: 'مسؤول', count: stats.admin, icon: '🛡️' },
             { id: 'teacher', label: 'معلم', count: stats.teacher, icon: '🎓' },
@@ -728,7 +842,8 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                 <th className="py-4.5 px-6">المستخدم</th>
                 <th className="py-4.5 px-6">البريد الإلكتروني</th>
                 <th className="py-4.5 px-6">تليجرام</th>
-                <th className="py-4.5 px-6">الرتبة الحالية</th>
+                <th className="py-4.5 px-6">الرتبة</th>
+                <th className="py-4.5 px-6">حالة الاشتراك 🎓</th>
                 <th className="py-4.5 px-6">تاريخ الانضمام</th>
                 <th className="py-4.5 px-6 text-center">الإجراءات والصلاحيات</th>
               </tr>
@@ -736,7 +851,8 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs sm:text-sm">
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center text-slate-400">
+                  <td colSpan={7} className="py-16 text-center text-slate-400">
+
                     <div className="w-16 h-16 mx-auto mb-3 rounded-3xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400 shadow-inner">
                       <Users className="w-8 h-8 opacity-60" />
                     </div>
@@ -853,6 +969,11 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                         {renderRoleBadge(user.role)}
                       </td>
 
+                      {/* حالة الاشتراك في الدورات */}
+                      <td className="py-4 px-6">
+                        {renderSubscriptionBadge(user)}
+                      </td>
+
                       {/* تاريخ الانضمام */}
                       <td className="py-4 px-6 text-slate-500 dark:text-slate-400 text-xs">
                         <div className="flex items-center gap-2">
@@ -896,6 +1017,31 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                               <option value="super_admin">👑 سوبر أدمن</option>
                             </select>
                           </div>
+
+                          {/* زر إلغاء أو تفعيل الاشتراك */}
+                          {!isTargetSuperAdminOrOwner && isAuthorizedAdmin && (
+                            user.isSubscribed ? (
+                              <button
+                                onClick={() => handleCancelSubscription(user)}
+                                disabled={isProcessingAction}
+                                title="إلغاء اشتراك الطالب في باقة الدورات السنوية"
+                                className="p-2 rounded-xl text-xs font-bold transition-all bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/20 disabled:opacity-25 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm cursor-pointer"
+                              >
+                                <UserX className="w-3.5 h-3.5" />
+                                <span className="hidden xl:inline">إلغاء الاشتراك</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleGrantSubscription(user)}
+                                disabled={isProcessingAction}
+                                title="تفعيل اشتراك سنوي للطالب (365 يوماً)"
+                                className="p-2 rounded-xl text-xs font-bold transition-all bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 disabled:opacity-25 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm cursor-pointer"
+                              >
+                                <Sparkles className="w-3.5 h-3.5" />
+                                <span className="hidden xl:inline">تفعيل الاشتراك</span>
+                              </button>
+                            )
+                          )}
 
                           {/* زر حظر / فك حظر */}
                           <button
@@ -1056,6 +1202,35 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
 
                   {/* تعديل الرتبة والإجراءات بلمسة مريحة للإبهام */}
                   <div className="pt-2 border-t border-slate-100 dark:border-slate-800/60 flex flex-col gap-2">
+                    {/* حالة الاشتراك وزر الإلغاء / التفعيل للموبايل */}
+                    <div className="flex items-center justify-between gap-2 p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800/60">
+                      <div>
+                        {renderSubscriptionBadge(user)}
+                      </div>
+
+                      {!isTargetSuperAdminOrOwner && isAuthorizedAdmin && (
+                        user.isSubscribed ? (
+                          <button
+                            onClick={() => handleCancelSubscription(user)}
+                            disabled={isProcessingAction}
+                            className="px-2.5 py-1 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-[10px] font-black transition flex items-center gap-1 cursor-pointer"
+                          >
+                            <UserX className="w-3 h-3" />
+                            <span>إلغاء الاشتراك</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleGrantSubscription(user)}
+                            disabled={isProcessingAction}
+                            className="px-2.5 py-1 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-black transition flex items-center gap-1 cursor-pointer"
+                          >
+                            <Sparkles className="w-3 h-3" />
+                            <span>تفعيل الاشتراك</span>
+                          </button>
+                        )
+                      )}
+                    </div>
+
                     <div>
                       <label className="block text-[10px] font-bold text-slate-400 mb-1">
                         تعديل الرتبة والصلاحية:

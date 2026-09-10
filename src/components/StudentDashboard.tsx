@@ -20,13 +20,18 @@ import {
   Scale,
   BarChart3,
   Lightbulb,
-  ExternalLink
+  ExternalLink,
+  Lock,
+  UserX,
+  XCircle,
+  Crown
 } from 'lucide-react';
 import { RadarChart, RadarDataPoint } from './RadarChart';
 import { MathRenderer } from './MathRenderer';
 import { TarqaUser } from '../lib/supabase';
 import { Category, Question } from '../types';
 import { mockCategories, mockQuestions } from '../data/mockQuestions';
+import { getSubscriptionDetails, cancelAnnualSubscription } from '../lib/subscriptionService';
 
 interface StudentDashboardProps {
   currentUser: TarqaUser | null;
@@ -34,6 +39,7 @@ interface StudentDashboardProps {
   onStartPractice: (category?: Category) => void;
   onReviewAttempt?: (attemptId: string) => void;
   onOpenAuth?: () => void;
+  onNavigateCourses?: () => void;
 }
 
 export const StudentDashboard: React.FC<StudentDashboardProps> = ({
@@ -42,8 +48,38 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   onStartPractice,
   onReviewAttempt,
   onOpenAuth,
+  onNavigateCourses,
 }) => {
   const [selectedBookmarkedQuestion, setSelectedBookmarkedQuestion] = useState<Question | null>(null);
+  const [subscription, setSubscription] = useState(() => getSubscriptionDetails(currentUser));
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [cancelMessage, setCancelMessage] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    setSubscription(getSubscriptionDetails(currentUser));
+    const onSubChange = () => setSubscription(getSubscriptionDetails(currentUser));
+    window.addEventListener('tarqa_subscription_changed', onSubChange);
+    window.addEventListener('tarqa_user_changed', onSubChange);
+    return () => {
+      window.removeEventListener('tarqa_subscription_changed', onSubChange);
+      window.removeEventListener('tarqa_user_changed', onSubChange);
+    };
+  }, [currentUser]);
+
+  const handleCancelMySub = async () => {
+    if (!currentUser) return;
+    if (window.confirm('هل أنت متأكد من رغبتك في إلغاء اشتراكك في باقة طرقع السنوية؟')) {
+      setIsCancelling(true);
+      try {
+        const res = await cancelAnnualSubscription(currentUser.id, currentUser.email);
+        setCancelMessage(res.message);
+        setSubscription(getSubscriptionDetails(currentUser));
+        setTimeout(() => setCancelMessage(null), 3000);
+      } finally {
+        setIsCancelling(false);
+      }
+    }
+  };
 
   // استخراج المحاولات السابقة الحقيقية من التخزين المحلي
   const localAttempts = React.useMemo(() => {
@@ -217,7 +253,95 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
         </div>
       </section>
-              {/* ======================================================================= */}
+
+      {/* ======================================================================= */}
+      {/* 1.5 بطاقة تفاصيل الاشتراك في باقة الدورات السنوية (Subscription Status) */}
+      {/* ======================================================================= */}
+      {cancelMessage && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 font-bold text-xs flex items-center gap-2 animate-fadeIn">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span>{cancelMessage}</span>
+        </div>
+      )}
+
+      <section className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-white via-slate-50 to-amber-500/5 dark:from-[#0d1424] dark:via-[#090d16] dark:to-amber-500/5 border border-slate-200/80 dark:border-slate-800/80 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-5">
+        <div className="flex items-start sm:items-center gap-4">
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-md ${
+            subscription.isManager
+              ? 'bg-gradient-to-tr from-amber-500 to-amber-300 text-slate-950'
+              : subscription.isSubscribed
+              ? 'bg-gradient-to-tr from-emerald-500 to-teal-400 text-white'
+              : 'bg-slate-200 dark:bg-slate-800 text-slate-500'
+          }`}>
+            {subscription.isManager ? (
+              <Crown className="w-6 h-6" />
+            ) : subscription.isSubscribed ? (
+              <CheckCircle2 className="w-6 h-6" />
+            ) : (
+              <Lock className="w-6 h-6" />
+            )}
+          </div>
+
+          <div>
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                حالة اشتراك باقة طرقع السنوية
+              </h2>
+              {subscription.isManager ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/40">
+                  <Crown className="w-3 h-3 text-amber-500" />
+                  <span>وصول إداري شامل 👑</span>
+                </span>
+              ) : subscription.isSubscribed ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/40">
+                  <CheckCircle2 className="w-3 h-3" />
+                  <span>اشتراك نشط ومفعل ✅</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-700">
+                  <XCircle className="w-3 h-3" />
+                  <span>غير مشترك 🔒</span>
+                </span>
+              )}
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              {subscription.isManager
+                ? 'لديك وصول دائم وشامل لجميع المحاضرات والملفات والخدمات بدون قيود.'
+                : subscription.isSubscribed
+                ? `باقة طرقع السنوية مفعلة. متبقي ${subscription.daysRemaining} يوم (حتى ${subscription.expiresDateFormatted}).`
+                : 'اشترك الآن في باقة الدورات السنوية بـ 75 ريال فقط لفتح جميع المحاضرات وملفات التجميعات.'}
+            </p>
+          </div>
+        </div>
+
+        {/* أزرار التحكم بالاشتراك */}
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          {subscription.isSubscribed && !subscription.isManager && (
+            <button
+              onClick={handleCancelMySub}
+              disabled={isCancelling}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-bold border border-rose-500/30 transition disabled:opacity-50"
+              title="إلغاء اشتراكك في باقة الدورات السنوية"
+            >
+              <UserX className="w-3.5 h-3.5" />
+              <span>{isCancelling ? 'جارٍ الإلغاء...' : 'إلغاء الاشتراك 🚫'}</span>
+            </button>
+          )}
+
+          {(!subscription.isSubscribed && !subscription.isManager) && (
+            <button
+              onClick={() => onNavigateCourses?.()}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-950 text-xs font-black shadow-md transition"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>تصفح الدورات والاشتراك (75 ريال) 🎓</span>
+            </button>
+          )}
+        </div>
+      </section>
+
+      {/* ======================================================================= */}
       {/* 2. بطاقات المؤشرات الرئيسية (Metric Cards) الحقيقية 100% */}
       {/* ======================================================================= */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

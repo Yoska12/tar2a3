@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured, authService, syncUserToMembersDashboard, isValidUuid } from './supabase';
 import { UserRole, UserWithRole, RoleChangeLog } from '../types';
+import { cancelAnnualSubscription, grantAnnualSubscription } from './subscriptionService';
 
 // الحساب الإداري المعتمد لمالك المنصة (Yoska)
 const INITIAL_DEMO_USERS: UserWithRole[] = [
@@ -63,6 +64,8 @@ export const rolesService = {
               isBanned: Boolean(d.is_banned),
               banReason: d.ban_reason || undefined,
               bannedAt: d.banned_at || undefined,
+              isSubscribed: Boolean(d.is_subscribed),
+              subscriptionExpiresAt: d.subscription_expires_at || undefined,
             };
           });
         }
@@ -171,6 +174,36 @@ export const rolesService = {
 
     // وضع السوبر أدمن Yoska في رأس القائمة
     resultUsers.unshift(yoskaUser);
+
+    // مزامنة حالة الاشتراك الحقيقية مع التخزين المحلي وقاعدة البيانات
+    let localSubs: Record<string, any> = {};
+    try {
+      const rawSubs = localStorage.getItem('tarqa_subscriptions');
+      if (rawSubs) localSubs = JSON.parse(rawSubs);
+    } catch {}
+
+    for (const u of resultUsers) {
+      const isOwner = (u.email && u.email.toLowerCase() === 'yassooooo27m@gmail.com') || u.id === 'usr-admin-01' || u.role === 'super_admin';
+      if (isOwner) {
+        u.isSubscribed = true;
+      } else {
+        const sub = localSubs[u.id] || (u.email ? localSubs[u.email.toLowerCase()] : null);
+        if (sub && sub.isActive) {
+          const exp = new Date(sub.expiresDate).getTime();
+          if (exp > Date.now()) {
+            u.isSubscribed = true;
+            u.subscriptionExpiresAt = sub.expiresDate;
+          } else {
+            u.isSubscribed = false;
+          }
+        } else if (u.subscriptionExpiresAt) {
+          const exp = new Date(u.subscriptionExpiresAt).getTime();
+          u.isSubscribed = exp > Date.now();
+        } else {
+          u.isSubscribed = Boolean(u.isSubscribed);
+        }
+      }
+    }
 
     try {
       localStorage.setItem('tarqa_all_users_roles', JSON.stringify(resultUsers));
@@ -530,5 +563,15 @@ export const rolesService = {
 
     window.dispatchEvent(new Event('tarqa_roles_changed'));
     return { success: true };
+  },
+
+  // إلغاء اشتراك المستخدم
+  cancelSubscription: async (userId: string, userEmail?: string) => {
+    return await cancelAnnualSubscription(userId, userEmail);
+  },
+
+  // منح أو تفعيل اشتراك لمستخدم
+  grantSubscription: async (targetUser: { id: string; email?: string; fullName?: string }, days: number = 365) => {
+    return await grantAnnualSubscription(targetUser, days);
   },
 };

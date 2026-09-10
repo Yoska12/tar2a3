@@ -191,12 +191,179 @@ export const activateAnnualSubscription = async (
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('tarqa_subscription_changed', { detail: subRecord }));
     window.dispatchEvent(new CustomEvent('tarqa_user_changed'));
+    window.dispatchEvent(new CustomEvent('tarqa_roles_changed'));
   }
 
   return {
     success: true,
     expiresAt: oneYearFromNow,
     message: 'تم تفعيل باقة طرقع السنوية بنجاح لمدة 365 يوماً!',
+  };
+};
+
+/**
+ * إلغاء اشتراك المستخدم السنوي (سواء بواسطة السوبر أدمن من لوحة التحكم أو المستخدم)
+ */
+export const cancelAnnualSubscription = async (
+  userId: string,
+  userEmail?: string
+): Promise<{ success: boolean; message: string }> => {
+  // 1. تحديث التخزين المحلي للاشتراكات
+  try {
+    const raw = localStorage.getItem('tarqa_subscriptions') || '{}';
+    const subs = JSON.parse(raw);
+    if (subs[userId]) {
+      subs[userId].isActive = false;
+    }
+    if (userEmail && subs[userEmail.toLowerCase()]) {
+      subs[userEmail.toLowerCase()].isActive = false;
+    }
+    localStorage.setItem('tarqa_subscriptions', JSON.stringify(subs));
+
+    // تحديث المستخدم الحالي إذا كان هو المعني
+    const currentRaw = localStorage.getItem('tarqa_current_user');
+    if (currentRaw) {
+      const parsed = JSON.parse(currentRaw);
+      if (parsed.id === userId || (userEmail && parsed.email?.toLowerCase() === userEmail.toLowerCase())) {
+        parsed.isSubscribed = false;
+        parsed.subscriptionExpiresAt = undefined;
+        localStorage.setItem('tarqa_current_user', JSON.stringify(parsed));
+      }
+    }
+
+    // تحديث قائمة الأعضاء في tarqa_all_users_roles
+    const allRolesRaw = localStorage.getItem('tarqa_all_users_roles');
+    if (allRolesRaw) {
+      const parsedRoles = JSON.parse(allRolesRaw);
+      if (Array.isArray(parsedRoles)) {
+        const updatedRoles = parsedRoles.map((u: any) => {
+          if (u.id === userId || (userEmail && u.email?.toLowerCase() === userEmail.toLowerCase())) {
+            return {
+              ...u,
+              isSubscribed: false,
+              subscriptionExpiresAt: undefined,
+            };
+          }
+          return u;
+        });
+        localStorage.setItem('tarqa_all_users_roles', JSON.stringify(updatedRoles));
+      }
+    }
+  } catch (err) {
+    console.warn('Error cancelling subscription locally:', err);
+  }
+
+  // 2. تحديث في قاعدة بيانات Supabase إذا كانت متصلة
+  if (isSupabaseConfigured && userId) {
+    try {
+      await supabase
+        .from('profiles')
+        .update({
+          is_subscribed: false,
+          subscription_expires_at: null,
+          updated_at: new Date().toISOString(),
+        } as any)
+        .eq('id', userId);
+    } catch (dbErr) {
+      console.warn('Could not sync subscription cancellation to Supabase:', dbErr);
+    }
+  }
+
+  // 3. إطلاق الأحداث لتحديث واجهات الموقع فوراً
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('tarqa_subscription_changed'));
+    window.dispatchEvent(new CustomEvent('tarqa_user_changed'));
+    window.dispatchEvent(new CustomEvent('tarqa_roles_changed'));
+  }
+
+  return {
+    success: true,
+    message: 'تم إلغاء الاشتراك بنجاح.',
+  };
+};
+
+/**
+ * منح أو تفعيل اشتراك سنوي لمستخدم معين بواسطة الإدارة (Super Admin)
+ */
+export const grantAnnualSubscription = async (
+  targetUser: { id: string; email?: string; fullName?: string },
+  days: number = 365
+): Promise<{ success: boolean; message: string }> => {
+  const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+  const subRecord: CourseSubscription = {
+    userId: targetUser.id,
+    userEmail: targetUser.email,
+    userName: targetUser.fullName,
+    planId: 'annual_75',
+    planName: 'باقة طرقع السنوية الشاملة',
+    priceSAR: ANNUAL_SUBSCRIPTION_PRICE_SAR,
+    startDate: new Date().toISOString(),
+    expiresDate: expiresAt,
+    isActive: true,
+  };
+
+  try {
+    const raw = localStorage.getItem('tarqa_subscriptions') || '{}';
+    const subs = JSON.parse(raw);
+    subs[targetUser.id] = subRecord;
+    if (targetUser.email) {
+      subs[targetUser.email.toLowerCase()] = subRecord;
+    }
+    localStorage.setItem('tarqa_subscriptions', JSON.stringify(subs));
+
+    // تحديث tarqa_all_users_roles
+    const allRolesRaw = localStorage.getItem('tarqa_all_users_roles');
+    if (allRolesRaw) {
+      const parsedRoles = JSON.parse(allRolesRaw);
+      if (Array.isArray(parsedRoles)) {
+        const updatedRoles = parsedRoles.map((u: any) => {
+          if (u.id === targetUser.id || (targetUser.email && u.email?.toLowerCase() === targetUser.email.toLowerCase())) {
+            return {
+              ...u,
+              isSubscribed: true,
+              subscriptionExpiresAt: expiresAt,
+            };
+          }
+          return u;
+        });
+        localStorage.setItem('tarqa_all_users_roles', JSON.stringify(updatedRoles));
+      }
+    }
+
+    // تحديث المستخدم الحالي إذا كان هو نفسه
+    const currentRaw = localStorage.getItem('tarqa_current_user');
+    if (currentRaw) {
+      const parsed = JSON.parse(currentRaw);
+      if (parsed.id === targetUser.id || (targetUser.email && parsed.email?.toLowerCase() === targetUser.email.toLowerCase())) {
+        parsed.isSubscribed = true;
+        parsed.subscriptionExpiresAt = expiresAt;
+        localStorage.setItem('tarqa_current_user', JSON.stringify(parsed));
+      }
+    }
+  } catch (e) {}
+
+  if (isSupabaseConfigured && targetUser.id) {
+    try {
+      await supabase
+        .from('profiles')
+        .update({
+          is_subscribed: true,
+          subscription_expires_at: expiresAt,
+          updated_at: new Date().toISOString(),
+        } as any)
+        .eq('id', targetUser.id);
+    } catch (e) {}
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('tarqa_subscription_changed', { detail: subRecord }));
+    window.dispatchEvent(new CustomEvent('tarqa_user_changed'));
+    window.dispatchEvent(new CustomEvent('tarqa_roles_changed'));
+  }
+
+  return {
+    success: true,
+    message: 'تم تفعيل الاشتراك السنوي بنجاح لمدة سنة كاملة.',
   };
 };
 

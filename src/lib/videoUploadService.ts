@@ -49,6 +49,88 @@ export const isValidVideoFile = (file: File): { valid: boolean; error?: string }
 };
 
 /**
+ * مستودع IndexedDB المحلي لتخزين ملفات الفيديو الكبيرة بشكل دائم في المتصفح
+ */
+const DB_NAME = 'tarqa_video_vault';
+const DB_VERSION = 1;
+const STORE_NAME = 'videos';
+
+const openVideoDB = (): Promise<IDBDatabase> => {
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined' || !window.indexedDB) {
+      return reject(new Error('IndexedDB غير مدعوم في هذا المتصفح.'));
+    }
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+};
+
+export const saveVideoToIndexedDB = async (key: string, blob: Blob): Promise<void> => {
+  try {
+    const db = await openVideoDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      store.put(blob, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) {
+    console.warn('Could not save video to IndexedDB:', e);
+  }
+};
+
+export const getVideoFromIndexedDB = async (key: string): Promise<Blob | null> => {
+  try {
+    const db = await openVideoDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.get(key);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn('Could not read video from IndexedDB:', e);
+    return null;
+  }
+};
+
+// ذاكرة تخزين مؤقت لعناوين الـ ObjectURLs لتجنب تكرار إنشائها
+const resolvedUrlCache = new Map<string, string>();
+
+/**
+ * حل عنوان الفيديو: إذا كان مخزناً في IndexedDB يستخرج الـ Blob وينشئ له ObjectURL حي دائماً
+ */
+export const resolveVideoUrl = async (url: string): Promise<string> => {
+  if (!url) return '';
+  
+  if (url.startsWith('indexeddb://')) {
+    const key = url.replace('indexeddb://', '');
+    if (resolvedUrlCache.has(key)) {
+      return resolvedUrlCache.get(key)!;
+    }
+    const blob = await getVideoFromIndexedDB(key);
+    if (blob) {
+      const objUrl = URL.createObjectURL(blob);
+      resolvedUrlCache.set(key, objUrl);
+      return objUrl;
+    }
+    // احتياطي
+    return 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
+  }
+
+  return url;
+};
+
+/**
  * حفظ مرجعية الفيديو المرفوع محلياً
  */
 const saveLocalVideoReference = (fileName: string, url: string, size: number) => {
@@ -133,22 +215,25 @@ export const uploadLessonVideo = async (
         };
       }
 
-      console.warn('Supabase upload warning, falling back to local secure blob:', error?.message);
+      console.warn('Supabase upload notice, falling back to local persistent IndexedDB storage:', error?.message);
     }
 
-    // 2. وضع المعالجة السريع والاحتياطي (Local Fast Secure Object URL)
+    // 2. وضع المعالجة السريع والاحتياطي الدائم عبر IndexedDB
     onProgress?.(60);
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    const videoKey = `tarqa_vid_${timestamp}_${cleanName}`;
+    await saveVideoToIndexedDB(videoKey, file);
     onProgress?.(90);
 
-    const objectUrl = URL.createObjectURL(file);
-    saveLocalVideoReference(cleanName, objectUrl, file.size);
+    const persistentUrl = `indexeddb://${videoKey}`;
+    const liveObjectUrl = URL.createObjectURL(file);
+    resolvedUrlCache.set(videoKey, liveObjectUrl);
+    saveLocalVideoReference(cleanName, persistentUrl, file.size);
     onProgress?.(100);
 
     return {
       success: true,
-      videoUrl: objectUrl,
-      storagePath: `local/${storageFileName}`,
+      videoUrl: persistentUrl,
+      storagePath: `indexeddb/${videoKey}`,
       fileName: file.name,
       fileSizeFormatted,
     };

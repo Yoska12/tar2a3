@@ -49,7 +49,8 @@ export const rolesService = {
 
           supabaseUsers = sorted.map((d: any) => {
             const email = d.email || (d.telegram_username ? `@${d.telegram_username}` : `مستخدم_${d.id.substring(0, 6)}`);
-            const isOwner = (d.email && d.email.toLowerCase() === 'yassooooo27m@gmail.com') || d.id === 'usr-admin-01';
+            const emailLower = (d.email || '').toLowerCase().trim();
+            const isOwner = emailLower === 'yassooooo27m@gmail.com' || emailLower === 'iyoskalg@gmail.com' || d.id === 'usr-admin-01';
             return {
               id: d.id,
               email: d.email || email,
@@ -129,30 +130,61 @@ export const rolesService = {
       }
     } catch {}
 
-    // دمج قوائم المستخدمين لضمان عدم ضياع أي مستخدم سجل جديداً
-    const userMap = new Map<string, UserWithRole>();
+    // دمج قوائم المستخدمين لضمان عدم ضياع أي مستخدم وعدم تكرار نفس الشخص
+    const unifiedUsers: UserWithRole[] = [...supabaseUsers];
 
-    // 1. إضافة مستخدمي Supabase
-    for (const u of supabaseUsers) {
-      const key = (u.email ? u.email.toLowerCase() : '') || u.id;
-      userMap.set(key, u);
-    }
-
-    // 2. دمج المستخدمين المحليين
     for (const u of localUsers) {
       if (['usr-admin-02', 'usr-teacher-03', 'usr-teacher-04', 'usr-student-05', 'usr-student-06', 'usr-student-07'].includes(u.id)) continue;
       if (u.email?.endsWith('@student.com')) continue;
 
-      const key = (u.email ? u.email.toLowerCase() : '') || u.id;
-      if (!userMap.has(key)) {
-        userMap.set(key, u);
+      const uEmail = (u.email || '').trim().toLowerCase();
+      const uTg = (u.telegramUsername || '').replace(/^@/, '').trim().toLowerCase();
+
+      const existingIndex = unifiedUsers.findIndex((ex) => {
+        const exEmail = (ex.email || '').trim().toLowerCase();
+        const exTg = (ex.telegramUsername || '').replace(/^@/, '').trim().toLowerCase();
+
+        const idMatches = Boolean(u.id && ex.id && u.id === ex.id);
+        const emailMatches = Boolean(
+          uEmail &&
+          exEmail &&
+          !uEmail.includes('@telegram.tarqa') &&
+          !exEmail.includes('@telegram.tarqa') &&
+          uEmail === exEmail
+        );
+        const tgIdMatches = Boolean(u.telegramId && ex.telegramId && u.telegramId === ex.telegramId);
+        const tgNameMatches = Boolean(uTg && exTg && uTg === exTg);
+
+        return idMatches || emailMatches || tgIdMatches || tgNameMatches;
+      });
+
+      if (existingIndex >= 0) {
+        // دمج البيانات مع الحفاظ على هوية حساب Supabase
+        const ex = unifiedUsers[existingIndex];
+        const mergedRole = (ex.role === 'super_admin' || u.role === 'super_admin') 
+          ? 'super_admin' 
+          : (ex.role !== 'student' ? ex.role : (u.role || ex.role));
+
+        unifiedUsers[existingIndex] = {
+          ...ex,
+          fullName: (ex.fullName && ex.fullName !== 'طالب طرقع') ? ex.fullName : (u.fullName || ex.fullName),
+          role: mergedRole,
+          telegramUsername: ex.telegramUsername || u.telegramUsername,
+          telegramId: ex.telegramId || u.telegramId,
+          targetScore: ex.targetScore || u.targetScore || 100,
+        };
+      } else {
+        unifiedUsers.push(u);
       }
     }
 
-    let resultUsers = Array.from(userMap.values());
+    let resultUsers = unifiedUsers;
 
     // ضمان وجود الحساب الإداري الرئيسي (Yoska) في رأس القائمة دائماً كسوبر أدمن
-    const yoskaIndex = resultUsers.findIndex(u => u.email?.toLowerCase() === 'yassooooo27m@gmail.com');
+    const yoskaIndex = resultUsers.findIndex(u => {
+      const em = u.email?.toLowerCase().trim();
+      return em === 'yassooooo27m@gmail.com' || em === 'iyoskalg@gmail.com';
+    });
     let yoskaUser: UserWithRole;
     if (yoskaIndex >= 0) {
       yoskaUser = {
@@ -183,24 +215,15 @@ export const rolesService = {
     } catch {}
 
     for (const u of resultUsers) {
-      const isOwner = (u.email && u.email.toLowerCase() === 'yassooooo27m@gmail.com') || u.id === 'usr-admin-01' || u.role === 'super_admin';
+      const em = (u.email || '').toLowerCase().trim();
+      const isOwner = em === 'yassooooo27m@gmail.com' || em === 'iyoskalg@gmail.com' || u.id === 'usr-admin-01' || u.role === 'super_admin';
       if (isOwner) {
         u.isSubscribed = true;
       } else {
-        const sub = localSubs[u.id] || (u.email ? localSubs[u.email.toLowerCase()] : null);
-        if (sub && sub.isActive) {
-          const exp = new Date(sub.expiresDate).getTime();
-          if (exp > Date.now()) {
-            u.isSubscribed = true;
-            u.subscriptionExpiresAt = sub.expiresDate;
-          } else {
-            u.isSubscribed = false;
-          }
-        } else if (u.subscriptionExpiresAt) {
-          const exp = new Date(u.subscriptionExpiresAt).getTime();
-          u.isSubscribed = exp > Date.now();
-        } else {
-          u.isSubscribed = Boolean(u.isSubscribed);
+        const sub = localSubs[u.id] || (u.email && localSubs[u.email.toLowerCase()]);
+        if (sub?.active) {
+          u.isSubscribed = true;
+          u.subscriptionExpiresAt = sub.expiresAt;
         }
       }
     }
@@ -216,27 +239,24 @@ export const rolesService = {
   getAuditLogs: async (): Promise<RoleChangeLog[]> => {
     if (isSupabaseConfigured) {
       try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        if (sessionData?.session) {
-          const { data, error } = await supabase
-            .from('role_change_logs')
-            .select('id, admin_id, target_user_id, old_role, new_role, reason, created_at')
-            .order('created_at', { ascending: false });
+        const { data, error } = await supabase
+          .from('role_change_logs')
+          .select('id, admin_id, target_user_id, old_role, new_role, reason, created_at')
+          .order('created_at', { ascending: false });
 
-          if (!error && data && data.length > 0) {
-            return data.map((l: any) => ({
-              id: l.id,
-              adminId: l.admin_id,
-              targetUserId: l.target_user_id,
-              oldRole: (l.old_role === 'super_admin' ? 'admin' : l.old_role) as UserRole,
-              newRole: (l.new_role === 'super_admin' ? 'admin' : l.new_role) as UserRole,
-              reason: l.reason,
-              createdAt: l.created_at,
-            }));
-          }
+        if (!error && data && data.length > 0) {
+          return data.map((l: any) => ({
+            id: l.id,
+            adminId: l.admin_id,
+            targetUserId: l.target_user_id,
+            oldRole: l.old_role as UserRole,
+            newRole: l.new_role as UserRole,
+            reason: l.reason,
+            createdAt: l.created_at,
+          }));
         }
       } catch (err) {
-        // تجاهل أخطاء الجلسة غير النشطة
+        // تجاهل أخطاء الاستعلام في وضع المعاينة
       }
     }
 
@@ -264,7 +284,7 @@ export const rolesService = {
 
     // 1. التحقق من صلاحية مسؤول المنصة (Admin)
     const userEmail = currentUser?.email?.trim().toLowerCase();
-    const isOwner = userEmail === 'yassooooo27m@gmail.com';
+    const isOwner = userEmail === 'yassooooo27m@gmail.com' || userEmail === 'iyoskalg@gmail.com';
     const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || isOwner;
     if (!isAdmin) {
       return {
@@ -293,65 +313,131 @@ export const rolesService = {
       };
     }
 
-    // 3. محاولة التحديث في Supabase إن كان متاحاً
+    // 3. التحديث الفوري في Supabase
     if (isSupabaseConfigured) {
       try {
         let supabaseTargetId: string | null = isValidUuid(targetUserId) ? targetUserId : null;
+        let matchedProfile: any = null;
+        const cleanTg = (targetUser.telegramUsername || '').replace(/^@/, '').trim();
 
-        // إذا لم يكن المعرف UUID (حساب محلي)، نحاول العثور على حسابه الحقيقي في Supabase عبر البريد
-        if (!supabaseTargetId && targetUser.email && !targetUser.email.includes('@user.tarqa')) {
-          try {
-            const { data: matchedProfile } = await supabase
-              .from('profiles')
-              .select('id')
-              .eq('email', targetUser.email.toLowerCase())
-              .maybeSingle();
-
-            if (matchedProfile?.id && isValidUuid(matchedProfile.id)) {
-              supabaseTargetId = matchedProfile.id;
-            }
-          } catch {}
+        // أ. إذا كان المعرف UUID نبحث به أولاً
+        if (supabaseTargetId) {
+          const { data: p } = await supabase.from('profiles').select('id, email, telegram_username').eq('id', supabaseTargetId).maybeSingle();
+          if (p) matchedProfile = p;
         }
 
+        // ب. إذا لم نجد، نبحث بالبريد الحقيقي
+        if (!matchedProfile && targetUser.email && !targetUser.email.includes('@telegram.tarqa') && !targetUser.email.includes('@user.tarqa')) {
+          const { data: p } = await supabase.from('profiles').select('id, email, telegram_username').eq('email', targetUser.email.toLowerCase()).maybeSingle();
+          if (p) matchedProfile = p;
+        }
+
+        // ج. إذا لم نجد، نبحث بالمعرف الرقمي لتليجرام
+        if (!matchedProfile && targetUser.telegramId) {
+          const { data: p } = await supabase.from('profiles').select('id, email, telegram_username').eq('telegram_id', targetUser.telegramId).maybeSingle();
+          if (p) matchedProfile = p;
+        }
+
+        // د. إذا لم نجد، نبحث بيوزر تليجرام مع وبدون @
+        if (!matchedProfile && cleanTg) {
+          const { data: p } = await supabase.from('profiles').select('id, email, telegram_username').or(`telegram_username.eq.${cleanTg},telegram_username.eq.@${cleanTg},telegram_username.ilike.%${cleanTg}%`).maybeSingle();
+          if (p) matchedProfile = p;
+        }
+
+        if (matchedProfile?.id && isValidUuid(matchedProfile.id)) {
+          supabaseTargetId = matchedProfile.id;
+        }
+
+        // تنفيذ الاستدعاء لقاعدة البيانات مباشرة عبر RPC والدوال المعتمدة
         if (supabaseTargetId) {
-          const { data: sessionData } = await supabase.auth.getSession();
-          // نطلب التحديث من Supabase فقط إذا كانت هناك جلسة مصادقة نشطة لتجنب 403
-          if (sessionData?.session) {
+          try {
             const { error: rpcError } = await supabase.rpc('admin_update_user_role', {
               target_user_id: supabaseTargetId,
               new_role: newRole,
               reason: reason || null,
             });
-
             if (rpcError) {
-              const { error } = await supabase
-                .from('profiles')
-                .update({ role: newRole })
-                .eq('id', supabaseTargetId);
-
-              if (error && error.code !== '42501') {
-                console.warn('Supabase role update note:', error.message);
-              }
+              console.warn('RPC admin_update_user_role note:', rpcError);
             }
+          } catch (e) {
+            console.warn('RPC execute exception:', e);
           }
+
+          // وتحديث جدول profiles مباشرة كطبقة إضافية موثوقة بالـ ID
+          try {
+            await supabase
+              .from('profiles')
+              .update({ role: newRole, updated_at: new Date().toISOString() })
+              .eq('id', supabaseTargetId);
+          } catch {}
+        }
+
+        // وتحديث عبر البريد الإلكتروني الحقيقي أيضاً إذا كان متوفراً
+        const emailToUpdate = matchedProfile?.email || (targetUser.email && !targetUser.email.includes('@telegram.tarqa') && !targetUser.email.includes('@user.tarqa') ? targetUser.email : null);
+        if (emailToUpdate) {
+          try {
+            await supabase
+              .from('profiles')
+              .update({ role: newRole, updated_at: new Date().toISOString() })
+              .eq('email', emailToUpdate.toLowerCase());
+          } catch {}
+        }
+
+        // وتحديث عبر يوزر تليجرام أيضاً لضمان وصول الرتبة للطرف الآخر فوراً
+        if (cleanTg) {
+          try {
+            await supabase
+              .from('profiles')
+              .update({ role: newRole, updated_at: new Date().toISOString() })
+              .or(`telegram_username.eq.${cleanTg},telegram_username.eq.@${cleanTg}`);
+          } catch {}
         }
       } catch (err: any) {
         console.warn('Supabase role update note:', err?.message || err);
       }
     }
 
-    // 4. تحديث الحالة المحلية
+    // 4. تحديث الحالة المحلية في كافة جداول ومخازن المتصفح
+    const normalizedTargetEmail = targetUser.email?.toLowerCase().trim();
+
+    // أ. تحديث قائمة tarqa_all_users_roles
     const updatedUsers = users.map((u) => {
-      if (u.id === targetUserId) {
+      if (u.id === targetUserId || (normalizedTargetEmail && u.email?.toLowerCase().trim() === normalizedTargetEmail)) {
         return { ...u, role: newRole };
       }
       return u;
     });
-
     localStorage.setItem('tarqa_all_users_roles', JSON.stringify(updatedUsers));
 
-    // إذا تم تعديل المستخدم المسجل حالياً، نحدث جلسته أيضاً
-    if (currentUser && currentUser.id === targetUserId) {
+    // ب. تحديث قائمة المستخدمين المسجلين tarqa_registered_users لضمان الدخول برتبة السوبر أدمن
+    try {
+      const regRaw = localStorage.getItem('tarqa_registered_users');
+      if (regRaw) {
+        const regList = JSON.parse(regRaw);
+        const updatedReg = regList.map((ru: any) => {
+          if (ru.id === targetUserId || (normalizedTargetEmail && ru.email?.toLowerCase().trim() === normalizedTargetEmail)) {
+            return { ...ru, role: newRole };
+          }
+          return ru;
+        });
+        localStorage.setItem('tarqa_registered_users', JSON.stringify(updatedReg));
+      }
+    } catch {}
+
+    // ج. تحديث جلسة المستخدم الحالي فورياً إذا كان هو نفسه أو بنفس الإيميل
+    try {
+      const curRaw = localStorage.getItem('tarqa_current_user');
+      if (curRaw) {
+        const cur = JSON.parse(curRaw);
+        if (cur.id === targetUserId || (normalizedTargetEmail && cur.email?.toLowerCase().trim() === normalizedTargetEmail)) {
+          cur.role = newRole;
+          localStorage.setItem('tarqa_current_user', JSON.stringify(cur));
+          window.dispatchEvent(new Event('tarqa_user_changed'));
+        }
+      }
+    } catch {}
+
+    if (currentUser && (currentUser.id === targetUserId || (normalizedTargetEmail && currentUser.email?.toLowerCase().trim() === normalizedTargetEmail))) {
       authService.switchRole(newRole);
     }
 
@@ -372,8 +458,9 @@ export const rolesService = {
     const updatedLogs = [newLog, ...currentLogs];
     localStorage.setItem('tarqa_role_logs', JSON.stringify(updatedLogs));
 
-    // إشعار التطبيق بالتغيير
+    // إشعار التطبيق بالنظام بالكامل
     window.dispatchEvent(new Event('tarqa_roles_changed'));
+    window.dispatchEvent(new Event('tarqa_user_changed'));
 
     return {
       success: true,
@@ -389,7 +476,7 @@ export const rolesService = {
   ): Promise<{ success: boolean; error?: string }> => {
     const currentUser = authService.getCurrentUser();
     const userEmail = currentUser?.email?.trim().toLowerCase();
-    const isOwner = userEmail === 'yassooooo27m@gmail.com';
+    const isOwner = userEmail === 'yassooooo27m@gmail.com' || userEmail === 'iyoskalg@gmail.com';
     const isSuperAdmin = currentUser?.role === 'super_admin' || isOwner;
 
     if (!isSuperAdmin) {
@@ -406,7 +493,7 @@ export const rolesService = {
       return { success: false, error: 'لم يتم العثور على المستخدم المطلوب' };
     }
 
-    if (target.email?.toLowerCase() === 'yassooooo27m@gmail.com' || target.role === 'super_admin') {
+    if (target.email?.toLowerCase() === 'yassooooo27m@gmail.com' || target.email?.toLowerCase() === 'iyoskalg@gmail.com' || target.role === 'super_admin') {
       return { success: false, error: 'خطأ أمني: لا يمكن حظر حساب السوبر أدمن الرئيسي للمنصة.' };
     }
 
@@ -414,39 +501,79 @@ export const rolesService = {
     if (isSupabaseConfigured) {
       try {
         let supabaseTargetId: string | null = isValidUuid(targetUserId) ? targetUserId : null;
-        if (!supabaseTargetId && target.email && !target.email.includes('@user.tarqa')) {
-          try {
-            const { data: matchedProfile } = await supabase
-              .from('profiles')
-              .select('id')
-              .eq('email', target.email.toLowerCase())
-              .maybeSingle();
-            if (matchedProfile?.id && isValidUuid(matchedProfile.id)) {
-              supabaseTargetId = matchedProfile.id;
-            }
-          } catch {}
+        let matchedProfile: any = null;
+        const cleanTg = (target.telegramUsername || '').replace(/^@/, '').trim();
+
+        if (supabaseTargetId) {
+          const { data: p } = await supabase.from('profiles').select('id, email').eq('id', supabaseTargetId).maybeSingle();
+          if (p) matchedProfile = p;
+        }
+
+        if (!matchedProfile && target.email && !target.email.includes('@telegram.tarqa') && !target.email.includes('@user.tarqa')) {
+          const { data: p } = await supabase.from('profiles').select('id, email').eq('email', target.email.toLowerCase()).maybeSingle();
+          if (p) matchedProfile = p;
+        }
+
+        if (!matchedProfile && target.telegramId) {
+          const { data: p } = await supabase.from('profiles').select('id, email').eq('telegram_id', target.telegramId).maybeSingle();
+          if (p) matchedProfile = p;
+        }
+
+        if (!matchedProfile && cleanTg) {
+          const { data: p } = await supabase.from('profiles').select('id, email').or(`telegram_username.eq.${cleanTg},telegram_username.eq.@${cleanTg}`).maybeSingle();
+          if (p) matchedProfile = p;
+        }
+
+        if (matchedProfile?.id && isValidUuid(matchedProfile.id)) {
+          supabaseTargetId = matchedProfile.id;
         }
 
         if (supabaseTargetId) {
-          const { data: sessionData } = await supabase.auth.getSession();
-          if (sessionData?.session) {
-            const { error: rpcError } = await supabase.rpc('admin_toggle_ban_user', {
+          try {
+            await supabase.rpc('admin_toggle_ban_user', {
               target_user_id: supabaseTargetId,
               p_is_banned: isBanned,
               p_reason: reason || null,
             });
+          } catch {}
 
-            if (rpcError) {
-              await supabase
-                .from('profiles')
-                .update({
-                  is_banned: isBanned,
-                  ban_reason: isBanned ? (reason || 'مخالفة سياسة واستخدام المنصة') : null,
-                  banned_at: isBanned ? new Date().toISOString() : null,
-                })
-                .eq('id', supabaseTargetId);
-            }
-          }
+          try {
+            await supabase
+              .from('profiles')
+              .update({
+                is_banned: isBanned,
+                ban_reason: isBanned ? (reason || 'مخالفة سياسة واستخدام المنصة') : null,
+                banned_at: isBanned ? new Date().toISOString() : null,
+              })
+              .eq('id', supabaseTargetId);
+          } catch {}
+        }
+
+        const emailToBan = matchedProfile?.email || (target.email && !target.email.includes('@telegram.tarqa') ? target.email : null);
+        if (emailToBan) {
+          try {
+            await supabase
+              .from('profiles')
+              .update({
+                is_banned: isBanned,
+                ban_reason: isBanned ? (reason || 'مخالفة سياسة واستخدام المنصة') : null,
+                banned_at: isBanned ? new Date().toISOString() : null,
+              })
+              .eq('email', emailToBan.toLowerCase());
+          } catch {}
+        }
+
+        if (cleanTg) {
+          try {
+            await supabase
+              .from('profiles')
+              .update({
+                is_banned: isBanned,
+                ban_reason: isBanned ? (reason || 'مخالفة سياسة واستخدام المنصة') : null,
+                banned_at: isBanned ? new Date().toISOString() : null,
+              })
+              .or(`telegram_username.eq.${cleanTg},telegram_username.eq.@${cleanTg}`);
+          } catch {}
         }
       } catch (err) {
         console.warn('Supabase ban update note:', err);
@@ -492,7 +619,7 @@ export const rolesService = {
   deleteUser: async (targetUserId: string): Promise<{ success: boolean; error?: string }> => {
     const currentUser = authService.getCurrentUser();
     const userEmail = currentUser?.email?.trim().toLowerCase();
-    const isOwner = userEmail === 'yassooooo27m@gmail.com';
+    const isOwner = userEmail === 'yassooooo27m@gmail.com' || userEmail === 'iyoskalg@gmail.com';
     const isSuperAdmin = currentUser?.role === 'super_admin' || isOwner;
 
     if (!isSuperAdmin) {
@@ -509,7 +636,7 @@ export const rolesService = {
       return { success: false, error: 'لم يتم العثور على المستخدم' };
     }
 
-    if (target.email?.toLowerCase() === 'yassooooo27m@gmail.com' || target.role === 'super_admin') {
+    if (target.email?.toLowerCase() === 'yassooooo27m@gmail.com' || target.email?.toLowerCase() === 'iyoskalg@gmail.com' || target.role === 'super_admin') {
       return { success: false, error: 'خطأ أمني: لا يمكن مسح حساب السوبر أدمن الرئيسي للمنصة.' };
     }
 
@@ -517,30 +644,56 @@ export const rolesService = {
     if (isSupabaseConfigured) {
       try {
         let supabaseTargetId: string | null = isValidUuid(targetUserId) ? targetUserId : null;
-        if (!supabaseTargetId && target.email && !target.email.includes('@user.tarqa')) {
-          try {
-            const { data: matchedProfile } = await supabase
-              .from('profiles')
-              .select('id')
-              .eq('email', target.email.toLowerCase())
-              .maybeSingle();
-            if (matchedProfile?.id && isValidUuid(matchedProfile.id)) {
-              supabaseTargetId = matchedProfile.id;
-            }
-          } catch {}
+        let matchedProfile: any = null;
+        const cleanTg = (target.telegramUsername || '').replace(/^@/, '').trim();
+
+        if (supabaseTargetId) {
+          const { data: p } = await supabase.from('profiles').select('id, email').eq('id', supabaseTargetId).maybeSingle();
+          if (p) matchedProfile = p;
+        }
+
+        if (!matchedProfile && target.email && !target.email.includes('@telegram.tarqa') && !target.email.includes('@user.tarqa')) {
+          const { data: p } = await supabase.from('profiles').select('id, email').eq('email', target.email.toLowerCase()).maybeSingle();
+          if (p) matchedProfile = p;
+        }
+
+        if (!matchedProfile && target.telegramId) {
+          const { data: p } = await supabase.from('profiles').select('id, email').eq('telegram_id', target.telegramId).maybeSingle();
+          if (p) matchedProfile = p;
+        }
+
+        if (!matchedProfile && cleanTg) {
+          const { data: p } = await supabase.from('profiles').select('id, email').or(`telegram_username.eq.${cleanTg},telegram_username.eq.@${cleanTg}`).maybeSingle();
+          if (p) matchedProfile = p;
+        }
+
+        if (matchedProfile?.id && isValidUuid(matchedProfile.id)) {
+          supabaseTargetId = matchedProfile.id;
         }
 
         if (supabaseTargetId) {
-          const { data: sessionData } = await supabase.auth.getSession();
-          if (sessionData?.session) {
-            const { error: rpcError } = await supabase.rpc('admin_delete_user', {
+          try {
+            await supabase.rpc('admin_delete_user', {
               target_user_id: supabaseTargetId,
             });
+          } catch {}
 
-            if (rpcError) {
-              await supabase.from('profiles').delete().eq('id', supabaseTargetId);
-            }
-          }
+          try {
+            await supabase.from('profiles').delete().eq('id', supabaseTargetId);
+          } catch {}
+        }
+
+        const emailToDelete = matchedProfile?.email || (target.email && !target.email.includes('@telegram.tarqa') ? target.email : null);
+        if (emailToDelete) {
+          try {
+            await supabase.from('profiles').delete().eq('email', emailToDelete.toLowerCase());
+          } catch {}
+        }
+
+        if (cleanTg) {
+          try {
+            await supabase.from('profiles').delete().or(`telegram_username.eq.${cleanTg},telegram_username.eq.@${cleanTg}`);
+          } catch {}
         }
       } catch (err) {
         console.warn('Supabase user delete note:', err);

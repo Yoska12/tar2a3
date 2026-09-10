@@ -19,7 +19,10 @@ import {
   CheckCircle2,
   ExternalLink,
   Loader2,
-  Shield
+  Shield,
+  Gift,
+  RotateCcw,
+  Check
 } from 'lucide-react';
 import { CourseModule, Lesson, LessonAttachment, VideoProvider } from '../types';
 import { FileUploadZone } from './FileUploadZone';
@@ -31,7 +34,9 @@ interface LecturesCMSProps {
   onUpdateLesson: (updatedLesson: Lesson) => void;
   onDeleteLesson: (lessonId: string) => void;
   onTogglePublish: (lessonId: string) => void;
+  onToggleFreePreview?: (lessonId: string) => void;
   onReorderLessons: (moduleId: string, lessonId: string, direction: 'up' | 'down') => void;
+  onResetDefault?: () => void;
 }
 
 export const LecturesCMS: React.FC<LecturesCMSProps> = ({
@@ -40,11 +45,14 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
   onUpdateLesson,
   onDeleteLesson,
   onTogglePublish,
+  onToggleFreePreview,
   onReorderLessons,
+  onResetDefault,
 }) => {
   const [selectedModuleId, setSelectedModuleId] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
+  const [toast, setToast] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
 
   // حالة نموذج إضافة/تعديل درس
   const [formData, setFormData] = useState<{
@@ -145,9 +153,22 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
     setIsModalOpen(true);
   };
 
+  React.useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
   const handleSaveLesson = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.title.trim() || !formData.videoUrl.trim()) return;
+    if (!formData.title.trim()) {
+      alert('يرجى إدخال عنوان المحاضرة');
+      return;
+    }
+
+    const defaultVideoUrl = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
+    const finalVideoUrl = formData.videoUrl.trim() || defaultVideoUrl;
 
     if (editingLesson) {
       const updated: Lesson = {
@@ -156,7 +177,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
         title: formData.title.trim(),
         description: formData.description.trim(),
         videoProvider: formData.videoProvider,
-        videoUrl: formData.videoUrl.trim(),
+        videoUrl: finalVideoUrl,
         durationMinutes: Number(formData.durationMinutes) || 15,
         isFreePreview: formData.isFreePreview,
         isPublished: formData.isPublished,
@@ -164,6 +185,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
         attachments: formData.attachments,
       };
       onUpdateLesson(updated);
+      setToast({ text: 'تم حفظ تعديلات المحاضرة بنجاح في الموقع! ✅', type: 'success' });
     } else {
       const newLesson: Lesson = {
         id: 'les-' + Date.now(),
@@ -171,7 +193,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
         title: formData.title.trim(),
         description: formData.description.trim(),
         videoProvider: formData.videoProvider,
-        videoUrl: formData.videoUrl.trim(),
+        videoUrl: finalVideoUrl,
         durationMinutes: Number(formData.durationMinutes) || 15,
         orderIndex: 99,
         isFreePreview: formData.isFreePreview,
@@ -180,6 +202,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
         attachments: formData.attachments,
       };
       onAddLesson(formData.moduleId, newLesson);
+      setToast({ text: 'تمت إضافة المحاضرة ونشرها بنجاح في الموقع! ✅', type: 'success' });
     }
 
     setIsModalOpen(false);
@@ -190,8 +213,23 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
     : modules.filter((m) => m.id === selectedModuleId);
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-300">
-      
+    <div className="space-y-8 animate-in fade-in duration-300 relative">
+      {/* إشعار عائم Toast */}
+      {toast && (
+        <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl shadow-2xl border backdrop-blur-md flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-200 ${
+          toast.type === 'success'
+            ? 'bg-emerald-600/95 text-white border-emerald-400'
+            : toast.type === 'error'
+            ? 'bg-rose-600/95 text-white border-rose-400'
+            : 'bg-slate-900/95 text-white border-slate-700'
+        }`}>
+          {toast.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-200" />}
+          {toast.type === 'error' && <X className="w-5 h-5 text-rose-200" />}
+          {toast.type === 'info' && <Sparkles className="w-5 h-5 text-amber-400" />}
+          <span className="text-sm font-bold">{toast.text}</span>
+        </div>
+      )}
+
       {/* رأس الصفحة والإحصائيات السريعة */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -207,13 +245,31 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={() => openAddModal()}
-          className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm transition shadow-lg shadow-amber-500/20 active:scale-95 shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          <span>إضافة محاضرة جديدة</span>
-        </button>
+        <div className="flex items-center gap-2.5 shrink-0">
+          {onResetDefault && (
+            <button
+              onClick={() => {
+                if (window.confirm('هل أنت متأكد من رغبتك في استعادة المحاضرات الافتراضية؟ سيتم إعادة تحميل المسار التأسيسي الأصلي.')) {
+                  onResetDefault();
+                  setToast({ text: 'تمت استعادة المحاضرات الافتراضية بنجاح! 🔄', type: 'info' });
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-3 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition active:scale-95 border border-slate-200 dark:border-slate-700"
+              title="استعادة البيانات الافتراضية"
+            >
+              <RotateCcw className="w-4 h-4 text-slate-500" />
+              <span>استعادة الافتراضي</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => openAddModal()}
+            className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm transition shadow-lg shadow-amber-500/20 active:scale-95"
+          >
+            <Plus className="w-4 h-4" />
+            <span>إضافة محاضرة جديدة</span>
+          </button>
+        </div>
       </div>
 
       {/* بطاقات الإحصائيات الأربعة */}
@@ -376,13 +432,40 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
 
                       <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 mx-1" />
 
+                      {/* زر المعاينة المجانية */}
+                      {onToggleFreePreview && (
+                        <button
+                          onClick={() => {
+                            onToggleFreePreview(lesson.id);
+                            setToast({
+                              text: lesson.isFreePreview ? 'تم إلغاء المعاينة المجانية للدرس' : 'أصبح الدرس متاحاً كمعاينة مجانية 🎁',
+                              type: 'info',
+                            });
+                          }}
+                          className={`p-2 rounded-xl border text-xs font-bold transition ${
+                            lesson.isFreePreview
+                              ? 'text-amber-500 border-amber-500/30 bg-amber-500/10'
+                              : 'text-slate-400 border-slate-200 dark:border-slate-800 hover:text-amber-500'
+                          }`}
+                          title={lesson.isFreePreview ? 'معاينة مجانية (اضغط للإلغاء)' : 'غير مجاني (اضغط لجعله مجانياً)'}
+                        >
+                          <Gift className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+
                       {/* زر تبديل النشر */}
                       <button
-                        onClick={() => onTogglePublish(lesson.id)}
+                        onClick={() => {
+                          onTogglePublish(lesson.id);
+                          setToast({
+                            text: lesson.isPublished ? 'تم إخفاء المحاضرة من الطلاب (مسودة)' : 'تم نشر المحاضرة للطلاب بنجاح! 👁️',
+                            type: 'info',
+                          });
+                        }}
                         className={`p-2 rounded-xl border text-xs font-bold transition ${
                           lesson.isPublished
                             ? 'text-emerald-500 border-emerald-500/30 bg-emerald-500/10'
-                            : 'text-slate-400 border-slate-200 dark:border-slate-800 hover:text-white'
+                            : 'text-rose-400 border-rose-500/30 bg-rose-500/10'
                         }`}
                         title={lesson.isPublished ? 'منشور (اضغط للإخفاء)' : 'مخفي (اضغط للنشر)'}
                       >
@@ -401,12 +484,13 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                       {/* حذف */}
                       <button
                         onClick={() => {
-                          if (window.confirm('هل أنت متأكد من رغبتك في حذف هذه المحاضرة وجميع مرفقاتها؟')) {
+                          if (window.confirm(`هل أنت متأكد من حذف محاضرة "${lesson.title}"؟ سيتم حذفها نهائياً من الموقع ولن تعود.`)) {
                             onDeleteLesson(lesson.id);
+                            setToast({ text: `تم حذف محاضرة "${lesson.title}" بنجاح! 🗑️`, type: 'info' });
                           }
                         }}
                         className="p-2 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 border border-slate-200 dark:border-slate-800 transition"
-                        title="حذف المحاضرة"
+                        title="حذف المحاضرة نهائياً"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -565,12 +649,11 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
 
                   <div className="sm:col-span-2">
                     <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
-                      رابط الفيديو المباشر / التخزين:
+                      رابط الفيديو المباشر أو الفيديو المرفوع:
                     </label>
                     <input
-                      type="url"
-                      required
-                      placeholder="https://... رابط الفيديو"
+                      type="text"
+                      placeholder="https://... أو سيتم تعبئته تلقائياً عند الرفع"
                       value={formData.videoUrl}
                       onChange={(e) => setFormData({ ...formData, videoUrl: e.target.value })}
                       className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 text-left dir-ltr"

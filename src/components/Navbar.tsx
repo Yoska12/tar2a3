@@ -71,7 +71,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   const userEmailLower = currentUser?.email?.trim().toLowerCase();
-  const isOwner = userEmailLower === 'yassooooo27m@gmail.com';
+  const isOwner = userEmailLower === 'yassooooo27m@gmail.com' || userEmailLower === 'iyoskalg@gmail.com';
   const isAdmin = Boolean(currentUser && ((currentUser.role === 'admin') || (currentUser.role === 'super_admin') || isOwner));
   const currentRole: UserRole | null = currentUser 
     ? (isOwner ? 'super_admin' : currentUser.role) 

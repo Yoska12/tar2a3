@@ -6,7 +6,8 @@ export const ANNUAL_SUBSCRIPTION_PRICE_SAR = 75;
 
 export const isOwnerEmail = (email?: string | null): boolean => {
   if (!email) return false;
-  return email.trim().toLowerCase() === 'yassooooo27m@gmail.com';
+  const e = email.trim().toLowerCase();
+  return e === 'yassooooo27m@gmail.com' || e === 'iyoskalg@gmail.com';
 };
 
 /**
@@ -368,59 +369,43 @@ export const grantAnnualSubscription = async (
 };
 
 /**
- * إدارة وتخزين وحدات ومحاضرات الدورات (مع إمكانية التعديل والإضافة للمعلمين والمشرفين)
+ * إدارة وتخزين وحدات ومحاضرات الدورات (مع الحفظ الدائم وعدم التراجع عند الحذف)
  */
 export const coursesStorage = {
   getModules(): CourseModule[] {
     try {
-      const raw = localStorage.getItem('tarqa_custom_modules_v6') || localStorage.getItem('tarqa_custom_modules_v5');
+      // 1. قراءة التخزين الأساسي المستقر v7
+      const raw = localStorage.getItem('tarqa_custom_modules_v7');
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // ترقية تلقائية: دمج كافة المحاضرات في باب موحد باسم "المحاضرات" تنفيذاً لطلب العميل
-          if (parsed.length > 1 || parsed[0].id !== 'mod-lectures') {
-            const allLessons: Lesson[] = [];
-            const seenIds = new Set<string>();
-            parsed.forEach((m) => {
-              (m.lessons || []).forEach((l: Lesson) => {
-                if (!seenIds.has(l.id)) {
-                  seenIds.add(l.id);
-                  allLessons.push({
-                    ...l,
-                    moduleId: 'mod-lectures',
-                    moduleTitle: 'المحاضرات',
-                  });
-                }
-              });
-            });
-
-            const unifiedModule: CourseModule = {
-              id: 'mod-lectures',
-              title: 'المحاضرات',
-              description: 'محاضرات التأسيس الشاملة للقدرات من الصفر حتى الاحتراف مع استراتيجيات وطرق الحل السريع في ثوانٍ.',
-              orderIndex: 1,
-              icon: 'Video',
-              badgeColor: 'amber',
-              isPublished: true,
-              totalDurationMinutes: allLessons.reduce((sum, l) => sum + (l.durationMinutes || 0), 0),
-              completedLessonsCount: 0,
-              lessons: allLessons.length > 0 ? allLessons : mockFoundationModules[0].lessons,
-            };
-            const unifiedList = [unifiedModule];
-            this.saveModules(unifiedList);
-            return unifiedList;
-          }
           return parsed;
         }
       }
-    } catch (e) {}
-    return JSON.parse(JSON.stringify(mockFoundationModules));
+
+      // 2. الهجرة الآمنة من v6 إذا كانت موجودة لأول مرة فقط
+      const rawV6 = localStorage.getItem('tarqa_custom_modules_v6');
+      if (rawV6) {
+        const parsedV6 = JSON.parse(rawV6);
+        if (Array.isArray(parsedV6) && parsedV6.length > 0) {
+          this.saveModules(parsedV6);
+          return parsedV6;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse saved modules:', e);
+    }
+
+    // 3. الحالة الافتراضية المبدئية عند فتح الموقع لأول مرة فقط
+    const initial = JSON.parse(JSON.stringify(mockFoundationModules));
+    this.saveModules(initial);
+    return initial;
   },
 
   saveModules(modules: CourseModule[]): CourseModule[] {
     try {
+      localStorage.setItem('tarqa_custom_modules_v7', JSON.stringify(modules));
       localStorage.setItem('tarqa_custom_modules_v6', JSON.stringify(modules));
-      localStorage.setItem('tarqa_custom_modules_v5', JSON.stringify(modules));
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('tarqa_courses_modules_changed', { detail: modules }));
       }
@@ -454,60 +439,122 @@ export const coursesStorage = {
       current.push({
         id: 'mod-lectures',
         title: 'المحاضرات',
-        description: 'محاضرات التأسيس الشاملة',
+        description: 'محاضرات التأسيس الشاملة للقدرات',
         orderIndex: 1,
         isPublished: true,
         lessons: [],
       });
     }
 
-    const primaryModule = current[0];
-    newLesson.moduleId = primaryModule.id;
-    newLesson.moduleTitle = primaryModule.title;
+    // تحديد الباب المستهدف أو استخدام أول باب
+    const targetModule = current.find((m) => m.id === moduleId) || current[0];
+    newLesson.moduleId = targetModule.id;
+    newLesson.moduleTitle = targetModule.title;
 
-    let found = false;
-    current.forEach((mod) => {
-      const idx = (mod.lessons || []).findIndex((l) => l.id === newLesson.id);
-      if (idx !== -1) {
-        mod.lessons[idx] = newLesson;
-        found = true;
+    const updated = current.map((mod) => {
+      // إزالة أي درس مسبق بنفس المعرف لمنع التكرار
+      const filtered = (mod.lessons || []).filter((l) => l.id !== newLesson.id);
+      if (mod.id === targetModule.id) {
+        const nextLessons = [...filtered, newLesson];
+        return {
+          ...mod,
+          lessons: nextLessons,
+          totalDurationMinutes: nextLessons.reduce((sum, l) => sum + (l.durationMinutes || 0), 0),
+        };
       }
+      return {
+        ...mod,
+        lessons: filtered,
+      };
     });
 
-    if (!found) {
-      primaryModule.lessons = [...(primaryModule.lessons || []), newLesson];
-    }
-
-    return this.saveModules([...current]);
+    return this.saveModules(updated);
   },
 
   updateLesson(updatedLesson: Lesson): CourseModule[] {
     const current = this.getModules();
-    const updated = current.map((mod) => ({
-      ...mod,
-      lessons: (mod.lessons || []).map((l) => (l.id === updatedLesson.id ? updatedLesson : l)),
-    }));
+    const updated = current.map((mod) => {
+      if (mod.id === updatedLesson.moduleId) {
+        const exists = (mod.lessons || []).some((l) => l.id === updatedLesson.id);
+        const lessons = exists
+          ? mod.lessons.map((l) => (l.id === updatedLesson.id ? updatedLesson : l))
+          : [...(mod.lessons || []), updatedLesson];
+        return {
+          ...mod,
+          lessons,
+          totalDurationMinutes: lessons.reduce((sum, l) => sum + (l.durationMinutes || 0), 0),
+        };
+      } else {
+        // حذف من الباب القديم إذا تم تغيير الباب التابع له
+        const filtered = (mod.lessons || []).filter((l) => l.id !== updatedLesson.id);
+        return {
+          ...mod,
+          lessons: filtered,
+          totalDurationMinutes: filtered.reduce((sum, l) => sum + (l.durationMinutes || 0), 0),
+        };
+      }
+    });
     return this.saveModules(updated);
   },
 
-  deleteLesson(moduleId: string, lessonId: string): CourseModule[] {
+  deleteLesson(moduleIdOrLessonId: string, maybeLessonId?: string): CourseModule[] {
+    const targetId = maybeLessonId || moduleIdOrLessonId;
     const current = this.getModules();
-    const updated = current.map((mod) => ({
-      ...mod,
-      lessons: (mod.lessons || []).filter((l) => l.id !== lessonId),
-    }));
+    const updated = current.map((mod) => {
+      const filtered = (mod.lessons || []).filter((l) => l.id !== targetId);
+      return {
+        ...mod,
+        lessons: filtered,
+        totalDurationMinutes: filtered.reduce((sum, l) => sum + (l.durationMinutes || 0), 0),
+      };
+    });
     return this.saveModules(updated);
   },
 
-  toggleFreePreview(moduleId: string, lessonId: string): CourseModule[] {
+  togglePublish(lessonId: string): CourseModule[] {
     const current = this.getModules();
     const updated = current.map((mod) => ({
       ...mod,
       lessons: (mod.lessons || []).map((l) =>
-        l.id === lessonId ? { ...l, isFreePreview: !l.isFreePreview } : l
+        l.id === lessonId ? { ...l, isPublished: !l.isPublished } : l
       ),
     }));
     return this.saveModules(updated);
+  },
+
+  toggleFreePreview(moduleIdOrLessonId: string, maybeLessonId?: string): CourseModule[] {
+    const targetId = maybeLessonId || moduleIdOrLessonId;
+    const current = this.getModules();
+    const updated = current.map((mod) => ({
+      ...mod,
+      lessons: (mod.lessons || []).map((l) =>
+        l.id === targetId ? { ...l, isFreePreview: !l.isFreePreview } : l
+      ),
+    }));
+    return this.saveModules(updated);
+  },
+
+  reorderLessons(moduleId: string, lessonId: string, direction: 'up' | 'down'): CourseModule[] {
+    const current = this.getModules();
+    const updated = current.map((mod) => {
+      if (mod.id !== moduleId && moduleId !== 'all') return mod;
+      const list = [...(mod.lessons || [])];
+      const idx = list.findIndex((l) => l.id === lessonId);
+      if (idx === -1) return mod;
+      if (direction === 'up' && idx === 0) return mod;
+      if (direction === 'down' && idx === list.length - 1) return mod;
+      const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+      const temp = list[idx];
+      list[idx] = list[targetIdx];
+      list[targetIdx] = temp;
+      return { ...mod, lessons: list };
+    });
+    return this.saveModules(updated);
+  },
+
+  resetToDefault(): CourseModule[] {
+    const resetData = JSON.parse(JSON.stringify(mockFoundationModules));
+    return this.saveModules(resetData);
   },
 
   // إدارة قسم ملفات ومذكرات الدورة

@@ -10,13 +10,7 @@ import {
   Flame,
   ChevronLeft,
   ArrowRight,
-  TrendingUp,
-  Target,
   BrainCircuit,
-  Shapes,
-  Calculator,
-  Scale,
-  BarChart3,
   Lightbulb
 } from 'lucide-react';
 import { Navbar } from './components/Navbar';
@@ -33,14 +27,14 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { mockFoundationModules } from './data/foundationModules';
 import { mockCategories, mockQuestions } from './data/mockQuestions';
 import { QuizSettings, QuizResult, Category, Question, CourseModule, Lesson, UserRole } from './types';
-import { localScoreStorage, authService, TarqaUser, supabase, isSupabaseConfigured, syncUserToMembersDashboard } from './lib/supabase';
+import { localScoreStorage, authService, TarqaUser, supabase, isSupabaseConfigured, syncUserToMembersDashboard, isValidUuid } from './lib/supabase';
 import { sendQuizCompletedNotification, TELEGRAM_BOT_URL, TELEGRAM_BOT_USERNAME } from './lib/telegram';
 import { coursesStorage } from './lib/subscriptionService';
 
 const isOwnerEmail = (email?: string | null) => {
   if (!email) return false;
   const e = email.trim().toLowerCase();
-  return e === 'yassooooo27m@gmail.com';
+  return e === 'yassooooo27m@gmail.com' || e === 'iyoskalg@gmail.com';
 };
 
 export const App: React.FC = () => {
@@ -57,8 +51,10 @@ export const App: React.FC = () => {
     return authService.getCurrentUser();
   });
 
-  // مزامنة فورية للجلسة الحقيقية من Supabase لضمان الصلاحيات وحماية الزوار
+  // مزامنة فورية للجلسة الحقيقية من Supabase لضمان الصلاحيات وحماية الزوار وتحديث الرتب لحظياً
   useEffect(() => {
+    let profilesChannel: any = null;
+
     if (isSupabaseConfigured) {
       supabase.auth.getSession().then(async ({ data: { session } }) => {
         if (session?.user) {
@@ -73,11 +69,22 @@ export const App: React.FC = () => {
           let banReason = '';
 
           try {
-            const { data: profile } = await supabase
+            let profile = null;
+            const { data: pById } = await supabase
               .from('profiles')
               .select('*')
               .eq('id', session.user.id)
               .maybeSingle();
+            profile = pById;
+
+            if (!profile && session.user.email) {
+              const { data: pByEmail } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('email', session.user.email.toLowerCase())
+                .maybeSingle();
+              profile = pByEmail;
+            }
 
             if (profile) {
               if (profile.role) role = profile.role as UserRole;
@@ -117,9 +124,67 @@ export const App: React.FC = () => {
           setCurrentUser(user);
           syncUserToMembersDashboard(user);
         } else {
-          // إذا لم تكن هناك جلسة نشطة موثقة في Supabase -> المستخدم زائر تماماً
-          setCurrentUser(null);
-          localStorage.removeItem('tarqa_current_user');
+          // فحص ما إذا كان هناك مستخدم مسجل محلياً (مثل تليجرام أو دخول محلي) والتحقق من رتبته في السيرفر
+          const localCur = authService.getCurrentUser();
+          if (localCur && (localCur.email || localCur.telegramUsername || localCur.id)) {
+            try {
+              let profile: any = null;
+              const cleanTg = (localCur.telegramUsername || '').replace(/^@/, '').trim();
+
+              // 1. بالـ ID إذا كان UUID
+              if (localCur.id && isValidUuid(localCur.id)) {
+                const { data: pById } = await supabase.from('profiles').select('*').eq('id', localCur.id).maybeSingle();
+                if (pById) profile = pById;
+              }
+
+              // 2. بالبريد الحقيقي إذا لم يكن بريد تليجرام وهمي
+              if (!profile && localCur.email && !localCur.email.includes('@telegram.tarqa') && !localCur.email.includes('@user.tarqa')) {
+                const { data: pByEmail } = await supabase.from('profiles').select('*').eq('email', localCur.email.toLowerCase()).maybeSingle();
+                if (pByEmail) profile = pByEmail;
+              }
+
+              // 3. بمعرف تليجرام الرقمي
+              if (!profile && localCur.telegramId) {
+                const { data: pByTgId } = await supabase.from('profiles').select('*').eq('telegram_id', localCur.telegramId).maybeSingle();
+                if (pByTgId) profile = pByTgId;
+              }
+
+              // 4. بيوزر تليجرام بكل الصيغ
+              if (!profile && cleanTg) {
+                const { data: pByTgName } = await supabase.from('profiles').select('*').or(`telegram_username.eq.${cleanTg},telegram_username.eq.@${cleanTg},telegram_username.ilike.%${cleanTg}%`).maybeSingle();
+                if (pByTgName) profile = pByTgName;
+              }
+
+              if (profile) {
+                const isOwner = isOwnerEmail(localCur.email) || (profile.email && isOwnerEmail(profile.email));
+                const roleFromDb: UserRole = isOwner ? 'super_admin' : ((profile.role as UserRole) || localCur.role);
+                const updatedUser: TarqaUser = {
+                  ...localCur,
+                  id: profile.id || localCur.id,
+                  role: roleFromDb,
+                  fullName: isOwner ? 'Yoska' : (profile.full_name || localCur.fullName),
+                  email: (profile.email && !profile.email.includes('@telegram.tarqa')) ? profile.email : localCur.email,
+                  isBanned: Boolean(profile.is_banned),
+                };
+                if (profile.is_banned) {
+                  localStorage.removeItem('tarqa_current_user');
+                  setCurrentUser(null);
+                  alert('تم حظر هذا الحساب من قبل إدارة المنصة.');
+                  return;
+                }
+                localStorage.setItem('tarqa_current_user', JSON.stringify(updatedUser));
+                setCurrentUser(updatedUser);
+                syncUserToMembersDashboard(updatedUser);
+                return;
+              }
+            } catch (e) {
+              console.warn('Failed to verify local user with Supabase:', e);
+            }
+            setCurrentUser(localCur);
+          } else {
+            setCurrentUser(null);
+            localStorage.removeItem('tarqa_current_user');
+          }
         }
       });
 
@@ -134,11 +199,22 @@ export const App: React.FC = () => {
           let banReason = '';
 
           try {
-            const { data: profile } = await supabase
+            let profile = null;
+            const { data: pById } = await supabase
               .from('profiles')
               .select('*')
               .eq('id', session.user.id)
               .maybeSingle();
+            profile = pById;
+
+            if (!profile && session.user.email) {
+              const { data: pByEmail } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('email', session.user.email.toLowerCase())
+                .maybeSingle();
+              profile = pByEmail;
+            }
 
             if (profile) {
               if (profile.role) role = profile.role as UserRole;
@@ -170,18 +246,144 @@ export const App: React.FC = () => {
             role: verifiedRole,
             telegramUsername,
             avatarUrl,
+            isBanned: false,
           };
           localStorage.setItem('tarqa_current_user', JSON.stringify(user));
           setCurrentUser(user);
           syncUserToMembersDashboard(user);
-        } else if (event === 'SIGNED_OUT' || !session) {
+        } else if (event === 'SIGNED_OUT') {
           setCurrentUser(null);
           localStorage.removeItem('tarqa_current_user');
         }
       });
 
-      return () => subscription.unsubscribe();
+      // اشتراك Realtime حي بجدول profiles في Supabase لتفعيل رتبة السوبر أدمن فورياً بدون إعادة تحميل الصفحة
+      try {
+        profilesChannel = supabase
+          .channel('public:profiles:all')
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'profiles' },
+            (payload: any) => {
+              const updated = payload.new;
+              if (!updated) return;
+
+              const cur = authService.getCurrentUser();
+              if (!cur) return;
+
+              const curTg = (cur.telegramUsername || '').replace(/^@/, '').toLowerCase();
+              const updTg = (updated.telegram_username || '').replace(/^@/, '').toLowerCase();
+              const isMe =
+                (cur.id && updated.id && cur.id === updated.id) ||
+                (cur.email && updated.email && !cur.email.includes('@telegram.tarqa') && cur.email.toLowerCase() === updated.email.toLowerCase()) ||
+                (cur.telegramId && updated.telegram_id && cur.telegramId === updated.telegram_id) ||
+                (curTg && updTg && curTg === updTg);
+
+              if (isMe) {
+                const isOwner = isOwnerEmail(cur.email) || (updated.email && isOwnerEmail(updated.email));
+                const newRole: UserRole = isOwner ? 'super_admin' : (updated.role as UserRole || cur.role);
+                const newFullName = isOwner ? 'Yoska' : (updated.full_name || cur.fullName);
+
+                const updatedUser: TarqaUser = {
+                  ...cur,
+                  id: updated.id || cur.id,
+                  role: newRole,
+                  fullName: newFullName,
+                  email: (updated.email && !updated.email.includes('@telegram.tarqa')) ? updated.email : cur.email,
+                  isBanned: Boolean(updated.is_banned),
+                };
+
+                localStorage.setItem('tarqa_current_user', JSON.stringify(updatedUser));
+                setCurrentUser(updatedUser);
+                syncUserToMembersDashboard(updatedUser);
+                window.dispatchEvent(new Event('tarqa_user_changed'));
+                window.dispatchEvent(new Event('tarqa_roles_changed'));
+              }
+            }
+          )
+          .subscribe();
+      } catch (rtErr) {
+        console.warn('Realtime subscription note:', rtErr);
+      }
+
+      return () => {
+        subscription.unsubscribe();
+        if (profilesChannel) supabase.removeChannel(profilesChannel);
+      };
     }
+  }, []);
+
+  // فحص دوري تلقائي خفيف (كل 4 ثوانٍ) لضمان مزامنة رتبة المستخدم الحالي مع قاعدة البيانات
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    const interval = setInterval(async () => {
+      const cur = authService.getCurrentUser();
+      if (!cur) return;
+
+      try {
+        let profile: any = null;
+        const cleanTg = (cur.telegramUsername || '').replace(/^@/, '').trim();
+
+        if (cur.id && isValidUuid(cur.id)) {
+          const { data: pById } = await supabase.from('profiles').select('id, role, full_name, is_banned, email').eq('id', cur.id).maybeSingle();
+          if (pById) profile = pById;
+        }
+
+        if (!profile && cur.email && !cur.email.includes('@telegram.tarqa') && !cur.email.includes('@user.tarqa')) {
+          const { data: pByEmail } = await supabase.from('profiles').select('id, role, full_name, is_banned, email').eq('email', cur.email.toLowerCase()).maybeSingle();
+          if (pByEmail) profile = pByEmail;
+        }
+
+        if (!profile && cur.telegramId) {
+          const { data: pByTgId } = await supabase.from('profiles').select('id, role, full_name, is_banned, email').eq('telegram_id', cur.telegramId).maybeSingle();
+          if (pByTgId) profile = pByTgId;
+        }
+
+        if (!profile && cleanTg) {
+          const { data: pByTgName } = await supabase.from('profiles').select('id, role, full_name, is_banned, email').or(`telegram_username.eq.${cleanTg},telegram_username.eq.@${cleanTg},telegram_username.ilike.%${cleanTg}%`).maybeSingle();
+          if (pByTgName) profile = pByTgName;
+        }
+
+        if (profile && profile.role && profile.role !== cur.role) {
+          const isOwner = isOwnerEmail(cur.email) || (profile.email && isOwnerEmail(profile.email));
+          const newRole: UserRole = isOwner ? 'super_admin' : (profile.role as UserRole);
+          const updatedUser: TarqaUser = {
+            ...cur,
+            id: profile.id || cur.id,
+            role: newRole,
+            fullName: isOwner ? 'Yoska' : (profile.full_name || cur.fullName),
+            email: (profile.email && !profile.email.includes('@telegram.tarqa')) ? profile.email : cur.email,
+            isBanned: Boolean(profile.is_banned),
+          };
+          localStorage.setItem('tarqa_current_user', JSON.stringify(updatedUser));
+          setCurrentUser(updatedUser);
+          syncUserToMembersDashboard(updatedUser);
+          window.dispatchEvent(new Event('tarqa_user_changed'));
+          window.dispatchEvent(new Event('tarqa_roles_changed'));
+        }
+      } catch {}
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // الاستماع الفوري لتغييرات الرتب والمستخدمين عبر النوافذ والتبويبات
+  useEffect(() => {
+    const handleUserOrRoleChanged = () => {
+      const cur = authService.getCurrentUser();
+      setCurrentUser(cur ? { ...cur } : null);
+    };
+
+    window.addEventListener('tarqa_user_changed', handleUserOrRoleChanged);
+    window.addEventListener('tarqa_roles_changed', handleUserOrRoleChanged);
+    window.addEventListener('storage', handleUserOrRoleChanged);
+
+    return () => {
+      window.removeEventListener('tarqa_user_changed', handleUserOrRoleChanged);
+      window.removeEventListener('tarqa_roles_changed', handleUserOrRoleChanged);
+      window.removeEventListener('storage', handleUserOrRoleChanged);
+    };
   }, []);
 
   // قائمة الأسئلة القابلة للإدارة والتحديث المباشر
@@ -225,10 +427,24 @@ export const App: React.FC = () => {
   // الاستماع لتحديثات المحاضرات والدورات فورياً
   useEffect(() => {
     const handleModulesChanged = (e: any) => {
-      if (e.detail) {
-        setModules(e.detail);
-      } else {
-        setModules(coursesStorage.getModules());
+      const newModules = e.detail || coursesStorage.getModules();
+      setModules([...newModules]);
+
+      // مزامنة الدرس النشط والباب النشط لتجنب الإشارة لدروس محذوفة
+      if (newModules.length > 0) {
+        const allLessons = newModules.flatMap((m: any) => m.lessons || []);
+        setActiveModule((prevMod) => {
+          if (!prevMod || !newModules.some((m: any) => m.id === prevMod.id)) {
+            return newModules[0];
+          }
+          return newModules.find((m: any) => m.id === prevMod.id) || newModules[0];
+        });
+        setActiveLesson((prevLes) => {
+          if (!prevLes || !allLessons.some((l: any) => l.id === prevLes.id)) {
+            return allLessons[0] || newModules[0]?.lessons?.[0];
+          }
+          return allLessons.find((l: any) => l.id === prevLes.id) || prevLes;
+        });
       }
     };
     window.addEventListener('tarqa_courses_modules_changed', handleModulesChanged);
@@ -312,14 +528,15 @@ export const App: React.FC = () => {
 
   // إكمال المحاضرة
   const handleCompleteLesson = (lessonId: string) => {
-    setModules((prev) =>
-      prev.map((mod) => ({
-        ...mod,
-        lessons: mod.lessons.map((l) =>
-          l.id === lessonId ? { ...l, isCompleted: true } : l
-        ),
-      }))
-    );
+    const cur = coursesStorage.getModules();
+    const updated = cur.map((mod) => ({
+      ...mod,
+      lessons: (mod.lessons || []).map((l) =>
+        l.id === lessonId ? { ...l, isCompleted: true } : l
+      ),
+    }));
+    coursesStorage.saveModules(updated);
+    setModules([...updated]);
   };
 
   // دالة موحدة للتنقل بين التبويبات والشاشات
@@ -520,29 +737,24 @@ export const App: React.FC = () => {
                 setModules([...updatedList]);
               }}
               onDeleteLesson={(lessonId) => {
-                const updated = coursesStorage.deleteLesson('mod-lectures', lessonId);
+                const updated = coursesStorage.deleteLesson(lessonId);
                 setModules([...updated]);
               }}
               onTogglePublish={(lessonId) => {
-                const updated = coursesStorage.toggleFreePreview('mod-lectures', lessonId);
+                const updated = coursesStorage.togglePublish(lessonId);
+                setModules([...updated]);
+              }}
+              onToggleFreePreview={(lessonId) => {
+                const updated = coursesStorage.toggleFreePreview(lessonId);
                 setModules([...updated]);
               }}
               onReorderLessons={(modId, lessonId, direction) => {
-                const cur = coursesStorage.getModules();
-                const updated = cur.map((mod) => {
-                  const index = (mod.lessons || []).findIndex((l) => l.id === lessonId);
-                  if (index === -1) return mod;
-                  if (direction === 'up' && index === 0) return mod;
-                  if (direction === 'down' && index === mod.lessons.length - 1) return mod;
-                  const copy = [...mod.lessons];
-                  const target = direction === 'up' ? index - 1 : index + 1;
-                  const temp = copy[index];
-                  copy[index] = copy[target];
-                  copy[target] = temp;
-                  return { ...mod, lessons: copy };
-                });
-                const saved = coursesStorage.saveModules(updated);
+                const saved = coursesStorage.reorderLessons(modId, lessonId, direction);
                 setModules([...saved]);
+              }}
+              onResetDefault={() => {
+                const reset = coursesStorage.resetToDefault();
+                setModules([...reset]);
               }}
             />
           ) : (
@@ -853,49 +1065,6 @@ export const App: React.FC = () => {
             </div>
           </section>
 
-          {/* تصفح أقسام الكمي الستة (Categories Grid - Alaqsam style) */}
-          <section id="categories" className="flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-                  أقسام اختبار القدرات (الكمي)
-                </h2>
-                <p className="text-xs text-slate-500">تدرب على كل قسم بمفرده لتقوية نقاط ضعفك</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {mockCategories.filter(c => c.id !== 'all').map((cat) => (
-                <div
-                  key={cat.id}
-                  onClick={() => startPracticeMode(cat)}
-                  className="p-5 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800 hover:border-amber-500/50 shadow-sm hover:shadow-md transition-all cursor-pointer group flex items-start gap-4"
-                >
-                  <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0 group-hover:bg-amber-500 group-hover:text-slate-950 transition-colors">
-                    {cat.slug === 'geometry' && <Shapes className="w-6 h-6" />}
-                    {cat.slug === 'algebra' && <TrendingUp className="w-6 h-6" />}
-                    {cat.slug === 'arithmetic' && <Calculator className="w-6 h-6" />}
-                    {cat.slug === 'comparisons' && <Scale className="w-6 h-6" />}
-                    {cat.slug === 'statistics' && <BarChart3 className="w-6 h-6" />}
-                    {cat.slug === 'word-problems' && <Clock className="w-6 h-6" />}
-                  </div>
-
-                  <div className="flex-1">
-                    <h3 className="font-bold text-base text-slate-900 dark:text-white group-hover:text-amber-500 transition-colors">
-                      {cat.title}
-                    </h3>
-                    <p className="text-xs text-slate-500 leading-relaxed line-clamp-2 mt-1">
-                      {cat.description}
-                    </p>
-                    <div className="flex items-center gap-2 mt-3 text-xs font-semibold text-amber-600 dark:text-amber-400">
-                      <span>بدء التدريب</span>
-                      <ChevronLeft className="w-3.5 h-3.5 group-hover:-translate-x-1 transition-transform" />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
 
           {/* بطاقة ميزات "طريقة طرقع" */}
           <section className="p-8 rounded-3xl bg-slate-900 text-white border border-slate-800 flex flex-col md:flex-row items-center justify-between gap-6">

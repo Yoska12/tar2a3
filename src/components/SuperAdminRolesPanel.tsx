@@ -46,7 +46,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
   // استنتاج المستخدم الحالي وصلاحياته الموثوقة (مع أخذ السوبر أدمن والمالك بعين الاعتبار)
   const currentLoggedUser = currentUser || authService.getCurrentUser();
   const currentEmailLower = currentLoggedUser?.email?.trim().toLowerCase();
-  const isOwner = currentEmailLower === 'yassooooo27m@gmail.com';
+  const isOwner = currentEmailLower === 'yassooooo27m@gmail.com' || currentEmailLower === 'iyoskalg@gmail.com';
   const isSuperAdmin = currentLoggedUser?.role === 'super_admin' || isOwner;
   const isAuthorizedAdmin = currentLoggedUser?.role === 'admin' || isSuperAdmin;
 
@@ -494,7 +494,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-black bg-gradient-to-r from-amber-500/20 to-rose-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/40 shadow-sm">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-              <span>Super Admin • Yoska</span>
+              <span>Super Admin • {currentLoggedUser?.fullName || 'Yoska'}</span>
             </span>
           </div>
         </div>
@@ -863,7 +863,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
               ) : (
                 filteredUsers.map((user) => {
                   const isCurrentLoggedUser = currentLoggedUser?.id === user.id;
-                  const isTargetSuperAdminOrOwner = user.email?.toLowerCase() === 'yassooooo27m@gmail.com' || user.role === 'super_admin';
+                  const isTargetSuperAdminOrOwner = user.email?.toLowerCase() === 'yassooooo27m@gmail.com' || user.email?.toLowerCase() === 'iyoskalg@gmail.com' || user.role === 'super_admin';
 
                   return (
                     <tr
@@ -1116,7 +1116,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
           ) : (
             filteredUsers.map((user) => {
               const isCurrentLoggedUser = currentLoggedUser?.id === user.id;
-              const isTargetSuperAdminOrOwner = user.email?.toLowerCase() === 'yassooooo27m@gmail.com' || user.role === 'super_admin';
+              const isTargetSuperAdminOrOwner = user.email?.toLowerCase() === 'yassooooo27m@gmail.com' || user.email?.toLowerCase() === 'iyoskalg@gmail.com' || user.role === 'super_admin';
 
               return (
                 <div key={user.id} className={`p-4 flex flex-col gap-3 ${user.isBanned ? 'bg-rose-500/5 dark:bg-rose-950/15' : ''}`}>
@@ -1137,8 +1137,12 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                         ) : (
                           <span>{user.fullName.charAt(0) || 'م'}</span>
                         )}
-                        {user.role === 'admin' && (
-                          <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-purple-500 rounded-full flex items-center justify-center text-[8px] text-white">
+                        {isTargetSuperAdminOrOwner ? (
+                          <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-amber-500 rounded-full flex items-center justify-center text-[8px] text-slate-950 shadow">
+                            👑
+                          </div>
+                        ) : user.role === 'admin' && (
+                          <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-purple-500 rounded-full flex items-center justify-center text-[8px] text-white shadow">
                             🛡️
                           </div>
                         )}
@@ -1764,6 +1768,11 @@ const SQL_FIX_SCRIPT = `-- =====================================================
 -- 🚀 منصة طرقع للقدرات - السكربت النهائي الشامل لحل مشكلة ظهور المستخدمين في الداشبورد
 -- ==============================================================================
 
+-- 0. إزالة أي قيود أو تريجرات سابقة تمنع وجود أكثر من حساب سوبر أدمن
+DROP TRIGGER IF EXISTS trg_enforce_single_super_admin ON public.profiles;
+DROP FUNCTION IF EXISTS public.enforce_single_super_admin();
+DROP INDEX IF EXISTS public.idx_single_super_admin;
+
 -- 1. التأكد من نوع الرتب user_role
 DO $$ BEGIN
     CREATE TYPE public.user_role AS ENUM ('student', 'teacher', 'admin', 'super_admin');
@@ -2011,6 +2020,59 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
 GRANT EXECUTE ON FUNCTION public.admin_update_user_role(UUID, public.user_role, TEXT) TO authenticated, anon;
 GRANT EXECUTE ON FUNCTION public.admin_toggle_ban_user(UUID, BOOLEAN, TEXT) TO authenticated, anon;
 GRANT EXECUTE ON FUNCTION public.admin_delete_user(UUID) TO authenticated, anon;
+
+-- دالة مرنة لتحديث الرتبة بواسطة أي معرف (UUID أو بريد أو يوزر تليجرام)
+CREATE OR REPLACE FUNCTION public.admin_update_user_role_by_identifier(
+    p_identifier TEXT,
+    new_role public.user_role,
+    reason TEXT DEFAULT NULL
+)
+RETURNS boolean AS $$
+DECLARE
+    v_target_id UUID;
+    v_clean_ident TEXT;
+BEGIN
+    v_clean_ident := LOWER(TRIM(p_identifier));
+
+    BEGIN
+        v_target_id := p_identifier::UUID;
+    EXCEPTION WHEN OTHERS THEN
+        v_target_id := NULL;
+    END;
+
+    IF v_target_id IS NOT NULL THEN
+        UPDATE public.profiles SET role = new_role, updated_at = now() WHERE id = v_target_id;
+    ELSE
+        UPDATE public.profiles 
+        SET role = new_role, updated_at = now() 
+        WHERE LOWER(TRIM(email)) = v_clean_ident
+           OR LOWER(TRIM(telegram_username)) = v_clean_ident
+           OR LOWER(TRIM(telegram_username)) = '@' || v_clean_ident
+           OR LOWER(TRIM(REPLACE(telegram_username, '@', ''))) = v_clean_ident;
+        
+        SELECT id INTO v_target_id FROM public.profiles 
+        WHERE LOWER(TRIM(email)) = v_clean_ident
+           OR LOWER(TRIM(telegram_username)) = v_clean_ident
+           OR LOWER(TRIM(telegram_username)) = '@' || v_clean_ident
+           OR LOWER(TRIM(REPLACE(telegram_username, '@', ''))) = v_clean_ident
+        LIMIT 1;
+    END IF;
+
+    IF v_target_id IS NOT NULL THEN
+        BEGIN
+            UPDATE auth.users
+            SET raw_app_meta_data = COALESCE(raw_app_meta_data, '{}'::jsonb) || jsonb_build_object('role', new_role::text),
+                raw_user_meta_data = COALESCE(raw_user_meta_data, '{}'::jsonb) || jsonb_build_object('role', new_role::text)
+            WHERE id = v_target_id;
+        EXCEPTION WHEN OTHERS THEN NULL;
+        END;
+    END IF;
+
+    RETURN true;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
+
+GRANT EXECUTE ON FUNCTION public.admin_update_user_role_by_identifier(TEXT, public.user_role, TEXT) TO authenticated, anon;
 
 -- 8. تفعيل البث اللحظي (Realtime) لجدول profiles
 DO $$ BEGIN

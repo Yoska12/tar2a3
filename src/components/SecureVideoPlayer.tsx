@@ -17,6 +17,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { TarqaUser } from '../lib/supabase';
+import { resolveVideoUrl } from '../lib/videoUploadService';
 
 interface SecureVideoPlayerProps {
   src: string;
@@ -38,6 +39,27 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const watermarkRef = useRef<HTMLDivElement>(null);
+
+  // الرابط الفعلي القابل للتشغيل (يحل IndexedDB إلى ObjectURL حي)
+  const [resolvedSrc, setResolvedSrc] = useState<string>(src);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!src) {
+      setResolvedSrc('');
+      return;
+    }
+    if (src.startsWith('indexeddb://')) {
+      resolveVideoUrl(src).then((realUrl) => {
+        if (isMounted) setResolvedSrc(realUrl);
+      });
+    } else {
+      setResolvedSrc(src);
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [src]);
 
   // حالة المشغل
   const [isPlaying, setIsPlaying] = useState(false);
@@ -255,7 +277,7 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
       {/* 1. عنصر الفيديو الفعلي (مع تعطيل خيارات التنزيل الافتراضية) */}
       <video
         ref={videoRef}
-        src={src}
+        src={resolvedSrc}
         poster={poster}
         autoPlay={autoPlay}
         playsInline

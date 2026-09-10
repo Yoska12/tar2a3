@@ -17,14 +17,14 @@ export async function updateUserRoleAction(
     }
 
     const userEmailLower = user.email?.trim().toLowerCase();
-    const isOwner = userEmailLower === 'yassooooo27m@gmail.com';
+    const isOwner = userEmailLower === 'yassooooo27m@gmail.com' || userEmailLower === 'iyoskalg@gmail.com';
     const rawRole = (user.app_metadata?.role as UserRole) || (user.user_metadata?.role as UserRole);
-    const callerRole = isOwner ? 'admin' : (rawRole === 'super_admin' ? 'admin' : rawRole);
+    const callerRole: UserRole = isOwner ? 'super_admin' : (rawRole || 'student');
 
-    if (callerRole !== 'admin') {
+    if (callerRole !== 'admin' && callerRole !== 'super_admin') {
       return {
         success: false,
-        error: 'عملية غير مصرح بها: ترقية وسحب الرتب محصورة بمسؤولي المنصة (Admins) حصراً.',
+        error: 'عملية غير مصرح بها: ترقية وسحب الرتب محصورة بمسؤولي وسوبر أدمن المنصة حصراً.',
       };
     }
 
@@ -39,11 +39,11 @@ export async function updateUserRoleAction(
       return { success: false, error: 'لم يتم العثور على المستخدم' };
     }
 
-    // منح رتبة السوبر أدمن محصور بمالك المنصة
-    if (newRole === 'super_admin' && !isOwner) {
+    // منح رتبة السوبر أدمن محصور بمالك المنصة أو سوبر أدمن
+    if (newRole === 'super_admin' && !isOwner && callerRole !== 'super_admin') {
       return {
         success: false,
-        error: 'منح رتبة السوبر أدمن محصور بمالك المنصة حصراً.',
+        error: 'منح رتبة السوبر أدمن محصور بمالك المنصة والسوبر أدمن حصراً.',
       };
     }
 

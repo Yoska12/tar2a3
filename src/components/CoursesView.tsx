@@ -1249,7 +1249,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                     أو رابط ملف الفيديو المباشر (MP4 / WebM / Stream URL):
                   </label>
                   <input
-                    type="url"
+                    type="text"
                     value={lessonFormData.videoUrl}
                     onChange={(e) => {
                       const val = e.target.value;
@@ -1259,7 +1259,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                         videoProvider: val.includes('youtube.com') || val.includes('youtu.be') ? 'youtube' : 'uploaded_video',
                       });
                     }}
-                    placeholder="https://example.com/video.mp4 أو رابط التخزين"
+                    placeholder="https://example.com/video.mp4 أو رابط التخزين أو الفيديو المرفوع"
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 font-mono text-left"
                     dir="ltr"
                   />

@@ -79,11 +79,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           photo_url: tgUser.photo_url,
         });
 
-        setAuthSuccess(`أهلاً بك يا ${user.fullName}! تم تسجيل الدخول الرسمي عبر تليجرام بنجاح 🎯`);
+        setAuthSuccess(
+          activeTab === 'signup'
+            ? `أهلاً بك يا ${user.fullName}! تم إنشاء حسابك الرسمي عبر تليجرام بنجاح 🎯`
+            : `أهلاً بك يا ${user.fullName}! تم تسجيل الدخول الرسمي عبر تليجرام بنجاح 🎯`
+        );
+        window.dispatchEvent(new Event('tarqa_roles_changed'));
+        window.dispatchEvent(new Event('tarqa_user_changed'));
         if (onUserLoggedIn) onUserLoggedIn(user);
         setTimeout(() => onClose(), 800);
       } catch (err: any) {
-        setAuthError(err?.message || 'تعذر تسجيل الدخول عبر تليجرام');
+        setAuthError(err?.message || (activeTab === 'signup' ? 'تعذر إنشاء الحساب عبر تليجرام' : 'تعذر تسجيل الدخول عبر تليجرام'));
       } finally {
         setIsLoading(false);
       }
@@ -227,13 +233,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         username: cleanUsername,
       });
 
-      setAuthSuccess(`أهلاً بك يا ${user.fullName}! تم تسجيل الدخول بنجاح عبر تليجرام @${cleanUsername} 🎯`);
+      setAuthSuccess(
+        activeTab === 'signup'
+          ? `أهلاً بك يا ${user.fullName}! تم إنشاء حسابك بنجاح عبر تليجرام @${cleanUsername} 🎯`
+          : `أهلاً بك يا ${user.fullName}! تم تسجيل الدخول بنجاح عبر تليجرام @${cleanUsername} 🎯`
+      );
       window.dispatchEvent(new Event('tarqa_roles_changed'));
       window.dispatchEvent(new Event('tarqa_user_changed'));
       if (onUserLoggedIn) onUserLoggedIn(user);
       setTimeout(() => onClose(), 800);
     } catch (err: any) {
-      setAuthError(err?.message || 'تعذر الدخول عبر معرف تليجرام');
+      setAuthError(err?.message || (activeTab === 'signup' ? 'تعذر إنشاء الحساب عبر معرف تليجرام' : 'تعذر الدخول عبر معرف تليجرام'));
     } finally {
       setIsLoading(false);
     }
@@ -305,100 +315,108 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </div>
         )}
 
-        {/* قسم تليجرام الرسمي (@Tarqa3bot) */}
-        {activeTab === 'signin' && (
-          <div className="mb-4 p-3.5 rounded-2xl bg-gradient-to-b from-[#24A1DE]/10 to-[#24A1DE]/5 border border-[#24A1DE]/25">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-xl bg-[#24A1DE] flex items-center justify-center text-white shadow-sm">
-                  <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.161c-.18.872-1.748 7.375-2.544 10.725-.337 1.417-.98 1.69-1.603 1.636-.889-.078-1.564-.747-2.428-1.312-1.353-.886-2.116-1.438-3.428-2.302-1.516-.998-.533-1.547.331-2.444.226-.235 4.148-3.805 4.225-4.13.01-.04.018-.19-.071-.271-.09-.081-.223-.053-.319-.032-.136.031-2.303 1.464-6.5 4.301-.615.422-1.171.628-1.669.617-.55-.012-1.608-.312-2.395-.568-.964-.313-1.731-.478-1.664-1.009.035-.277.417-.56 1.144-.851 4.485-1.954 7.477-3.243 8.977-3.865 4.279-1.776 5.168-2.086 5.75-2.096.128-.002.414.03.6.182.156.128.2.302.221.424-.002.094.01.378-.006.564z"/>
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                    الدخول السريع عبر تليجرام
-                  </h3>
-                  <a 
-                    href={TELEGRAM_BOT_URL} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-[10px] text-[#24A1DE] hover:underline flex items-center gap-0.5 font-mono"
-                  >
-                    <span>@{TELEGRAM_BOT_USERNAME}</span>
-                    <ExternalLink className="w-2.5 h-2.5" />
-                  </a>
-                </div>
+        {/* قسم تليجرام الرسمي (@Tarqa3bot) - لتسجيل الدخول وإنشاء الحساب */}
+        <div className="mb-4 p-3.5 rounded-2xl bg-gradient-to-b from-[#24A1DE]/10 to-[#24A1DE]/5 border border-[#24A1DE]/25">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-xl bg-[#24A1DE] flex items-center justify-center text-white shadow-sm">
+                <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                  <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.161c-.18.872-1.748 7.375-2.544 10.725-.337 1.417-.98 1.69-1.603 1.636-.889-.078-1.564-.747-2.428-1.312-1.353-.886-2.116-1.438-3.428-2.302-1.516-.998-.533-1.547.331-2.444.226-.235 4.148-3.805 4.225-4.13.01-.04.018-.19-.071-.271-.09-.081-.223-.053-.319-.032-.136.031-2.303 1.464-6.5 4.301-.615.422-1.171.628-1.669.617-.55-.012-1.608-.312-2.395-.568-.964-.313-1.731-.478-1.664-1.009.035-.277.417-.56 1.144-.851 4.485-1.954 7.477-3.243 8.977-3.865 4.279-1.776 5.168-2.086 5.75-2.096.128-.002.414.03.6.182.156.128.2.302.221.424-.002.094.01.378-.006.564z"/>
+                </svg>
               </div>
+              <div>
+                <h3 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  {activeTab === 'signup' ? 'إنشاء حساب فوري عبر تليجرام' : 'الدخول السريع عبر تليجرام'}
+                </h3>
+                <a 
+                  href={TELEGRAM_BOT_URL} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-[10px] text-[#24A1DE] hover:underline flex items-center gap-0.5 font-mono"
+                >
+                  <span>@{TELEGRAM_BOT_USERNAME}</span>
+                  <ExternalLink className="w-2.5 h-2.5" />
+                </a>
+              </div>
+            </div>
 
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#24A1DE]/20 text-[#24A1DE] font-semibold">
-                بوت معتمد
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#24A1DE]/20 text-[#24A1DE] font-semibold">
+              بوت معتمد
+            </span>
+          </div>
+
+          {/* ويدجت تليجرام الرسمي من تيليجرام */}
+          <div className="flex flex-col items-center justify-center my-2">
+            <div ref={telegramContainerRef} className="min-h-[40px] flex items-center justify-center" />
+          </div>
+
+          {/* خيار الدخول / إنشاء الحساب بالمعرّف المباشر */}
+          {!showTelegramDirectInput ? (
+            <button
+              type="button"
+              onClick={() => setShowTelegramDirectInput(true)}
+              className="w-full text-center text-[11px] text-slate-500 hover:text-[#24A1DE] transition py-1 flex items-center justify-center gap-1"
+            >
+              <AtSign className="w-3 h-3" />
+              <span>
+                {activeTab === 'signup' ? 'أو إنشاء الحساب باليوزر / المعرف مباشرة' : 'أو الدخول المباشر باليوزر / المعرف'}
               </span>
-            </div>
-
-            {/* ويدجت تليجرام الرسمي من تيليجرام */}
-            <div className="flex flex-col items-center justify-center my-2">
-              <div ref={telegramContainerRef} className="min-h-[40px] flex items-center justify-center" />
-            </div>
-
-            {/* خيار الدخول بالمعرّف المباشر */}
-            {!showTelegramDirectInput ? (
-              <button
-                type="button"
-                onClick={() => setShowTelegramDirectInput(true)}
-                className="w-full text-center text-[11px] text-slate-500 hover:text-[#24A1DE] transition py-1 flex items-center justify-center gap-1"
-              >
-                <AtSign className="w-3 h-3" />
-                <span>أو الدخول المباشر باليوزر / المعرف</span>
-              </button>
-            ) : (
-              <div className="mt-2.5 pt-2 border-t border-[#24A1DE]/20 space-y-2 animate-in fade-in-50 duration-150">
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={telegramHandle}
-                    onChange={(e) => setTelegramHandle(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleDirectTelegramLogin()}
-                    placeholder="اكتب يوزرك مثلاً: username@"
-                    dir="ltr"
-                    className="w-full pr-8 pl-3 py-2 rounded-xl text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:outline-none focus:ring-2 focus:ring-[#24A1DE]/40 text-left font-mono"
-                  />
-                  <AtSign className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5" />
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleDirectTelegramLogin}
-                    disabled={isLoading}
-                    className="flex-1 py-2 px-3 rounded-xl bg-[#24A1DE] hover:bg-[#208fcf] text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-1"
-                  >
-                    {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                    <span>دخول فوري باليوزر</span>
-                  </button>
-                  <a
-                    href={TELEGRAM_BOT_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold transition flex items-center gap-1"
-                    title="فتح المحادثة مع البوت في تليجرام"
-                  >
-                    <span>البوت</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
+            </button>
+          ) : (
+            <div className="mt-2.5 pt-2 border-t border-[#24A1DE]/20 space-y-2 animate-in fade-in-50 duration-150">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={telegramHandle}
+                  onChange={(e) => setTelegramHandle(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleDirectTelegramLogin()}
+                  placeholder="اكتب يوزرك مثلاً: username@"
+                  dir="ltr"
+                  className="w-full pr-8 pl-3 py-2 rounded-xl text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:outline-none focus:ring-2 focus:ring-[#24A1DE]/40 text-left font-mono"
+                />
+                <AtSign className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5" />
               </div>
-            )}
-          </div>
-        )}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleDirectTelegramLogin}
+                  disabled={isLoading}
+                  className="flex-1 py-2 px-3 rounded-xl bg-[#24A1DE] hover:bg-[#208fcf] text-white font-bold text-xs shadow-sm transition flex items-center justify-center gap-1"
+                >
+                  {isLoading ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : activeTab === 'signup' ? (
+                    <Sparkles className="w-3.5 h-3.5" />
+                  ) : (
+                    <Send className="w-3.5 h-3.5" />
+                  )}
+                  <span>
+                    {activeTab === 'signup' ? 'إنشاء حساب فوري باليوزر' : 'دخول فوري باليوزر'}
+                  </span>
+                </button>
+                <a
+                  href={TELEGRAM_BOT_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold transition flex items-center gap-1"
+                  title="فتح المحادثة مع البوت في تليجرام"
+                >
+                  <span>البوت</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
 
-        {/* فاصل بين خيارات تسجيل الدخول */}
-        {activeTab === 'signin' && (
-          <div className="flex items-center gap-2 my-3">
-            <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
-            <span className="text-[10px] text-slate-400 font-medium">أو بالبريد الإلكتروني</span>
-            <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
-          </div>
-        )}
+        {/* فاصل بين خيارات تليجرام والبريد الإلكتروني */}
+        <div className="flex items-center gap-2 my-3">
+          <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+          <span className="text-[10px] text-slate-400 font-medium">
+            {activeTab === 'signup' ? 'أو التسجيل بالبريد الإلكتروني' : 'أو بالبريد الإلكتروني'}
+          </span>
+          <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+        </div>
 
         {/* فورم تسجيل الدخول بالبريد */}
         {activeTab === 'signin' && (

@@ -56,10 +56,13 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         <button
           type="button"
           onClick={() => onSelectTab('speed')}
-          className="flex flex-col items-center justify-center -mt-3.5 group"
+          className="flex flex-col items-center justify-center -mt-3.5 group relative"
         >
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-400 text-slate-950 flex items-center justify-center shadow-lg shadow-amber-500/30 group-active:scale-95 transition-transform">
+          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-400 text-slate-950 flex items-center justify-center shadow-lg shadow-amber-500/30 group-active:scale-95 transition-transform relative">
             <Zap className="w-5 h-5 fill-current" />
+            <span className="absolute -top-1 -right-1 text-[8px] font-black bg-slate-900 text-amber-400 px-1 py-0.2 rounded-full border border-amber-400">
+              قريباً
+            </span>
           </div>
           <span className="text-[10px] font-black text-amber-600 dark:text-amber-400 mt-1">تحدي 45ث</span>
         </button>

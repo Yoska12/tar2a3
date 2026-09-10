@@ -11,7 +11,9 @@ import {
   ChevronLeft,
   ArrowRight,
   BrainCircuit,
-  Lightbulb
+  Lightbulb,
+  GraduationCap,
+  X
 } from 'lucide-react';
 import { Navbar } from './components/Navbar';
 import { QuizInterface } from './components/QuizInterface';
@@ -453,50 +455,29 @@ export const App: React.FC = () => {
 
   const toggleDarkMode = () => setDarkMode((prev) => !prev);
 
-  // بدء اختبار محاكي قياس
+  // حالة الإشعار التفاعلي لميزات "قريباً"
+  const [comingSoonNotice, setComingSoonNotice] = useState<string | null>(null);
+
+  const triggerComingSoon = (featureName: string) => {
+    setComingSoonNotice(featureName);
+    setTimeout(() => {
+      setComingSoonNotice((prev) => (prev === featureName ? null : prev));
+    }, 4000);
+  };
+
+  // بدء اختبار محاكي قياس (موقف ومتاح قريباً)
   const startMockExam = () => {
-    setActiveQuestions([...mockQuestions].sort(() => 0.5 - Math.random()));
-    setQuizSettings({
-      mode: 'Mock_Exam',
-      timeLimitSeconds: mockQuestions.length * 60, // دقيقة لكل سؤال مثل قياس
-      allowInstantExplanation: false,
-    });
-    setQuizTitle('محاكي اختبار قياس الفعلي - شامل كل الأقسام');
-    setCurrentView('quiz');
+    triggerComingSoon('محاكي اختبار قياس الفعلي');
   };
 
-  // بدء وضع التدريب الفوري
-  const startPracticeMode = (category?: Category) => {
-    let filtered = mockQuestions;
-    let title = 'وضع التدريب الفوري - حل مع الشرح المباشر';
-
-    if (category && category.id !== 'all') {
-      filtered = mockQuestions.filter((q) => q.categoryId === category.id);
-      if (filtered.length === 0) filtered = mockQuestions;
-      title = `تدريب مركز: ${category.title}`;
-    }
-
-    setActiveQuestions(filtered);
-    setQuizSettings({
-      mode: 'Practice_Mode',
-      timeLimitSeconds: 0, // بدون مؤقت إجباري
-      allowInstantExplanation: true,
-      categoryFilter: category?.id,
-    });
-    setQuizTitle(title);
-    setCurrentView('quiz');
+  // بدء وضع التدريب الفوري (موقف ومتاح قريباً)
+  const startPracticeMode = (_category?: Category) => {
+    triggerComingSoon('وضع التدريب الفوري الذكي');
   };
 
-  // بدء تحدي السرعة
+  // بدء تحدي السرعة (موقف ومتاح قريباً)
   const startSpeedChallenge = () => {
-    setActiveQuestions([...mockQuestions].sort(() => 0.5 - Math.random()).slice(0, 5));
-    setQuizSettings({
-      mode: 'Speed_Challenge',
-      timeLimitSeconds: 5 * 45, // 45 ثانية لكل سؤال فقط!
-      allowInstantExplanation: false,
-    });
-    setQuizTitle('⚡ تحدي طرقع للسرعة الذهنية (45 ثانية للسؤال)');
-    setCurrentView('quiz');
+    triggerComingSoon('تحدي طرقع للسرعة (45 ثانية)');
   };
 
   // إنهاء الاختبار واستقبال النتيجة
@@ -901,27 +882,27 @@ export const App: React.FC = () => {
                 {/* أزرار الإجراءات الرئيسية */}
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2 w-full sm:w-auto">
                   <button
-                    onClick={startMockExam}
+                    onClick={() => handleTabSelect('courses')}
                     className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl font-black text-sm bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 shadow-md hover:shadow-glow transition-all transform hover:-translate-y-0.5 active:scale-98"
                   >
-                    <Play className="w-4 h-4 fill-current" />
-                    <span>ابدأ محاكي قياس (شامل)</span>
+                    <GraduationCap className="w-4 h-4" />
+                    <span>تصفح الدورات والتأسيس 🎓</span>
                   </button>
 
                   <button
-                    onClick={() => startPracticeMode()}
-                    className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl font-bold text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-all active:scale-98"
+                    onClick={startMockExam}
+                    className="flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl font-bold text-sm bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-all active:scale-98"
                   >
-                    <Lightbulb className="w-4 h-4 text-amber-500" />
-                    <span>وضع التدريب وحيل طرقع</span>
+                    <Clock className="w-4 h-4 text-blue-500" />
+                    <span>محاكي قياس (قريباً ⏳)</span>
                   </button>
 
                   <button
                     onClick={startSpeedChallenge}
-                    className="flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl font-bold text-sm bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30 transition-all active:scale-98"
+                    className="flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl font-bold text-sm bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-400 border border-purple-500/25 transition-all active:scale-98"
                   >
                     <Zap className="w-4 h-4" />
-                    <span>تحدي 45 ثانية</span>
+                    <span>تحدي 45 ثانية (قريباً ⏳)</span>
                   </button>
                 </div>
 
@@ -999,8 +980,15 @@ export const App: React.FC = () => {
               {/* الوضع 1: محاكي قياس الفعلي */}
               <div
                 onClick={startMockExam}
-                className="group p-6 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800 hover:border-amber-500/60 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
+                className="group relative p-6 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800 hover:border-amber-500/50 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between overflow-hidden"
               >
+                <div className="absolute top-4 left-4">
+                  <span className="px-2.5 py-1 rounded-full text-[11px] font-black bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1 shadow-sm">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    <span>قريباً ⏳</span>
+                  </span>
+                </div>
+
                 <div>
                   <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                     <Clock className="w-6 h-6" />
@@ -1012,17 +1000,28 @@ export const App: React.FC = () => {
                     مؤقت زمني دقيق لكل سؤال، لوحة تنقل بين الأرقام، حجب الشروحات وتصحيح كامل مع نهاية الاختبار.
                   </p>
                 </div>
-                <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800 text-xs font-bold text-blue-600 dark:text-blue-400">
-                  <span>دخول الاختبار التجريبي</span>
-                  <ChevronLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+                <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800 text-xs font-bold text-slate-500 dark:text-slate-400">
+                  <span className="flex items-center gap-1.5">
+                    <span>متاح قريباً للطلاب</span>
+                  </span>
+                  <span className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                    قريباً
+                  </span>
                 </div>
               </div>
 
               {/* الوضع 2: التدريب الفوري مع الشروحات */}
               <div
                 onClick={() => startPracticeMode()}
-                className="group p-6 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800 hover:border-amber-500/60 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
+                className="group relative p-6 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800 hover:border-amber-500/50 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between overflow-hidden"
               >
+                <div className="absolute top-4 left-4">
+                  <span className="px-2.5 py-1 rounded-full text-[11px] font-black bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1 shadow-sm">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    <span>قريباً ⏳</span>
+                  </span>
+                </div>
+
                 <div>
                   <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                     <BrainCircuit className="w-6 h-6" />
@@ -1034,17 +1033,28 @@ export const App: React.FC = () => {
                     حل بدون ضغط الوقت، واكشف شرح "طرقع" السريع فور اختيار الإجابة لترسيخ القوانين الذهنية.
                   </p>
                 </div>
-                <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800 text-xs font-bold text-amber-600 dark:text-amber-400">
-                  <span>بدء التدريب الفوري</span>
-                  <ChevronLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+                <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800 text-xs font-bold text-slate-500 dark:text-slate-400">
+                  <span className="flex items-center gap-1.5">
+                    <span>متاح قريباً للطلاب</span>
+                  </span>
+                  <span className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                    قريباً
+                  </span>
                 </div>
               </div>
 
               {/* الوضع 3: تحدي السرعة */}
               <div
                 onClick={startSpeedChallenge}
-                className="group p-6 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800 hover:border-amber-500/60 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
+                className="group relative p-6 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800 hover:border-amber-500/50 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between overflow-hidden"
               >
+                <div className="absolute top-4 left-4">
+                  <span className="px-2.5 py-1 rounded-full text-[11px] font-black bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1 shadow-sm">
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
+                    <span>قريباً ⏳</span>
+                  </span>
+                </div>
+
                 <div>
                   <div className="w-12 h-12 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                     <Zap className="w-6 h-6" />
@@ -1056,9 +1066,13 @@ export const App: React.FC = () => {
                     45 ثانية فقط لكل سؤال! صُمم لرفع سرعة بديهتك الحسابية والتخلص من عادة الخطوات الطويلة.
                   </p>
                 </div>
-                <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800 text-xs font-bold text-purple-600 dark:text-purple-400">
-                  <span>خوض التحدي السريع</span>
-                  <ChevronLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+                <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800 text-xs font-bold text-slate-500 dark:text-slate-400">
+                  <span className="flex items-center gap-1.5">
+                    <span>متاح قريباً للطلاب</span>
+                  </span>
+                  <span className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                    قريباً
+                  </span>
                 </div>
               </div>
 
@@ -1080,10 +1094,11 @@ export const App: React.FC = () => {
               </div>
             </div>
             <button
-              onClick={startMockExam}
-              className="px-6 py-3 rounded-xl font-bold text-xs bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-sm shrink-0 transition"
+              onClick={() => handleTabSelect('courses')}
+              className="px-6 py-3 rounded-xl font-bold text-xs bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-sm shrink-0 transition flex items-center gap-2"
             >
-              جرب المحاكي الآن
+              <GraduationCap className="w-4 h-4" />
+              <span>تصفح الدورات والتأسيس 🎓</span>
             </button>
           </section>
 
@@ -1106,7 +1121,6 @@ export const App: React.FC = () => {
         </div>
       </footer>
 
-      {/* الشريط السفلي العائم للهواتف الذكية (Mobile Bottom Navigation) */}
       {currentView !== 'quiz' && (
         <MobileBottomNav
           activeTab={activeTab}
@@ -1114,6 +1128,35 @@ export const App: React.FC = () => {
           onOpenMenu={() => setIsMobileMenuOpen(true)}
           currentUser={currentUser}
         />
+      )}
+
+      {/* إشعار تفاعلي لميزات "قريباً" */}
+      {comingSoonNotice && (
+        <div className="fixed bottom-20 md:bottom-8 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-5 duration-300 max-w-md w-[92%] sm:w-auto">
+          <div className="flex items-center gap-3.5 p-4 rounded-2xl bg-slate-950/95 text-white border-2 border-amber-500/70 shadow-2xl shadow-amber-500/20 backdrop-blur-xl">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-black text-xl shrink-0">
+              ⏳
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <h5 className="font-bold text-sm text-amber-400">ميزة قادمة قريباً!</h5>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30">
+                  تحت التجهيز
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
+                <span className="font-bold text-white">{comingSoonNotice}</span> قيد التطوير والتجهيز حالياً، وسيتم إطلاقها قريباً جداً في التحديث القادم!
+              </p>
+            </div>
+            <button
+              onClick={() => setComingSoonNotice(null)}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition shrink-0"
+              aria-label="إغلاق"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       )}
 
     </div>

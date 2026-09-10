@@ -167,6 +167,9 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Zap className="w-3.5 h-3.5 fill-current" />
               <span>تحدي طرقع</span>
+              <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                قريباً
+              </span>
             </button>
 
             {/* أدوات الإدارة للمشرف أو المعلم */}
@@ -430,7 +433,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <Zap className="w-4 h-4 text-amber-500" />
                     <span>تحدي طرقع للسرعة (45 ثانية)</span>
                   </div>
-                  <ChevronLeft className="w-4 h-4 opacity-50" />
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                    قريباً
+                  </span>
                 </button>
               </div>
 

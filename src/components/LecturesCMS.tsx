@@ -17,10 +17,13 @@ import {
   Layers, 
   UploadCloud,
   CheckCircle2,
-  ExternalLink
+  ExternalLink,
+  Loader2,
+  Shield
 } from 'lucide-react';
 import { CourseModule, Lesson, LessonAttachment, VideoProvider } from '../types';
 import { FileUploadZone } from './FileUploadZone';
+import { uploadLessonVideo } from '../lib/videoUploadService';
 
 interface LecturesCMSProps {
   modules: CourseModule[];
@@ -59,7 +62,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
     moduleId: modules[0]?.id || '',
     title: '',
     description: '',
-    videoProvider: 'youtube',
+    videoProvider: 'uploaded_video',
     videoUrl: '',
     durationMinutes: 15,
     isFreePreview: false,
@@ -67,6 +70,40 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
     quizId: 'f1111111-1111-1111-1111-111111111111',
     attachments: [],
   });
+
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [videoUploadProgress, setVideoUploadProgress] = useState(0);
+  const [videoUploadError, setVideoUploadError] = useState<string | null>(null);
+  const videoInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleVideoFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingVideo(true);
+    setVideoUploadProgress(10);
+    setVideoUploadError(null);
+
+    try {
+      const res = await uploadLessonVideo(file, editingLesson ? editingLesson.id : 'lecture', (p) => {
+        setVideoUploadProgress(p);
+      });
+
+      if (res.success && res.videoUrl) {
+        setFormData((prev) => ({
+          ...prev,
+          videoUrl: res.videoUrl!,
+          videoProvider: 'uploaded_video',
+        }));
+      } else {
+        setVideoUploadError(res.error || 'فشلت عملية رفع ملف الفيديو');
+      }
+    } catch (err: any) {
+      setVideoUploadError(err?.message || 'حدث خطأ أثناء الرفع');
+    } finally {
+      setIsUploadingVideo(false);
+    }
+  };
 
   // حساب الإحصائيات الشاملة
   const allLessons = modules.flatMap((m) => m.lessons);
@@ -463,36 +500,82 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                 />
               </div>
 
-              {/* مزود الفيديو ورابط الفيديو */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                    مزود الفيديو:
-                  </label>
-                  <select
-                    value={formData.videoProvider}
-                    onChange={(e) => setFormData({ ...formData, videoProvider: e.target.value as VideoProvider })}
-                    className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
-                  >
-                    <option value="youtube">YouTube (يوتيوب)</option>
-                    <option value="vimeo">Vimeo</option>
-                    <option value="bunny">Bunny.net</option>
-                    <option value="direct_url">رابط مباشر (MP4)</option>
-                  </select>
+              {/* مزود الفيديو ورابط الفيديو والرفع المباشر */}
+              <div className="p-4 rounded-2xl bg-amber-500/5 dark:bg-slate-900 border border-amber-500/20 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Video className="w-4 h-4 text-amber-500" />
+                    <span>فيديو المحاضرة (مشفر ومحمي) 🔒</span>
+                  </span>
+                  <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Shield className="w-3 h-3" />
+                    <span>مانع للتسريب بالـ User ID</span>
+                  </span>
                 </div>
 
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                    رابط الفيديو:
-                  </label>
-                  <input
-                    type="url"
-                    required
-                    placeholder="https://www.youtube.com/watch?v=..."
-                    value={formData.videoUrl}
-                    onChange={(e) => setFormData({ ...formData, videoUrl: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 text-left dir-ltr"
-                  />
+                {/* زر رفع ملف الفيديو */}
+                <input
+                  ref={videoInputRef}
+                  type="file"
+                  accept="video/mp4,video/webm,video/quicktime,video/mkv,.mp4,.webm,.mov"
+                  onChange={handleVideoFileSelect}
+                  className="hidden"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => videoInputRef.current?.click()}
+                  disabled={isUploadingVideo}
+                  className="w-full py-3 px-4 rounded-xl border border-dashed border-amber-500/40 hover:border-amber-500 bg-white dark:bg-slate-800/80 text-xs font-bold text-slate-700 dark:text-slate-200 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isUploadingVideo ? (
+                    <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>جارٍ رفع ملف الفيديو ({videoUploadProgress}%)...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <UploadCloud className="w-4 h-4 text-amber-500" />
+                      <span>اضغط لرفع فيديو من جهازك (MP4 / WebM)</span>
+                    </>
+                  )}
+                </button>
+
+                {videoUploadError && (
+                  <p className="text-[11px] font-bold text-rose-500">{videoUploadError}</p>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                      نوع المزود:
+                    </label>
+                    <select
+                      value={formData.videoProvider}
+                      onChange={(e) => setFormData({ ...formData, videoProvider: e.target.value as VideoProvider })}
+                      className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="uploaded_video">فيديو مرفوع (مشفر) 🔒</option>
+                      <option value="direct_url">رابط مباشر (MP4)</option>
+                      <option value="youtube">YouTube</option>
+                      <option value="vimeo">Vimeo</option>
+                      <option value="bunny">Bunny.net</option>
+                    </select>
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                      رابط الفيديو المباشر / التخزين:
+                    </label>
+                    <input
+                      type="url"
+                      required
+                      placeholder="https://... رابط الفيديو"
+                      value={formData.videoUrl}
+                      onChange={(e) => setFormData({ ...formData, videoUrl: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 text-left dir-ltr"
+                    />
+                  </div>
                 </div>
               </div>
 

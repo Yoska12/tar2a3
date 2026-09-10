@@ -23,10 +23,15 @@ import {
   Video,
   BookOpen,
   FolderDown,
-  FileSpreadsheet
+  FileSpreadsheet,
+  UploadCloud,
+  Film,
+  Loader2,
+  Shield
 } from 'lucide-react';
 import { CourseModule, Lesson, LessonAttachment, VideoProvider, CourseFileItem } from '../types';
 import { TarqaUser } from '../lib/supabase';
+import { uploadLessonVideo, formatVideoSize } from '../lib/videoUploadService';
 import {
   ANNUAL_SUBSCRIPTION_PRICE_SAR,
   canEditCourses,
@@ -82,12 +87,53 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
     title: '',
     description: '',
     videoUrl: '',
-    videoProvider: 'youtube' as VideoProvider,
+    videoProvider: 'uploaded_video' as VideoProvider,
     durationMinutes: 15,
     isFreePreview: false,
     pdfTitle: '',
     pdfUrl: '',
   });
+
+  // حالة رفع ملف الفيديو
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [videoUploadProgress, setVideoUploadProgress] = useState(0);
+  const [uploadedVideoInfo, setUploadedVideoInfo] = useState<{ name: string; size: string } | null>(null);
+  const [videoUploadError, setVideoUploadError] = useState<string | null>(null);
+  const videoFileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // معالجة اختيار ملف فيديو ورفعه
+  const handleVideoFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingVideo(true);
+    setVideoUploadProgress(10);
+    setVideoUploadError(null);
+
+    try {
+      const res = await uploadLessonVideo(file, editingLesson ? editingLesson.id : 'lecture', (p) => {
+        setVideoUploadProgress(p);
+      });
+
+      if (res.success && res.videoUrl) {
+        setLessonFormData((prev) => ({
+          ...prev,
+          videoUrl: res.videoUrl!,
+          videoProvider: 'uploaded_video',
+        }));
+        setUploadedVideoInfo({
+          name: res.fileName || file.name,
+          size: res.fileSizeFormatted || formatVideoSize(file.size),
+        });
+      } else {
+        setVideoUploadError(res.error || 'فشلت عملية رفع ملف الفيديو');
+      }
+    } catch (err: any) {
+      setVideoUploadError(err?.message || 'حدث خطأ أثناء رفع الفيديو');
+    } finally {
+      setIsUploadingVideo(false);
+    }
+  };
 
   // نافذة تعديل اسم وتفاصيل باب المحاضرات
   const [moduleModalOpen, setModuleModalOpen] = useState(false);
@@ -202,13 +248,15 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
       });
     }
 
+    const defaultVideoUrl = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
+
     if (editingLesson) {
       const updatedLesson: Lesson = {
         ...editingLesson,
         title: lessonFormData.title.trim(),
         description: lessonFormData.description.trim(),
-        videoUrl: lessonFormData.videoUrl.trim() || 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-        videoProvider: lessonFormData.videoProvider,
+        videoUrl: lessonFormData.videoUrl.trim() || defaultVideoUrl,
+        videoProvider: lessonFormData.videoProvider || 'uploaded_video',
         durationMinutes: Number(lessonFormData.durationMinutes) || 15,
         isFreePreview: lessonFormData.isFreePreview,
         attachments: attachments.length > 0 ? attachments : editingLesson.attachments,
@@ -221,8 +269,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
         moduleTitle: currentModule.title,
         title: lessonFormData.title.trim(),
         description: lessonFormData.description.trim(),
-        videoUrl: lessonFormData.videoUrl.trim() || 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-        videoProvider: lessonFormData.videoProvider,
+        videoUrl: lessonFormData.videoUrl.trim() || defaultVideoUrl,
+        videoProvider: lessonFormData.videoProvider || 'uploaded_video',
         durationMinutes: Number(lessonFormData.durationMinutes) || 15,
         orderIndex: currentModule.lessons.length + 1,
         isFreePreview: lessonFormData.isFreePreview,
@@ -818,11 +866,13 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                   <button
                     onClick={() => {
                       setEditingLesson(null);
+                      setUploadedVideoInfo(null);
+                      setVideoUploadError(null);
                       setLessonFormData({
                         title: '',
                         description: '',
                         videoUrl: '',
-                        videoProvider: 'youtube',
+                        videoProvider: 'uploaded_video',
                         durationMinutes: 15,
                         isFreePreview: false,
                         pdfTitle: '',
@@ -936,11 +986,13 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                             <button
                               onClick={() => {
                                 setEditingLesson(lesson);
+                                setUploadedVideoInfo(lesson.videoUrl ? { name: 'فيديو المحاضرة الحالي', size: '' } : null);
+                                setVideoUploadError(null);
                                 setLessonFormData({
                                   title: lesson.title,
                                   description: lesson.description,
                                   videoUrl: lesson.videoUrl,
-                                  videoProvider: lesson.videoProvider || 'youtube',
+                                  videoProvider: lesson.videoProvider || 'uploaded_video',
                                   durationMinutes: lesson.durationMinutes,
                                   isFreePreview: lesson.isFreePreview,
                                   pdfTitle: lesson.attachments?.[0]?.title || '',
@@ -1105,32 +1157,117 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* خيار رفع الفيديو مباشرة أو وضع رابط مباشر */}
+              <div className="p-4 rounded-2xl bg-amber-500/5 dark:bg-slate-900 border border-amber-500/20 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Film className="w-4 h-4 text-amber-500" />
+                    <span>فيديو المحاضرة (مشفر ومحمي) 🔒</span>
+                  </span>
+                  <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-amber-500/20">
+                    <Shield className="w-3 h-3" />
+                    <span>مانع للتسريب بالـ User ID</span>
+                  </span>
+                </div>
+
+                {/* منطقة رفع الفيديو من الجهاز */}
+                <div className="flex flex-col gap-2">
+                  <input
+                    ref={videoFileInputRef}
+                    type="file"
+                    accept="video/mp4,video/webm,video/quicktime,video/mkv,.mp4,.webm,.mov"
+                    onChange={handleVideoFileSelect}
+                    className="hidden"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => videoFileInputRef.current?.click()}
+                    disabled={isUploadingVideo}
+                    className="w-full py-4 px-4 rounded-2xl border-2 border-dashed border-amber-500/40 hover:border-amber-500 bg-amber-500/5 hover:bg-amber-500/10 text-slate-700 dark:text-slate-200 transition flex flex-col items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    {isUploadingVideo ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
+                        <span className="text-xs font-bold text-amber-600 dark:text-amber-400">
+                          جارٍ رفع الفيديو ({videoUploadProgress}%)...
+                        </span>
+                        <div className="w-48 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-amber-500 transition-all duration-300"
+                            style={{ width: `${videoUploadProgress}%` }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <UploadCloud className="w-6 h-6 text-amber-500" />
+                        <span className="text-xs font-black text-slate-900 dark:text-white">
+                          اضغط لاختيار فيديو من جهازك ورفعه على الموقع (MP4, WebM)
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          الحد الأقصى 500 ميجابايت • يتم تشفيره وعرضه في المشغل الآمن
+                        </span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* رسالة الخطأ إن وجدت */}
+                  {videoUploadError && (
+                    <div className="text-[11px] font-bold text-rose-500 flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      <span>{videoUploadError}</span>
+                    </div>
+                  )}
+
+                  {/* معلومات الفيديو المرفوع أو الرابط المباشر */}
+                  {uploadedVideoInfo && (
+                    <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center justify-between">
+                      <div className="flex items-center gap-2 truncate">
+                        <CheckCircle2 className="w-4 h-4 shrink-0" />
+                        <span className="truncate">{uploadedVideoInfo.name}</span>
+                      </div>
+                      {uploadedVideoInfo.size && (
+                        <span className="text-[10px] font-mono shrink-0">{uploadedVideoInfo.size}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* أو إدخال رابط مباشر */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    رابط الفيديو (YouTube / MP4)
+                  <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                    أو رابط ملف الفيديو المباشر (MP4 / WebM / Stream URL):
                   </label>
                   <input
                     type="url"
                     value={lessonFormData.videoUrl}
-                    onChange={(e) => setLessonFormData({ ...lessonFormData, videoUrl: e.target.value })}
-                    placeholder="https://www.youtube.com/watch?v=..."
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-purple-500"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setLessonFormData({
+                        ...lessonFormData,
+                        videoUrl: val,
+                        videoProvider: val.includes('youtube.com') || val.includes('youtu.be') ? 'youtube' : 'uploaded_video',
+                      });
+                    }}
+                    placeholder="https://example.com/video.mp4 أو رابط التخزين"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 font-mono text-left"
+                    dir="ltr"
                   />
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    المدة بالدقائق
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={lessonFormData.durationMinutes}
-                    onChange={(e) => setLessonFormData({ ...lessonFormData, durationMinutes: Number(e.target.value) })}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-purple-500"
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  المدة بالدقائق
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={lessonFormData.durationMinutes}
+                  onChange={(e) => setLessonFormData({ ...lessonFormData, durationMinutes: Number(e.target.value) })}
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-purple-500"
+                />
               </div>
 
               <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 space-y-2">

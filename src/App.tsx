@@ -624,6 +624,7 @@ export const App: React.FC = () => {
           <ClassroomView
             currentModule={activeModule}
             currentLesson={activeLesson}
+            currentUser={currentUser}
             onSelectLesson={(lesson) => setActiveLesson(lesson)}
             onCompleteLesson={handleCompleteLesson}
             onStartQuiz={() => startMockExam()}

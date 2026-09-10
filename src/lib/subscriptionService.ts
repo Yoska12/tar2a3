@@ -373,7 +373,7 @@ export const grantAnnualSubscription = async (
 export const coursesStorage = {
   getModules(): CourseModule[] {
     try {
-      const raw = localStorage.getItem('tarqa_custom_modules_v4');
+      const raw = localStorage.getItem('tarqa_custom_modules_v5');
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -386,7 +386,7 @@ export const coursesStorage = {
 
   saveModules(modules: CourseModule[]) {
     try {
-      localStorage.setItem('tarqa_custom_modules_v4', JSON.stringify(modules));
+      localStorage.setItem('tarqa_custom_modules_v5', JSON.stringify(modules));
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('tarqa_courses_modules_changed', { detail: modules }));
       }

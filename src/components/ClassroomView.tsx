@@ -19,10 +19,13 @@ import {
   Award
 } from 'lucide-react';
 import { Lesson, CourseModule, LessonAttachment } from '../types';
+import { TarqaUser } from '../lib/supabase';
+import { SecureVideoPlayer } from './SecureVideoPlayer';
 
 interface ClassroomViewProps {
   currentModule: CourseModule;
   currentLesson: Lesson;
+  currentUser?: TarqaUser | null;
   onSelectLesson: (lesson: Lesson) => void;
   onCompleteLesson: (lessonId: string) => void;
   onStartQuiz?: (quizId: string) => void;
@@ -32,6 +35,7 @@ interface ClassroomViewProps {
 export const ClassroomView: React.FC<ClassroomViewProps> = ({
   currentModule,
   currentLesson,
+  currentUser,
   onSelectLesson,
   onCompleteLesson,
   onStartQuiz,
@@ -122,9 +126,18 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
         {/* القسم الرئيسي (مشغل الفيديو والمذكرات): 8 أعمدة */}
         <div className="lg:col-span-8 flex flex-col gap-6">
           
-          {/* مشغل الفيديو خالي من التشتيت */}
-          <div className="relative aspect-video rounded-3xl overflow-hidden bg-black shadow-2xl border border-slate-200 dark:border-slate-800">
-            {currentLesson.videoProvider === 'youtube' ? (
+          {/* مشغل الفيديو الآمن والمشفر مع العلامة المائية المانعة للتسريب */}
+          {currentLesson.videoProvider === 'uploaded_video' ||
+          currentLesson.videoProvider === 'direct_url' ||
+          !currentLesson.videoUrl.includes('youtube.com') ? (
+            <SecureVideoPlayer
+              src={currentLesson.videoUrl}
+              title={currentLesson.title}
+              currentUser={currentUser}
+              onEnded={() => onCompleteLesson(currentLesson.id)}
+            />
+          ) : (
+            <div className="relative aspect-video rounded-3xl overflow-hidden bg-black shadow-2xl border border-slate-200 dark:border-slate-800">
               <iframe
                 src={getEmbedUrl(currentLesson.videoUrl, playbackSpeed)}
                 title={currentLesson.title}
@@ -132,15 +145,13 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
               />
-            ) : (
-              <video
-                ref={videoRef}
-                src={currentLesson.videoUrl}
-                controls
-                className="w-full h-full object-cover"
-              />
-            )}
-          </div>
+              {/* علامة مائية عائمة لمعرّف المستخدم حتى على فيديوهات يوتيوب */}
+              <div className="absolute top-4 left-4 pointer-events-none z-10 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-amber-500/30 text-white text-[10px] font-mono select-none">
+                <span className="text-amber-400 font-bold">طالب طرقع: </span>
+                <span>#{currentUser?.id?.slice(0, 10) || 'GUEST'}</span>
+              </div>
+            </div>
+          )}
 
           {/* أزرار التحكم بالسرعة والانتقال */}
           <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 shadow-sm">

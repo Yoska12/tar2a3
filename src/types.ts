@@ -65,7 +65,7 @@ export interface QuizResult {
 // أنواع نظام تأسيس القدرات والمحاضرات والمذكرات (Lectures & Foundation System)
 // ==============================================================================
 
-export type VideoProvider = 'youtube' | 'vimeo' | 'bunny' | 'direct_url';
+export type VideoProvider = 'uploaded_video' | 'direct_url' | 'youtube' | 'vimeo' | 'bunny';
 export type AttachmentType = 'pdf' | 'summary' | 'worksheet';
 
 export interface LessonAttachment {

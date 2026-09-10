@@ -35,6 +35,7 @@ import { mockCategories, mockQuestions } from './data/mockQuestions';
 import { QuizSettings, QuizResult, Category, Question, CourseModule, Lesson, UserRole } from './types';
 import { localScoreStorage, authService, TarqaUser, supabase, isSupabaseConfigured, syncUserToMembersDashboard } from './lib/supabase';
 import { sendQuizCompletedNotification, TELEGRAM_BOT_URL, TELEGRAM_BOT_USERNAME } from './lib/telegram';
+import { coursesStorage } from './lib/subscriptionService';
 
 const isOwnerEmail = (email?: string | null) => {
   if (!email) return false;
@@ -46,9 +47,9 @@ export const App: React.FC = () => {
   // وضع الشاشة: home | courses | quiz | result | dashboard | admin | classroom | admin-lectures | admin-roles
   const [currentView, setCurrentView] = useState<'home' | 'courses' | 'quiz' | 'result' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles'>('home');
   const [activeTab, setActiveTab] = useState<'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles'>('home');
-  const [modules, setModules] = useState<CourseModule[]>(mockFoundationModules);
-  const [activeModule, setActiveModule] = useState<CourseModule>(mockFoundationModules[0]);
-  const [activeLesson, setActiveLesson] = useState<Lesson>(mockFoundationModules[0].lessons[0]);
+  const [modules, setModules] = useState<CourseModule[]>(() => coursesStorage.getModules());
+  const [activeModule, setActiveModule] = useState<CourseModule>(() => coursesStorage.getModules()[0] || mockFoundationModules[0]);
+  const [activeLesson, setActiveLesson] = useState<Lesson>(() => coursesStorage.getModules()[0]?.lessons?.[0] || mockFoundationModules[0].lessons[0]);
   const [isAuthOpen, setIsAuthOpen] = useState<boolean>(false);
   const [authInitialTab, setAuthInitialTab] = useState<'signin' | 'signup'>('signin');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
@@ -219,6 +220,19 @@ export const App: React.FC = () => {
     };
     window.addEventListener('tarqa_user_changed', handleUserChanged);
     return () => window.removeEventListener('tarqa_user_changed', handleUserChanged);
+  }, []);
+
+  // الاستماع لتحديثات المحاضرات والدورات فورياً
+  useEffect(() => {
+    const handleModulesChanged = (e: any) => {
+      if (e.detail) {
+        setModules(e.detail);
+      } else {
+        setModules(coursesStorage.getModules());
+      }
+    };
+    window.addEventListener('tarqa_courses_modules_changed', handleModulesChanged);
+    return () => window.removeEventListener('tarqa_courses_modules_changed', handleModulesChanged);
   }, []);
 
   const toggleDarkMode = () => setDarkMode((prev) => !prev);
@@ -498,54 +512,37 @@ export const App: React.FC = () => {
             <LecturesCMS
               modules={modules}
               onAddLesson={(modId, newLesson) => {
-                setModules((prev) =>
-                  prev.map((mod) =>
-                    mod.id === modId ? { ...mod, lessons: [...mod.lessons, newLesson] } : mod
-                  )
-                );
+                const updated = coursesStorage.addLesson(modId, newLesson);
+                setModules([...updated]);
               }}
               onUpdateLesson={(updated) => {
-                setModules((prev) =>
-                  prev.map((mod) => ({
-                    ...mod,
-                    lessons: mod.lessons.map((l) => (l.id === updated.id ? updated : l)),
-                  }))
-                );
+                const updatedList = coursesStorage.updateLesson(updated);
+                setModules([...updatedList]);
               }}
               onDeleteLesson={(lessonId) => {
-                setModules((prev) =>
-                  prev.map((mod) => ({
-                    ...mod,
-                    lessons: mod.lessons.filter((l) => l.id !== lessonId),
-                  }))
-                );
+                const updated = coursesStorage.deleteLesson('mod-lectures', lessonId);
+                setModules([...updated]);
               }}
               onTogglePublish={(lessonId) => {
-                setModules((prev) =>
-                  prev.map((mod) => ({
-                    ...mod,
-                    lessons: mod.lessons.map((l) =>
-                      l.id === lessonId ? { ...l, isPublished: !l.isPublished } : l
-                    ),
-                  }))
-                );
+                const updated = coursesStorage.toggleFreePreview('mod-lectures', lessonId);
+                setModules([...updated]);
               }}
               onReorderLessons={(modId, lessonId, direction) => {
-                setModules((prev) =>
-                  prev.map((mod) => {
-                    if (mod.id !== modId) return mod;
-                    const index = mod.lessons.findIndex((l) => l.id === lessonId);
-                    if (index === -1) return mod;
-                    if (direction === 'up' && index === 0) return mod;
-                    if (direction === 'down' && index === mod.lessons.length - 1) return mod;
-                    const copy = [...mod.lessons];
-                    const target = direction === 'up' ? index - 1 : index + 1;
-                    const temp = copy[index];
-                    copy[index] = copy[target];
-                    copy[target] = temp;
-                    return { ...mod, lessons: copy };
-                  })
-                );
+                const cur = coursesStorage.getModules();
+                const updated = cur.map((mod) => {
+                  const index = (mod.lessons || []).findIndex((l) => l.id === lessonId);
+                  if (index === -1) return mod;
+                  if (direction === 'up' && index === 0) return mod;
+                  if (direction === 'down' && index === mod.lessons.length - 1) return mod;
+                  const copy = [...mod.lessons];
+                  const target = direction === 'up' ? index - 1 : index + 1;
+                  const temp = copy[index];
+                  copy[index] = copy[target];
+                  copy[target] = temp;
+                  return { ...mod, lessons: copy };
+                });
+                const saved = coursesStorage.saveModules(updated);
+                setModules([...saved]);
               }}
             />
           ) : (

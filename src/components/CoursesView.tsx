@@ -261,7 +261,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
         isFreePreview: lessonFormData.isFreePreview,
         attachments: attachments.length > 0 ? attachments : editingLesson.attachments,
       };
-      coursesStorage.updateLesson(updatedLesson);
+      const updated = coursesStorage.updateLesson(updatedLesson);
+      setModules([...updated]);
     } else {
       const newLesson: Lesson = {
         id: 'les-' + Date.now(),
@@ -272,12 +273,13 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
         videoUrl: lessonFormData.videoUrl.trim() || defaultVideoUrl,
         videoProvider: lessonFormData.videoProvider || 'uploaded_video',
         durationMinutes: Number(lessonFormData.durationMinutes) || 15,
-        orderIndex: currentModule.lessons.length + 1,
+        orderIndex: (currentModule.lessons?.length || 0) + 1,
         isFreePreview: lessonFormData.isFreePreview,
         isPublished: true,
         attachments,
       };
-      coursesStorage.addLesson(currentModule.id, newLesson);
+      const updated = coursesStorage.addLesson(currentModule.id, newLesson);
+      setModules([...updated]);
     }
 
     setLessonModalOpen(false);
@@ -286,13 +288,15 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
   // حذف محاضرة
   const handleDeleteLesson = (lessonId: string) => {
     if (window.confirm('هل أنت متأكد من رغبتك في حذف هذه المحاضرة؟')) {
-      coursesStorage.deleteLesson(currentModule.id, lessonId);
+      const updated = coursesStorage.deleteLesson(currentModule.id, lessonId);
+      setModules([...updated]);
     }
   };
 
   // تبديل المعاينة المجانية للمحاضرة
   const handleToggleLessonPreview = (lessonId: string) => {
-    coursesStorage.toggleFreePreview(currentModule.id, lessonId);
+    const updated = coursesStorage.toggleFreePreview(currentModule.id, lessonId);
+    setModules([...updated]);
   };
 
   // حفظ تفاصيل باب المحاضرات
@@ -305,7 +309,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
       title: moduleFormData.title.trim(),
       description: moduleFormData.description.trim(),
     };
-    coursesStorage.updateModule(updated);
+    const updatedList = coursesStorage.updateModule(updated);
+    setModules([...updatedList]);
     setModuleModalOpen(false);
   };
 
@@ -325,7 +330,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
         fileType: fileFormData.fileType,
         isFreePreview: fileFormData.isFreePreview,
       };
-      coursesStorage.updateFile(updated);
+      const updatedFiles = coursesStorage.updateFile(updated);
+      setFiles([...updatedFiles]);
     } else {
       const newFile: CourseFileItem = {
         id: 'file-' + Date.now(),
@@ -339,7 +345,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
         downloadCount: 0,
         uploadedAt: 'اليوم',
       };
-      coursesStorage.addFile(newFile);
+      const updatedFiles = coursesStorage.addFile(newFile);
+      setFiles([...updatedFiles]);
     }
 
     setFileModalOpen(false);
@@ -348,13 +355,15 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
   // حذف ملف
   const handleDeleteFile = (fileId: string) => {
     if (window.confirm('هل أنت متأكد من حذف هذا الملف من قسم الملفات؟')) {
-      coursesStorage.deleteFile(fileId);
+      const updatedFiles = coursesStorage.deleteFile(fileId);
+      setFiles([...updatedFiles]);
     }
   };
 
   // تبديل معاينة الملف المجانية
   const handleToggleFilePreview = (fileId: string) => {
-    coursesStorage.toggleFilePreview(fileId);
+    const updatedFiles = coursesStorage.toggleFilePreview(fileId);
+    setFiles([...updatedFiles]);
   };
 
   const totalLessons = currentModule.lessons.length;

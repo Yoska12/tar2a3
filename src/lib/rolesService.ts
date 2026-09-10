@@ -47,7 +47,12 @@ export const rolesService = {
             return tB - tA;
           });
 
-          supabaseUsers = sorted.map((d: any) => {
+          const filtered = sorted.filter((d: any) => {
+            const e = (d.email || '').toLowerCase().trim();
+            return e !== 'lectures_store@tarqa.app' && d.id !== '32344334-a8b9-40c3-aeeb-9d55f4d160e4';
+          });
+
+          supabaseUsers = filtered.map((d: any) => {
             const email = d.email || (d.telegram_username ? `@${d.telegram_username}` : `مستخدم_${d.id.substring(0, 6)}`);
             const emailLower = (d.email || '').toLowerCase().trim();
             const isOwner = emailLower === 'yassooooo27m@gmail.com' || emailLower === 'iyoskalg@gmail.com' || d.id === 'usr-admin-01';

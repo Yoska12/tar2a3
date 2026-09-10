@@ -43,8 +43,12 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
   // الرابط الفعلي القابل للتشغيل (يحل IndexedDB إلى ObjectURL حي)
   const [resolvedSrc, setResolvedSrc] = useState<string>(src);
 
+  // حالة المشغل
+  const [hasError, setHasError] = useState(false);
+
   useEffect(() => {
     let isMounted = true;
+    setHasError(false);
     if (!src) {
       setResolvedSrc('');
       return;
@@ -61,7 +65,6 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
     };
   }, [src]);
 
-  // حالة المشغل
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -295,9 +298,37 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
           setIsPlaying(false);
           onEnded?.();
         }}
+        onError={() => {
+          setIsBuffering(false);
+          setHasError(true);
+        }}
         onClick={togglePlay}
         className="w-full h-full object-contain cursor-pointer"
       />
+
+      {/* تنبيه في حال تعذر تشغيل الفيديو */}
+      {hasError && (
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center p-6 text-center bg-slate-950/95 text-white">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mb-3 text-2xl">
+            ⚠️
+          </div>
+          <h3 className="font-bold text-base text-white mb-1">تعذر تشغيل ملف الفيديو</h3>
+          <p className="text-xs text-slate-400 max-w-sm mb-4 leading-relaxed">
+            قد يكون رابط الفيديو غير متاح، أو منتهي الصلاحية، أو بصيغة غير مدعومة. يُفضل وضع رابط يوتيوب في لوحة التحكم للتشغيل الفوري المستقر.
+          </p>
+          <button
+            onClick={() => {
+              setHasError(false);
+              if (videoRef.current) {
+                videoRef.current.load();
+              }
+            }}
+            className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-lg shadow-amber-500/20 active:scale-95"
+          >
+            إعادة المحاولة 🔄
+          </button>
+        </div>
+      )}
 
       {/* 2. مؤشر التحميل المؤقت (Buffering Spinner) */}
       {isBuffering && (
@@ -307,7 +338,7 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
       )}
 
       {/* 3. زر التشغيل المركزي الضخم عند الإيقاف المؤقت */}
-      {!isPlaying && !securityViolation && (
+      {!isPlaying && !securityViolation && !hasError && (
         <button
           onClick={togglePlay}
           className="absolute inset-0 m-auto w-20 h-20 rounded-full bg-amber-500/90 hover:bg-amber-400 text-slate-950 flex items-center justify-center shadow-2xl shadow-amber-500/30 transition-transform transform hover:scale-110 active:scale-95 z-10 cursor-pointer"

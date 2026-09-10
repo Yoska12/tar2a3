@@ -47,17 +47,29 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
 
   // استخراج رابط الـ Embed ليوتيوب
-  const getEmbedUrl = (url: string, speed: number) => {
-    if (url.includes('youtube.com') || url.includes('youtu.be')) {
-      let videoId = '';
-      if (url.includes('v=')) {
-        videoId = url.split('v=')[1]?.split('&')[0];
-      } else if (url.includes('youtu.be/')) {
-        videoId = url.split('youtu.be/')[1]?.split('?')[0];
-      }
-      return `https://www.youtube.com/embed/${videoId || 'dQw4w9WgXcQ'}?autoplay=0&rel=0&modestbranding=1`;
-    }
-    return url;
+  // فحص واستخراج روابط التشغيل لليوتيوب وفيميو والروابط المباشرة
+  const isYouTube = (url: string = '', provider: string = '') => {
+    if (provider === 'youtube') return true;
+    return url.includes('youtube.com') || url.includes('youtu.be');
+  };
+
+  const isVimeo = (url: string = '', provider: string = '') => {
+    if (provider === 'vimeo') return true;
+    return url.includes('vimeo.com');
+  };
+
+  const getYouTubeEmbedUrl = (url: string) => {
+    if (!url) return '';
+    const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/|watch\?.+&v=))([\w-]{11})/);
+    const videoId = match ? match[1] : '';
+    return `https://www.youtube-nocookie.com/embed/${videoId || 'dQw4w9WgXcQ'}?autoplay=0&rel=0&modestbranding=1`;
+  };
+
+  const getVimeoEmbedUrl = (url: string) => {
+    if (!url) return '';
+    const match = url.match(/vimeo\.com\/(?:video\/)?([0-9]+)/);
+    const videoId = match ? match[1] : '';
+    return `https://player.vimeo.com/video/${videoId || ''}?badge=0&autopause=0&player_id=0`;
   };
 
   const handleSpeedChange = (speed: number) => {
@@ -126,31 +138,43 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
         {/* القسم الرئيسي (مشغل الفيديو والمذكرات): 8 أعمدة */}
         <div className="lg:col-span-8 flex flex-col gap-6">
           
-          {/* مشغل الفيديو الآمن والمشفر مع العلامة المائية المانعة للتسريب */}
-          {currentLesson.videoProvider === 'uploaded_video' ||
-          currentLesson.videoProvider === 'direct_url' ||
-          !currentLesson.videoUrl.includes('youtube.com') ? (
+          {/* مشغل الفيديو: يدعم يوتيوب، فيميو، والمشغل الآمن المشفر للروابط المباشرة */}
+          {isYouTube(currentLesson.videoUrl, currentLesson.videoProvider) ? (
+            <div className="relative aspect-video rounded-3xl overflow-hidden bg-black shadow-2xl border border-slate-200 dark:border-slate-800">
+              <iframe
+                src={getYouTubeEmbedUrl(currentLesson.videoUrl)}
+                title={currentLesson.title}
+                className="w-full h-full border-0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              />
+              {/* علامة مائية عائمة لمعرّف المستخدم */}
+              <div className="absolute top-4 left-4 pointer-events-none z-10 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-amber-500/30 text-white text-[10px] font-mono select-none">
+                <span className="text-amber-400 font-bold">طالب طرقع: </span>
+                <span>#{currentUser?.id?.slice(0, 10) || 'GUEST'}</span>
+              </div>
+            </div>
+          ) : isVimeo(currentLesson.videoUrl, currentLesson.videoProvider) ? (
+            <div className="relative aspect-video rounded-3xl overflow-hidden bg-black shadow-2xl border border-slate-200 dark:border-slate-800">
+              <iframe
+                src={getVimeoEmbedUrl(currentLesson.videoUrl)}
+                title={currentLesson.title}
+                className="w-full h-full border-0"
+                allow="autoplay; fullscreen; picture-in-picture"
+                allowFullScreen
+              />
+              <div className="absolute top-4 left-4 pointer-events-none z-10 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-amber-500/30 text-white text-[10px] font-mono select-none">
+                <span className="text-amber-400 font-bold">طالب طرقع: </span>
+                <span>#{currentUser?.id?.slice(0, 10) || 'GUEST'}</span>
+              </div>
+            </div>
+          ) : (
             <SecureVideoPlayer
               src={currentLesson.videoUrl}
               title={currentLesson.title}
               currentUser={currentUser}
               onEnded={() => onCompleteLesson(currentLesson.id)}
             />
-          ) : (
-            <div className="relative aspect-video rounded-3xl overflow-hidden bg-black shadow-2xl border border-slate-200 dark:border-slate-800">
-              <iframe
-                src={getEmbedUrl(currentLesson.videoUrl, playbackSpeed)}
-                title={currentLesson.title}
-                className="w-full h-full border-0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-              {/* علامة مائية عائمة لمعرّف المستخدم حتى على فيديوهات يوتيوب */}
-              <div className="absolute top-4 left-4 pointer-events-none z-10 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-amber-500/30 text-white text-[10px] font-mono select-none">
-                <span className="text-amber-400 font-bold">طالب طرقع: </span>
-                <span>#{currentUser?.id?.slice(0, 10) || 'GUEST'}</span>
-              </div>
-            </div>
           )}
 
           {/* أزرار التحكم بالسرعة والانتقال */}

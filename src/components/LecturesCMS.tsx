@@ -37,6 +37,7 @@ interface LecturesCMSProps {
   onToggleFreePreview?: (lessonId: string) => void;
   onReorderLessons: (moduleId: string, lessonId: string, direction: 'up' | 'down') => void;
   onResetDefault?: () => void;
+  onSyncCloud?: () => Promise<void>;
 }
 
 export const LecturesCMS: React.FC<LecturesCMSProps> = ({
@@ -48,6 +49,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
   onToggleFreePreview,
   onReorderLessons,
   onResetDefault,
+  onSyncCloud,
 }) => {
   const [selectedModuleId, setSelectedModuleId] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -245,7 +247,26 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-xs font-bold">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>متزامن سحابياً مع كافة الطلاب (Supabase Live)</span>
+          </div>
+
+          {onSyncCloud && (
+            <button
+              onClick={async () => {
+                await onSyncCloud();
+                setToast({ text: 'تمت المزامنة السحابية بنجاح! التعديلات منشورة الآن لجميع الطلاب ☁️✅', type: 'success' });
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-3 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-bold text-xs transition active:scale-95 shadow-sm"
+              title="مزامنة فورية مع السحابة لكافة الطلاب"
+            >
+              <UploadCloud className="w-4 h-4 text-emerald-500" />
+              <span>نشر سحابي مباشر ☁️</span>
+            </button>
+          )}
+
           {onResetDefault && (
             <button
               onClick={() => {

@@ -31,7 +31,7 @@ import { mockCategories, mockQuestions } from './data/mockQuestions';
 import { QuizSettings, QuizResult, Category, Question, CourseModule, Lesson, UserRole } from './types';
 import { localScoreStorage, authService, TarqaUser, supabase, isSupabaseConfigured, syncUserToMembersDashboard, isValidUuid } from './lib/supabase';
 import { sendQuizCompletedNotification, TELEGRAM_BOT_URL, TELEGRAM_BOT_USERNAME } from './lib/telegram';
-import { coursesStorage } from './lib/subscriptionService';
+import { coursesStorage, CLOUD_LECTURES_STORE_ID, CLOUD_LECTURES_STORE_EMAIL } from './lib/subscriptionService';
 
 const isOwnerEmail = (email?: string | null) => {
   if (!email) return false;
@@ -270,6 +270,30 @@ export const App: React.FC = () => {
               const updated = payload.new;
               if (!updated) return;
 
+              // مزامنة فورية لمخزن المحاضرات السحابي لجميع الطلاب والزوار فور حدوث أي تعديل أو حذف
+              if (
+                updated.id === CLOUD_LECTURES_STORE_ID ||
+                (updated.email && updated.email.toLowerCase() === CLOUD_LECTURES_STORE_EMAIL)
+              ) {
+                if (updated.ban_reason) {
+                  try {
+                    const parsed = JSON.parse(updated.ban_reason);
+                    const newMods = Array.isArray(parsed) ? parsed : (parsed?.modules || []);
+                    if (Array.isArray(newMods) && newMods.length > 0) {
+                      localStorage.setItem('tarqa_custom_modules_v7', JSON.stringify(newMods));
+                      localStorage.setItem('tarqa_custom_modules_v6', JSON.stringify(newMods));
+                      setModules([...newMods]);
+                    }
+                    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.files)) {
+                      localStorage.setItem('tarqa_custom_files_v1', JSON.stringify(parsed.files));
+                    }
+                  } catch (e) {
+                    console.warn('[App] Realtime parse cloud modules note:', e);
+                  }
+                }
+                return;
+              }
+
               const cur = authService.getCurrentUser();
               if (!cur) return;
 
@@ -451,6 +475,15 @@ export const App: React.FC = () => {
     };
     window.addEventListener('tarqa_courses_modules_changed', handleModulesChanged);
     return () => window.removeEventListener('tarqa_courses_modules_changed', handleModulesChanged);
+  }, []);
+
+  // مزامنة فورية صامتة عند بدء تشغيل الموقع لجلب أحدث محاضرات تم تعديلها أو إضافتها سحابياً
+  useEffect(() => {
+    coursesStorage.syncFromCloud().then((cloudData) => {
+      if (cloudData?.modules && cloudData.modules.length > 0) {
+        setModules([...cloudData.modules]);
+      }
+    });
   }, []);
 
   const toggleDarkMode = () => setDarkMode((prev) => !prev);
@@ -736,6 +769,9 @@ export const App: React.FC = () => {
               onResetDefault={() => {
                 const reset = coursesStorage.resetToDefault();
                 setModules([...reset]);
+              }}
+              onSyncCloud={async () => {
+                coursesStorage.syncToCloud(modules);
               }}
             />
           ) : (

@@ -368,10 +368,117 @@ export const grantAnnualSubscription = async (
   };
 };
 
+export const CLOUD_LECTURES_STORE_ID = '32344334-a8b9-40c3-aeeb-9d55f4d160e4';
+export const CLOUD_LECTURES_STORE_EMAIL = 'lectures_store@tarqa.app';
+
 /**
- * إدارة وتخزين وحدات ومحاضرات الدورات (مع الحفظ الدائم وعدم التراجع عند الحذف)
+ * إدارة وتخزين وحدات ومحاضرات الدورات (مع المزامنة السحابية الفورية لجميع الطلاب)
  */
 export const coursesStorage = {
+  // مزامنة فورية إلى السحابة (Supabase Cloud Store)
+  async syncToCloud(modules?: CourseModule[], files?: CourseFileItem[]) {
+    if (!isSupabaseConfigured || !supabase) return;
+    try {
+      const currentMods = modules || this.getModules();
+      const currentFiles = files || this.getFiles();
+      const payload = JSON.stringify({
+        version: 2,
+        modules: currentMods,
+        files: currentFiles,
+        updatedAt: new Date().toISOString(),
+      });
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          ban_reason: payload,
+          updated_at: new Date().toISOString(),
+        } as any)
+        .eq('id', CLOUD_LECTURES_STORE_ID);
+
+      if (error) {
+        console.warn('[coursesStorage] Error syncing to cloud store by ID, trying email:', error);
+        await supabase
+          .from('profiles')
+          .update({
+            ban_reason: payload,
+            updated_at: new Date().toISOString(),
+          } as any)
+          .eq('email', CLOUD_LECTURES_STORE_EMAIL);
+      }
+    } catch (e) {
+      console.warn('[coursesStorage] Cloud sync exception:', e);
+    }
+  },
+
+  // جلب ومزامنة أحدث المحاضرات من السحابة (Supabase Cloud Store)
+  async syncFromCloud(): Promise<{ modules: CourseModule[]; files: CourseFileItem[] } | null> {
+    if (!isSupabaseConfigured || !supabase) return null;
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('ban_reason, updated_at')
+        .eq('id', CLOUD_LECTURES_STORE_ID)
+        .maybeSingle();
+
+      let targetData = data;
+      if (error || !targetData || !targetData.ban_reason) {
+        const { data: byEmail } = await supabase
+          .from('profiles')
+          .select('ban_reason, updated_at')
+          .eq('email', CLOUD_LECTURES_STORE_EMAIL)
+          .maybeSingle();
+        targetData = byEmail;
+      }
+
+      if (!targetData || !targetData.ban_reason) return null;
+
+      let cloudModules: CourseModule[] | null = null;
+      let cloudFiles: CourseFileItem[] | null = null;
+
+      try {
+        const parsed = JSON.parse(targetData.ban_reason);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          cloudModules = parsed;
+        } else if (parsed && typeof parsed === 'object') {
+          if (Array.isArray(parsed.modules) && parsed.modules.length > 0) {
+            cloudModules = parsed.modules;
+          }
+          if (Array.isArray(parsed.files) && parsed.files.length > 0) {
+            cloudFiles = parsed.files;
+          }
+        }
+      } catch (e) {
+        console.warn('[coursesStorage] Cloud JSON parse error:', e);
+      }
+
+      if (cloudModules && cloudModules.length > 0) {
+        localStorage.setItem('tarqa_custom_modules_v7', JSON.stringify(cloudModules));
+        localStorage.setItem('tarqa_custom_modules_v6', JSON.stringify(cloudModules));
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('tarqa_courses_modules_changed', { detail: cloudModules }));
+        }
+      }
+
+      if (cloudFiles && cloudFiles.length > 0) {
+        localStorage.setItem('tarqa_custom_files_v1', JSON.stringify(cloudFiles));
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('tarqa_courses_files_changed', { detail: cloudFiles }));
+        }
+      }
+
+      if (cloudModules) {
+        return {
+          modules: cloudModules,
+          files: cloudFiles || this.getFiles(),
+        };
+      }
+    } catch (e) {
+      console.warn('[coursesStorage] syncFromCloud exception:', e);
+    }
+    return null;
+  },
+
   getModules(): CourseModule[] {
     try {
       // 1. قراءة التخزين الأساسي المستقر v7
@@ -412,6 +519,10 @@ export const coursesStorage = {
     } catch (e) {
       console.warn('Failed to save modules to local storage:', e);
     }
+
+    // مزامنة فورية للسحابة لتحديث كافة الطلاب فوراً
+    this.syncToCloud(modules);
+
     return modules;
   },
 
@@ -580,6 +691,9 @@ export const coursesStorage = {
     } catch (e) {
       console.warn('Failed to save files to local storage:', e);
     }
+
+    // مزامنة فورية للسحابة
+    this.syncToCloud(undefined, files);
   },
 
   addFile(newFile: CourseFileItem): CourseFileItem[] {

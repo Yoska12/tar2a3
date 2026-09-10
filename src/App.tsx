@@ -742,12 +742,6 @@ export const App: React.FC = () => {
             </div>
           )}
 
-          {/* مسار التأسيس التفاعلي من الصفر حتى الاحتراف (خارطة الأبواب التأسيسية) */}
-          <FoundationRoadmap
-            modules={modules}
-            onSelectLesson={(mod, les) => openLessonClassroom(mod, les)}
-            onStartModuleQuiz={() => startMockExam()}
-          />
 
           {/* أوضاع الاختبار الثلاثة (بأسلوب Alaqsam التفاعلي) */}
           <section className="flex flex-col gap-4">

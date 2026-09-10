@@ -125,8 +125,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <BookOpen className="w-3.5 h-3.5" />
-              <span>مسار التأسيس 🛤️</span>
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>الرئيسية 🏠</span>
             </button>
 
             <button
@@ -378,8 +378,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <BookOpen className="w-4 h-4 text-amber-500" />
-                    <span>مسار التأسيس الكمي</span>
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    <span>الرئيسية</span>
                   </div>
                   <ChevronLeft className="w-4 h-4 opacity-50" />
                 </button>

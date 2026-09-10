@@ -24,7 +24,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
     >
       <div className="max-w-md mx-auto grid grid-cols-5 items-center gap-1 text-center font-cairo">
         
-        {/* 1. مسار التأسيس */}
+        {/* 1. الصفحة الرئيسية */}
         <button
           type="button"
           onClick={() => onSelectTab('home')}
@@ -35,7 +35,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           }`}
         >
           <BookOpen className={`w-5 h-5 mb-0.5 ${activeTab === 'home' || activeTab === 'roadmap' ? 'stroke-[2.5]' : 'stroke-[1.75]'}`} />
-          <span className="text-[10px] leading-tight">التأسيس</span>
+          <span className="text-[10px] leading-tight">الرئيسية</span>
         </button>
 
         {/* 2. أقسام الكمي */}

@@ -49,7 +49,12 @@ export const rolesService = {
 
           const filtered = sorted.filter((d: any) => {
             const e = (d.email || '').toLowerCase().trim();
-            return e !== 'lectures_store@tarqa.app' && d.id !== '32344334-a8b9-40c3-aeeb-9d55f4d160e4';
+            return (
+              e !== 'lectures_store@tarqa.app' &&
+              e !== 'tarqa_test_1789048296799@gmail.com' &&
+              d.id !== '32344334-a8b9-40c3-aeeb-9d55f4d160e4' &&
+              d.id !== 'a0a2797a-5bcb-4987-b9bc-43b6a3d36876'
+            );
           });
 
           supabaseUsers = filtered.map((d: any) => {

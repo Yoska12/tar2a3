@@ -32,6 +32,7 @@ import { QuizSettings, QuizResult, Category, Question, CourseModule, Lesson, Use
 import { localScoreStorage, authService, TarqaUser, supabase, isSupabaseConfigured, syncUserToMembersDashboard, isValidUuid } from './lib/supabase';
 import { sendQuizCompletedNotification, TELEGRAM_BOT_URL, TELEGRAM_BOT_USERNAME } from './lib/telegram';
 import { coursesStorage, CLOUD_LECTURES_STORE_ID, CLOUD_LECTURES_STORE_EMAIL } from './lib/subscriptionService';
+import { questionBankStorage, CLOUD_QUESTIONS_STORE_ID, CLOUD_QUESTIONS_STORE_EMAIL } from './lib/questionBankStorage';
 
 const isOwnerEmail = (email?: string | null) => {
   if (!email) return false;
@@ -270,6 +271,34 @@ export const App: React.FC = () => {
               const updated = payload.new;
               if (!updated) return;
 
+              // مزامنة فورية لمخزن بنك الأسئلة السحابي لجميع الطلاب فور حدوث أي تعديل أو حذف
+              if (
+                updated.id === CLOUD_QUESTIONS_STORE_ID ||
+                (updated.email && updated.email.toLowerCase() === CLOUD_QUESTIONS_STORE_EMAIL)
+              ) {
+                if (updated.ban_reason) {
+                  try {
+                    const parsed = JSON.parse(updated.ban_reason);
+                    if (Array.isArray(parsed)) {
+                      localStorage.setItem('tarqa_custom_questions_v1', JSON.stringify(parsed));
+                      setAllQuestions([...parsed]);
+                    } else if (parsed && typeof parsed === 'object') {
+                      if (Array.isArray(parsed.questions)) {
+                        localStorage.setItem('tarqa_custom_questions_v1', JSON.stringify(parsed.questions));
+                        setAllQuestions([...parsed.questions]);
+                      }
+                      if (Array.isArray(parsed.quizzes)) {
+                        localStorage.setItem('tarqa_custom_quizzes_v1', JSON.stringify(parsed.quizzes));
+                        setCustomQuizzes([...parsed.quizzes]);
+                      }
+                    }
+                  } catch (e) {
+                    console.warn('[App] Realtime parse cloud questions error:', e);
+                  }
+                }
+                return;
+              }
+
               // مزامنة فورية لمخزن المحاضرات السحابي لجميع الطلاب والزوار فور حدوث أي تعديل أو حذف
               if (
                 updated.id === CLOUD_LECTURES_STORE_ID ||
@@ -286,6 +315,11 @@ export const App: React.FC = () => {
                     }
                     if (parsed && typeof parsed === 'object' && Array.isArray(parsed.files)) {
                       localStorage.setItem('tarqa_custom_files_v1', JSON.stringify(parsed.files));
+                    }
+                    // في حال تضمنت النسخة الاحتياطية أسئلة
+                    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.questions)) {
+                      localStorage.setItem('tarqa_custom_questions_v1', JSON.stringify(parsed.questions));
+                      setAllQuestions([...parsed.questions]);
                     }
                   } catch (e) {
                     console.warn('[App] Realtime parse cloud modules note:', e);
@@ -412,8 +446,9 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // قائمة الأسئلة القابلة للإدارة والتحديث المباشر
-  const [allQuestions, setAllQuestions] = useState<Question[]>(mockQuestions);
+  // قائمة الأسئلة والاختبارات القابلة للإدارة والتحديث والمزامنة السحابية الفورية
+  const [allQuestions, setAllQuestions] = useState<Question[]>(() => questionBankStorage.getQuestions());
+  const [customQuizzes, setCustomQuizzes] = useState<any[]>(() => questionBankStorage.getQuizzes());
 
   // إعدادات الوضع الليلي
   const [darkMode, setDarkMode] = useState<boolean>(() => {
@@ -482,6 +517,36 @@ export const App: React.FC = () => {
     coursesStorage.syncFromCloud().then((cloudData) => {
       if (cloudData?.modules && cloudData.modules.length > 0) {
         setModules([...cloudData.modules]);
+      }
+    });
+  }, []);
+
+  // الاستماع لتحديثات بنك الأسئلة والاختبارات فورياً
+  useEffect(() => {
+    const handleQuestionsChanged = (e: any) => {
+      const newQuestions = e.detail || questionBankStorage.getQuestions();
+      setAllQuestions([...newQuestions]);
+    };
+    const handleQuizzesChanged = (e: any) => {
+      const newQuizzes = e.detail || questionBankStorage.getQuizzes();
+      setCustomQuizzes([...newQuizzes]);
+    };
+    window.addEventListener('tarqa_questions_changed', handleQuestionsChanged);
+    window.addEventListener('tarqa_quizzes_changed', handleQuizzesChanged);
+    return () => {
+      window.removeEventListener('tarqa_questions_changed', handleQuestionsChanged);
+      window.removeEventListener('tarqa_quizzes_changed', handleQuizzesChanged);
+    };
+  }, []);
+
+  // مزامنة فورية صامتة عند بدء تشغيل الموقع لجلب أحدث بنك أسئلة واختبارات تم تعديلها أو إضافتها سحابياً
+  useEffect(() => {
+    questionBankStorage.syncFromCloud().then((cloudData) => {
+      if (cloudData?.questions && cloudData.questions.length > 0) {
+        setAllQuestions([...cloudData.questions]);
+      }
+      if (cloudData?.quizzes && cloudData.quizzes.length > 0) {
+        setCustomQuizzes([...cloudData.quizzes]);
       }
     });
   }, []);
@@ -682,13 +747,34 @@ export const App: React.FC = () => {
             <AdminPanel
               questions={allQuestions}
               categories={mockCategories}
-              onAddQuestion={(newQ) => setAllQuestions((prev) => [newQ, ...prev])}
-              onUpdateQuestion={(updated) =>
-                setAllQuestions((prev) => prev.map((q) => (q.id === updated.id ? updated : q)))
-              }
-              onDeleteQuestion={(id) =>
-                setAllQuestions((prev) => prev.filter((q) => q.id !== id))
-              }
+              quizzes={customQuizzes}
+              onAddQuestion={(newQ) => {
+                const updated = questionBankStorage.addQuestion(newQ);
+                setAllQuestions([...updated]);
+              }}
+              onUpdateQuestion={(updated) => {
+                const updatedList = questionBankStorage.updateQuestion(updated);
+                setAllQuestions([...updatedList]);
+              }}
+              onDeleteQuestion={(id) => {
+                const updated = questionBankStorage.deleteQuestion(id);
+                setAllQuestions([...updated]);
+              }}
+              onResetDefaultQuestions={() => {
+                const reset = questionBankStorage.resetToDefault();
+                setAllQuestions([...reset]);
+              }}
+              onSyncCloud={async () => {
+                await questionBankStorage.syncToCloud(allQuestions, customQuizzes);
+              }}
+              onCreateQuiz={(quizData) => {
+                const updated = questionBankStorage.saveQuiz(quizData);
+                setCustomQuizzes([...updated]);
+              }}
+              onDeleteQuiz={(quizId) => {
+                const updated = questionBankStorage.deleteQuiz(quizId);
+                setCustomQuizzes([...updated]);
+              }}
             />
           ) : (
             <div className="max-w-2xl mx-auto my-12 p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-xl text-center space-y-6">

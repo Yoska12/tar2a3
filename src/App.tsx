@@ -26,7 +26,7 @@ import { AuthModal } from './components/AuthModal';
 import { StudentDashboard } from './components/StudentDashboard';
 import { AdminPanel } from './components/AdminPanel';
 import { ClassroomView } from './components/ClassroomView';
-import { FoundationRoadmap } from './components/FoundationRoadmap';
+import { CoursesView } from './components/CoursesView';
 import { LecturesCMS } from './components/LecturesCMS';
 import { SuperAdminRolesPanel } from './components/SuperAdminRolesPanel';
 import { MobileBottomNav } from './components/MobileBottomNav';
@@ -43,9 +43,9 @@ const isOwnerEmail = (email?: string | null) => {
 };
 
 export const App: React.FC = () => {
-  // وضع الشاشة: home | quiz | result | dashboard | admin | classroom | admin-lectures | admin-roles
-  const [currentView, setCurrentView] = useState<'home' | 'quiz' | 'result' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles'>('home');
-  const [activeTab, setActiveTab] = useState<'home' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles'>('home');
+  // وضع الشاشة: home | courses | quiz | result | dashboard | admin | classroom | admin-lectures | admin-roles
+  const [currentView, setCurrentView] = useState<'home' | 'courses' | 'quiz' | 'result' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles'>('home');
   const [modules, setModules] = useState<CourseModule[]>(mockFoundationModules);
   const [activeModule, setActiveModule] = useState<CourseModule>(mockFoundationModules[0]);
   const [activeLesson, setActiveLesson] = useState<Lesson>(mockFoundationModules[0].lessons[0]);
@@ -309,9 +309,11 @@ export const App: React.FC = () => {
   };
 
   // دالة موحدة للتنقل بين التبويبات والشاشات
-  const handleTabSelect = (tab: 'home' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles') => {
+  const handleTabSelect = (tab: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles') => {
     setActiveTab(tab);
-    if (tab === 'speed') {
+    if (tab === 'courses') {
+      setCurrentView('courses');
+    } else if (tab === 'speed') {
       startSpeedChallenge();
     } else if (tab === 'dashboard') {
       if (!currentUser) {
@@ -624,7 +626,34 @@ export const App: React.FC = () => {
             onSelectLesson={(lesson) => setActiveLesson(lesson)}
             onCompleteLesson={handleCompleteLesson}
             onStartQuiz={() => startMockExam()}
-            onBackToRoadmap={() => setCurrentView('home')}
+            onBackToRoadmap={() => {
+              setCurrentView('courses');
+              setActiveTab('courses');
+            }}
+          />
+        </main>
+      )}
+
+      {/* ======================================================================= */}
+      {/* 6.5. صفحة الدورات التدريبية المستقلة (Dedicated Courses Page) */}
+      {/* ======================================================================= */}
+      {currentView === 'courses' && (
+        <main className="flex-1 w-full pb-24 md:pb-8">
+          <CoursesView
+            currentUser={currentUser}
+            onOpenClassroom={(module, lesson) => {
+              setActiveModule(module);
+              setActiveLesson(lesson);
+              setCurrentView('classroom');
+            }}
+            onBackToHome={() => {
+              setCurrentView('home');
+              setActiveTab('home');
+            }}
+            onOpenAuth={() => {
+              setAuthInitialTab('signin');
+              setIsAuthOpen(true);
+            }}
           />
         </main>
       )}

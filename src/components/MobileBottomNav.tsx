@@ -1,10 +1,10 @@
 import React from 'react';
-import { BookOpen, Layers, Zap, LayoutDashboard, Menu, ShieldCheck } from 'lucide-react';
+import { BookOpen, Layers, Zap, LayoutDashboard, Menu, ShieldCheck, GraduationCap } from 'lucide-react';
 import { TarqaUser } from '../lib/supabase';
 
 interface MobileBottomNavProps {
   activeTab: string;
-  onSelectTab: (tab: 'home' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles') => void;
+  onSelectTab: (tab: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles') => void;
   onOpenMenu: () => void;
   currentUser?: TarqaUser | null;
 }
@@ -38,18 +38,18 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           <span className="text-[10px] leading-tight">الرئيسية</span>
         </button>
 
-        {/* 2. أقسام الكمي */}
+        {/* 2. الدورات التأسيسية */}
         <button
           type="button"
-          onClick={() => onSelectTab('categories')}
+          onClick={() => onSelectTab('courses')}
           className={`flex flex-col items-center justify-center py-1 rounded-xl transition-all ${
-            activeTab === 'categories'
+            activeTab === 'courses'
               ? 'text-amber-500 font-bold'
               : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
-          <Layers className={`w-5 h-5 mb-0.5 ${activeTab === 'categories' ? 'stroke-[2.5]' : 'stroke-[1.75]'}`} />
-          <span className="text-[10px] leading-tight">الأقسام</span>
+          <GraduationCap className={`w-5 h-5 mb-0.5 ${activeTab === 'courses' ? 'stroke-[2.5]' : 'stroke-[1.75]'}`} />
+          <span className="text-[10px] leading-tight">الدورات</span>
         </button>
 
         {/* 3. تحدي طرقع (الزر الأوسط البارز) */}

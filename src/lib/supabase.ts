@@ -37,6 +37,8 @@ export interface TarqaUser {
   avatarUrl?: string;
   isBanned?: boolean;
   banReason?: string;
+  isSubscribed?: boolean;
+  subscriptionExpiresAt?: string;
 }
 
 // دالة مركزية لمزامنة وإدراج أي مستخدم يسجل أو يدخل في لوحة الأعضاء فوراً

@@ -136,6 +136,20 @@ export interface UserWithRole {
   isBanned?: boolean;
   banReason?: string;
   bannedAt?: string;
+  isSubscribed?: boolean;
+  subscriptionExpiresAt?: string;
+}
+
+export interface CourseSubscription {
+  userId: string;
+  userEmail?: string;
+  userName?: string;
+  planId: 'annual_75';
+  planName: string;
+  priceSAR: number;
+  startDate: string;
+  expiresDate: string;
+  isActive: boolean;
 }
 
 export interface RoleChangeLog {

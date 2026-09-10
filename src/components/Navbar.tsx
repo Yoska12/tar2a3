@@ -17,7 +17,8 @@ import {
   X,
   ChevronLeft,
   Send,
-  ExternalLink
+  ExternalLink,
+  GraduationCap
 } from 'lucide-react';
 import { TarqaUser, authService } from '../lib/supabase';
 import { UserRole } from '../types';
@@ -26,7 +27,7 @@ import { TELEGRAM_BOT_USERNAME, TELEGRAM_BOT_URL } from '../lib/telegram';
 interface NavbarProps {
   darkMode: boolean;
   onToggleDarkMode: () => void;
-  onSelectTab: (tab: 'home' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles') => void;
+  onSelectTab: (tab: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles') => void;
   activeTab: string;
   onOpenAuth?: (initialTab?: 'signin' | 'signup') => void;
   currentUser?: TarqaUser | null;
@@ -142,15 +143,18 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             <button
-              onClick={() => onSelectTab('categories')}
+              onClick={() => onSelectTab('courses')}
               className={`px-3 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 ${
-                activeTab === 'categories'
-                  ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm'
+                activeTab === 'courses'
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/25 font-black scale-[1.02]'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <Layers className="w-3.5 h-3.5 text-amber-500" />
-              <span>أقسام الكمي</span>
+              <GraduationCap className="w-3.5 h-3.5 text-amber-500" />
+              <span>الدورات 🎓</span>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                75 ر.س
+              </span>
             </button>
 
             <button
@@ -400,16 +404,16 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
 
                 <button
-                  onClick={() => handleTabClick('categories')}
+                  onClick={() => handleTabClick('courses')}
                   className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-bold transition ${
-                    activeTab === 'categories'
-                      ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 font-black'
+                    activeTab === 'courses'
+                      ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-black shadow-md shadow-amber-500/25'
                       : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <Layers className="w-4 h-4 text-amber-500" />
-                    <span>أقسام وفروع الكمي</span>
+                    <GraduationCap className="w-4 h-4 text-amber-500" />
+                    <span>الدورات التأسيسية 🎓 (75 ر.س/سنة)</span>
                   </div>
                   <ChevronLeft className="w-4 h-4 opacity-50" />
                 </button>

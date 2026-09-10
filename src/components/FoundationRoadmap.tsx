@@ -44,45 +44,28 @@ export const FoundationRoadmap: React.FC<FoundationRoadmapProps> = ({
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
       
-      {/* بانر الهوية الجديدة: التأسيس الكمي من الصفر */}
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-transparent border border-amber-500/20 p-6 sm:p-10 shadow-sm">
-        <div className="max-w-3xl space-y-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-bold">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>مسار تأسيس القدرات الكمي الرسمي • من الصفر حتى 100 🎯</span>
+      {/* بطاقة إنجاز مسار التأسيس */}
+      <div className="p-5 rounded-3xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-500" />
+            <span className="font-black text-sm text-slate-900 dark:text-white">نسبة إنجازك في مسار التأسيس</span>
           </div>
-
-          <h1 className="text-2xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight leading-tight">
-            لا تعتمد على الحفظ العشوائي! <br />
-            تأسس صح بـ <span className="text-amber-500">طريقة طرقع</span> الذهنية السريعة
-          </h1>
-
-          <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed max-w-2xl">
-            مسار تسلسلي مبسط ومحكم يأخذ بيدك من المهارات الصفرية وجداول الضرب الخاطفة وصولاً لأصعب قوانين الهندسة والمتطابقات، مدعماً بمحاضرات فيديو مركزة ومذكرات PDF قابلة للتحميل وكويزات تطبيقية بعد كل درس.
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {completedLessons} من {totalLessons} محاضرة مكتملة • {Math.round(totalDuration / 60)} ساعة شرح • {totalAttachments} مذكرة PDF
           </p>
-
-          {/* شريط الإنجاز العام لمسار التأسيس */}
-          <div className="pt-2 max-w-xl space-y-2">
-            <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
-              <span>نسبة إنجازك في مسار التأسيس</span>
-              <span className="text-amber-500 font-mono text-sm">{progressPercentage}%</span>
-            </div>
-            <div className="w-full h-3 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-300/40 dark:border-slate-700/60">
-              <div
-                className="h-full bg-gradient-to-l from-amber-400 to-amber-500 rounded-full transition-all duration-500 shadow-sm"
-                style={{ width: `${progressPercentage}%` }}
-              />
-            </div>
-            <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400 pt-1 font-medium">
-              <span>✅ {completedLessons} من {totalLessons} محاضرة مكتملة</span>
-              <span>•</span>
-              <span>⏱️ {Math.round(totalDuration / 60)} ساعة شرح مركز</span>
-              <span>•</span>
-              <span>📑 {totalAttachments} مذكرة وملف PDF</span>
-            </div>
-          </div>
         </div>
-      </section>
+
+        <div className="flex items-center gap-3 min-w-[200px] sm:max-w-xs w-full">
+          <div className="flex-1 h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-200 dark:border-slate-700">
+            <div
+              className="h-full bg-gradient-to-l from-amber-400 to-amber-500 rounded-full transition-all duration-500 shadow-sm"
+              style={{ width: `${progressPercentage}%` }}
+            />
+          </div>
+          <span className="text-amber-500 font-mono text-sm font-black min-w-[36px]">{progressPercentage}%</span>
+        </div>
+      </div>
 
       {/* الأبواب التأسيسية التسلسلية (Foundation Roadmap Modules) */}
       <div className="space-y-6">

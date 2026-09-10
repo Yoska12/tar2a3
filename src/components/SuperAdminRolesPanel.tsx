@@ -26,7 +26,9 @@ import {
   Ban,
   Trash2,
   Unlock,
-  UserX
+  UserX,
+  Copy,
+  Check
 } from 'lucide-react';
 import { UserRole, UserWithRole, RoleChangeLog } from '../types';
 import { rolesService } from '../lib/rolesService';
@@ -54,6 +56,8 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>('all');
   const [showLogsModal, setShowLogsModal] = useState<boolean>(false);
+  const [showSqlModal, setShowSqlModal] = useState<boolean>(false);
+  const [copiedSql, setCopiedSql] = useState<boolean>(false);
 
   // حالة نافذة تأكيد تغيير الرتبة
   const [pendingChange, setPendingChange] = useState<{
@@ -81,9 +85,10 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
     type: 'success' | 'error' | 'warning';
   } | null>(null);
 
-  // استدعاء البيانات
-  const loadData = async () => {
-    setIsLoading(true);
+  // استدعاء البيانات (يدعم التحديث الصامت في الخلفية دون وميض مؤشر التحميل)
+  const loadData = async (isBackground: boolean | any = false) => {
+    const bg = isBackground === true;
+    if (!bg) setIsLoading(true);
     try {
       const [allUsers, logs] = await Promise.all([
         rolesService.getUsers(),
@@ -94,7 +99,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
     } catch (err) {
       console.error('Error loading roles data:', err);
     } finally {
-      setIsLoading(false);
+      if (!bg) setIsLoading(false);
     }
   };
 
@@ -102,11 +107,17 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
     loadData();
 
     const handleDataChanged = () => {
-      loadData();
+      loadData(true);
     };
 
     window.addEventListener('tarqa_roles_changed', handleDataChanged);
     window.addEventListener('tarqa_user_changed', handleDataChanged);
+    window.addEventListener('storage', handleDataChanged);
+
+    // تحديث دوري تلقائي خفيف كل 3.5 ثوانٍ في الخلفية لضمان ظهور أي عضو يسجل جديداً فوراً
+    const pollInterval = setInterval(() => {
+      loadData(true);
+    }, 3500);
 
     // اشتراك في الوقت الحقيقي عبر Supabase Realtime لأي تسجيل جديد أو تعديل في جدول profiles
     let channel: any = null;
@@ -118,7 +129,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
             'postgres_changes',
             { event: '*', schema: 'public', table: 'profiles' },
             () => {
-              loadData();
+              loadData(true);
             }
           )
           .subscribe();
@@ -128,8 +139,10 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
     }
 
     return () => {
+      clearInterval(pollInterval);
       window.removeEventListener('tarqa_roles_changed', handleDataChanged);
       window.removeEventListener('tarqa_user_changed', handleDataChanged);
+      window.removeEventListener('storage', handleDataChanged);
       if (channel && supabase) {
         supabase.removeChannel(channel);
       }
@@ -160,14 +173,21 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
     };
   }, [users]);
 
-  // فلترة وبحث المستخدمين
+  // فلترة وبحث وترتيب المستخدمين (حماية كاملة من قيم null وترتيب الأحدث أولاً)
   const filteredUsers = useMemo(() => {
-    return users.filter((user) => {
+    const list = users.filter((user) => {
+      const q = searchQuery.toLowerCase().trim();
+      const fullName = (user.fullName || '').toLowerCase();
+      const email = (user.email || '').toLowerCase();
+      const tg = (user.telegramUsername || '').toLowerCase();
+      const roleText = (user.role || '').toLowerCase();
+
       const matchesSearch =
-        user.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (user.telegramUsername &&
-          user.telegramUsername.toLowerCase().includes(searchQuery.toLowerCase()));
+        !q ||
+        fullName.includes(q) ||
+        email.includes(q) ||
+        tg.includes(q) ||
+        roleText.includes(q);
 
       const matchesFilter =
         selectedRoleFilter === 'all'
@@ -177,6 +197,18 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
           : user.role === selectedRoleFilter;
 
       return matchesSearch && matchesFilter;
+    });
+
+    // ترتيب القائمة: حساب السوبر أدمن Yoska في المقدمة دائماً، ثم الأعضاء الجدد أولاً
+    return list.sort((a, b) => {
+      const isSuperA = a.email?.toLowerCase() === 'yassooooo27m@gmail.com' || a.role === 'super_admin';
+      const isSuperB = b.email?.toLowerCase() === 'yassooooo27m@gmail.com' || b.role === 'super_admin';
+      if (isSuperA && !isSuperB) return -1;
+      if (!isSuperA && isSuperB) return 1;
+
+      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return dateB - dateA;
     });
   }, [users, searchQuery, selectedRoleFilter]);
 
@@ -298,243 +330,385 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
     setPendingChange(null);
   };
 
-  // وظيفة الحصول على شارة الرتبة بالألوان المطلوبة بالضبط
+  // وظيفة الحصول على شارة الرتبة بالألوان الفخمة والـ Badges المميزة
   const renderRoleBadge = (role: UserRole) => {
     switch (role) {
       case 'super_admin':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 shadow-sm">
-            <Crown className="w-3.5 h-3.5 text-rose-500 animate-pulse" />
-            <span>سوبر أدمن (Super Admin)</span>
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black bg-gradient-to-r from-amber-500/15 via-rose-500/15 to-amber-500/15 text-amber-600 dark:text-amber-300 border border-amber-500/40 shadow-sm shadow-amber-500/10">
+            <Crown className="w-3.5 h-3.5 text-amber-500 animate-pulse fill-amber-500/20" />
+            <span>سوبر أدمن 👑</span>
           </span>
         );
       case 'admin':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-purple-500/10 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-purple-500/15 text-purple-600 dark:text-purple-300 border border-purple-500/35 shadow-sm shadow-purple-500/10">
             <ShieldCheck className="w-3.5 h-3.5 text-purple-500" />
-            <span>مسؤول (Admin)</span>
+            <span>مسؤول منصة 🛡️</span>
           </span>
         );
       case 'teacher':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-500/15 text-blue-600 dark:text-blue-300 border border-blue-500/35 shadow-sm shadow-blue-500/10">
             <GraduationCap className="w-3.5 h-3.5 text-blue-500" />
-            <span>معلم (Teacher)</span>
+            <span>معلم معتمد 🎓</span>
           </span>
         );
       case 'student':
       default:
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-slate-500/10 dark:bg-slate-500/20 text-slate-600 dark:text-slate-400 border border-slate-500/30">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-500/10 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
             <Users className="w-3.5 h-3.5 text-slate-400" />
-            <span>طالب (Student)</span>
+            <span>طالب طرقع 🎯</span>
           </span>
         );
     }
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 font-cairo">
-      {/* تنبيه الصلاحيات وإشعار رتبة السوبر أدمن */}
+    <div className="relative min-h-screen max-w-7xl mx-auto px-4 sm:px-6 py-8 font-cairo">
+      {/* تأثيرات الإضاءة الجمالية في الخلفية (Ambient Background Glow) */}
+      <div className="absolute top-12 right-1/4 w-96 h-96 bg-purple-500/10 dark:bg-purple-600/15 rounded-full blur-3xl pointer-events-none -z-10 animate-pulse" />
+      <div className="absolute top-44 left-10 w-80 h-80 bg-amber-500/10 dark:bg-amber-500/10 rounded-full blur-3xl pointer-events-none -z-10" />
+      <div className="absolute bottom-24 right-10 w-96 h-96 bg-rose-500/10 dark:bg-rose-500/10 rounded-full blur-3xl pointer-events-none -z-10" />
+
+      {/* تنبيه الصلاحيات وإشعار رتبة السوبر أدمن الفخم */}
       {!isAuthorizedAdmin ? (
-        <div className="mb-6 p-4 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-900 dark:text-amber-200 flex items-center gap-3">
-          <AlertTriangle className="w-6 h-6 text-amber-500 flex-shrink-0" />
-          <div className="text-sm">
-            <span className="font-bold">تنبيه صلاحيات: </span>
+        <div className="mb-6 p-4.5 rounded-3xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 flex items-center gap-3.5 backdrop-blur-md shadow-sm">
+          <div className="p-2 rounded-2xl bg-amber-500/20 text-amber-500 shrink-0">
+            <AlertTriangle className="w-5 h-5" />
+          </div>
+          <div className="text-xs sm:text-sm leading-relaxed">
+            <span className="font-bold text-amber-600 dark:text-amber-400">تنبيه صلاحيات: </span>
             أنت تستعرض هذه اللوحة برتبة (<span className="font-bold underline">{authService.getRoleBadge(currentLoggedUser?.role).label}</span>). تعديل الرتب وسحب الصلاحيات محصور بمسؤولي المنصة (Admins) المعتمدين.
           </div>
         </div>
       ) : !isSuperAdmin ? (
-        <div className="mb-6 p-4 rounded-2xl bg-purple-500/15 border border-purple-500/40 text-purple-900 dark:text-purple-200 flex items-center gap-3">
-          <ShieldCheck className="w-6 h-6 text-purple-500 flex-shrink-0" />
-          <div className="text-sm">
-            <span className="font-bold">حساب مسؤول منصة (Admin): </span>
+        <div className="mb-6 p-4.5 rounded-3xl bg-purple-500/10 border border-purple-500/30 text-purple-900 dark:text-purple-200 flex items-center gap-3.5 backdrop-blur-md shadow-sm">
+          <div className="p-2 rounded-2xl bg-purple-500/20 text-purple-500 shrink-0">
+            <ShieldCheck className="w-5 h-5" />
+          </div>
+          <div className="text-xs sm:text-sm leading-relaxed">
+            <span className="font-bold text-purple-600 dark:text-purple-400">حساب مسؤول منصة (Admin): </span>
             يمكنك تعديل رتب الأعضاء. بينما صلاحيات <strong className="text-rose-600 dark:text-rose-400">حظر الحسابات والمسح النهائي</strong> محصورة برتبة <strong>السوبر أدمن (Super Admin)</strong> فقط لسلامة وأمان المنصة.
           </div>
         </div>
       ) : (
-        <div className="mb-6 p-3.5 px-4 rounded-2xl bg-gradient-to-r from-rose-500/10 via-purple-500/10 to-amber-500/10 border border-rose-500/25 text-slate-800 dark:text-slate-200 flex items-center justify-between gap-3 flex-wrap shadow-sm">
-          <div className="flex items-center gap-2.5 text-xs sm:text-sm">
-            <span className="p-1 rounded-lg bg-rose-500/20 text-rose-500">👑</span>
+        <div className="mb-6 p-4 rounded-3xl bg-gradient-to-r from-amber-500/15 via-rose-500/10 to-purple-500/15 border border-amber-500/30 text-slate-800 dark:text-slate-100 flex items-center justify-between gap-3 flex-wrap shadow-lg shadow-amber-500/5 backdrop-blur-md">
+          <div className="flex items-center gap-3 text-xs sm:text-sm">
+            <div className="w-8 h-8 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 flex items-center justify-center font-black shadow-md shadow-amber-500/30">
+              <Crown className="w-4 h-4 fill-slate-950" />
+            </div>
             <span>
-              <strong className="text-rose-600 dark:text-rose-400">صلاحيات السوبر أدمن مفعلة:</strong> لديك كامل الصلاحية لحظر وفك حظر الحسابات، المسح النهائي للمستخدمين، وتعديل الرتب وتوثيق العمليات.
+              <strong className="text-amber-600 dark:text-amber-400">صلاحيات السوبر أدمن مفعلة:</strong> لديك كامل الصلاحية للتحكم بالرتب، الحظر، الفك، والمسح النهائي للمستخدمين ومراقبة سجل التدقيق الحي.
             </span>
           </div>
-          <span className="text-[11px] font-black px-3 py-1 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 flex items-center gap-1">
-            <Crown className="w-3 h-3 text-rose-500" />
-            Super Admin
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-black bg-gradient-to-r from-amber-500/20 to-rose-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/40 shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+              <span>Super Admin • Yoska</span>
+            </span>
+          </div>
         </div>
       )}
 
       {/* شريط الإشعارات العائم (Toast Notification) */}
       {toastMessage && (
         <div
-          className={`fixed bottom-6 left-6 z-50 px-5 py-3 rounded-2xl shadow-xl border flex items-center gap-3 transition-all animate-in fade-in slide-in-from-bottom-4 ${
+          className={`fixed bottom-6 left-6 z-50 px-5 py-3 rounded-2xl shadow-2xl border flex items-center gap-3 transition-all animate-in fade-in slide-in-from-bottom-4 backdrop-blur-xl ${
             toastMessage.type === 'success'
-              ? 'bg-emerald-950/90 text-emerald-200 border-emerald-500/50'
+              ? 'bg-emerald-950/90 text-emerald-200 border-emerald-500/50 shadow-emerald-500/20'
               : toastMessage.type === 'error'
-              ? 'bg-rose-950/90 text-rose-200 border-rose-500/50'
-              : 'bg-amber-950/90 text-amber-200 border-amber-500/50'
+              ? 'bg-rose-950/90 text-rose-200 border-rose-500/50 shadow-rose-500/20'
+              : 'bg-amber-950/90 text-amber-200 border-amber-500/50 shadow-amber-500/20'
           }`}
         >
           {toastMessage.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-400" />}
           {toastMessage.type === 'error' && <XCircle className="w-5 h-5 text-rose-400" />}
           {toastMessage.type === 'warning' && <AlertTriangle className="w-5 h-5 text-amber-400" />}
-          <span className="text-sm font-semibold">{toastMessage.text}</span>
+          <span className="text-sm font-bold">{toastMessage.text}</span>
         </div>
       )}
 
-      {/* الهيدر والعنوان الرئيسي */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <span className="px-3 py-1 rounded-full text-xs font-bold bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-purple-500" />
-              لوحة إدارة الرتب والصلاحيات
-            </span>
-            <span className="text-xs text-slate-400 font-medium">RBAC Security Engine</span>
+      {/* الهيدر والعنوان الرئيسي الفخم */}
+      <div className="relative p-6 sm:p-8 rounded-3xl bg-white/80 dark:bg-[#0c1324]/85 backdrop-blur-xl border border-slate-200/80 dark:border-slate-800/80 shadow-xl shadow-slate-950/5 mb-8 overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-rose-500 via-purple-500 to-amber-500" />
+        
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div>
+            <div className="flex items-center gap-2 mb-2.5 flex-wrap">
+              <span className="px-3.5 py-1 rounded-full text-xs font-bold bg-purple-500/15 text-purple-600 dark:text-purple-300 border border-purple-500/30 flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-purple-500" />
+                <span>لوحة إدارة الرتب والصلاحيات</span>
+              </span>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono text-slate-400 bg-slate-100 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60">
+                RBAC Security Engine v2.0
+              </span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white flex items-center gap-3">
+              <span>إدارة الرتب وأعضاء المنصة</span>
+              <span className="text-xl">🛡️</span>
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1.5 max-w-2xl leading-relaxed">
+              التحكم المركزي في تعيين وسحب صلاحيات مسؤولي المنصة والمعلمين والطلاب مع توثيق كافة الحركات في سجل التدقيق ومزامنة الأعضاء فورياً.
+            </p>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-            <span>إدارة الرتب والصلاحيات</span>
-            <span className="text-purple-500 text-lg">🛡️</span>
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            التحكم المركزي في تعيين وسحب صلاحيات مسؤولي المنصة والمعلمين والطلاب مع توثيق كافة الحركات في سجل التدقيق.
-          </p>
-        </div>
 
-        {/* أزرار الإجراءات العلوية */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowLogsModal(true)}
-            className="px-4 py-2.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 transition-all flex items-center gap-2 shadow-sm"
-          >
-            <History className="w-4 h-4 text-amber-500" />
-            <span>سجل التدقيق ({auditLogs.length})</span>
-          </button>
+          {/* أزرار الإجراءات العلوية */}
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <button
+              onClick={() => setShowSqlModal(true)}
+              className="group px-4 py-2.5 rounded-2xl text-xs font-black bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 hover:from-amber-400 hover:to-amber-500 text-slate-950 transition-all duration-300 flex items-center gap-2 shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 hover:-translate-y-0.5 active:translate-y-0"
+              title="تفعيل ظهور كافة الحسابات والطلاب في الداشبورد"
+            >
+              <Sparkles className="w-4 h-4 fill-slate-950 group-hover:rotate-12 transition-transform" />
+              <span>تفعيل ظهور المستخدمين (SQL Fix)</span>
+            </button>
 
-          <button
-            onClick={loadData}
-            disabled={isLoading}
-            className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700 transition-all shadow-sm"
-            title="تحديث البيانات"
-          >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-rose-500' : ''}`} />
-          </button>
+            <button
+              onClick={() => setShowLogsModal(true)}
+              className="px-4 py-2.5 rounded-2xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/90 dark:hover:bg-slate-700/90 text-slate-700 dark:text-slate-200 border border-slate-300/80 dark:border-slate-700/80 transition-all flex items-center gap-2 shadow-sm hover:-translate-y-0.5"
+            >
+              <History className="w-4 h-4 text-purple-500" />
+              <span>سجل التدقيق</span>
+              <span className="px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-300 font-mono text-[10px] font-bold">
+                {auditLogs.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => loadData()}
+              disabled={isLoading}
+              className="p-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/90 dark:hover:bg-slate-700/90 text-slate-600 dark:text-slate-300 border border-slate-300/80 dark:border-slate-700/80 transition-all shadow-sm hover:rotate-45"
+              title="تحديث البيانات"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-amber-500' : ''}`} />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* بطاقات الإحصائيات (Stats Cards) */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4 mb-8">
-        {/* إجمالي الحسابات */}
-        <div className="p-4 rounded-2xl bg-white dark:bg-[#0c1222] border border-slate-200 dark:border-slate-800/80 shadow-sm">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
-            <span className="text-xs font-bold">إجمالي الحسابات</span>
-            <Users className="w-4 h-4 text-slate-400" />
+      {/* تنبيه إذا لم تظهر باقي الحسابات بسبب قيود RLS في سوبابيز */}
+      {users.length <= 1 && (
+        <div className="mb-6 p-5 rounded-3xl bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-transparent border border-amber-500/35 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-md shadow-amber-500/5 backdrop-blur-md animate-in fade-in">
+          <div className="flex items-start gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5 shadow-inner">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="font-black text-sm text-slate-900 dark:text-white">
+                هل قام طلاب أو أعضاء بالتسجيل ولا يظهرون في هذا الجدول؟
+              </h4>
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 max-w-2xl leading-relaxed">
+                السبب هو أن سياسات الأمان الافتراضية (RLS) في Supabase تمنع قراءة الحسابات الأخرى تلقائياً. بضغطة زر واحدة يمكنك نسخ سكربت الحل وتشغيله في Supabase SQL Editor لتظهر جميع الحسابات فوراً!
+              </p>
+            </div>
           </div>
-          <div className="text-2xl font-black text-slate-900 dark:text-white">
+          <button
+            onClick={() => setShowSqlModal(true)}
+            className="w-full md:w-auto px-5 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md shadow-amber-500/25 transition-all flex items-center justify-center gap-2 shrink-0 hover:-translate-y-0.5"
+          >
+            <Sparkles className="w-4 h-4 fill-slate-950" />
+            <span>عرض ونسخ كود الحل (SQL)</span>
+          </button>
+        </div>
+      )}
+
+      {/* بطاقات الإحصائيات الفخمة (6 Stats Cards) مع إمكانية الفلترة الفورية بالنقر عليها */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-8">
+        {/* 1. إجمالي الحسابات */}
+        <div 
+          onClick={() => setSelectedRoleFilter('all')}
+          className={`p-4 rounded-3xl transition-all duration-300 cursor-pointer backdrop-blur-md border ${
+            selectedRoleFilter === 'all'
+              ? 'bg-violet-500/15 border-violet-500/50 shadow-lg shadow-violet-500/10 scale-[1.02]'
+              : 'bg-white/80 dark:bg-[#0c1324]/80 border-slate-200/80 dark:border-slate-800/80 hover:-translate-y-1 hover:shadow-md'
+          }`}
+        >
+          <div className="flex items-center justify-between text-violet-500 mb-2.5">
+            <span className="text-xs font-bold">إجمالي الأعضاء</span>
+            <div className="w-7 h-7 rounded-xl bg-violet-500/15 flex items-center justify-center">
+              <Users className="w-4 h-4 text-violet-500" />
+            </div>
+          </div>
+          <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
             {stats.total}
           </div>
-          <div className="text-[10px] text-slate-400 mt-1">مستخدم مسجل في المنصة</div>
+          <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />
+            <span>مسجل في المنصة</span>
+          </div>
         </div>
 
-        {/* سوبر أدمن */}
-        <div className="p-4 rounded-2xl bg-rose-500/5 dark:bg-rose-950/20 border border-rose-500/20 shadow-sm">
-          <div className="flex items-center justify-between text-rose-500 mb-2">
+        {/* 2. سوبر أدمن */}
+        <div 
+          onClick={() => setSelectedRoleFilter('super_admin')}
+          className={`p-4 rounded-3xl transition-all duration-300 cursor-pointer backdrop-blur-md border ${
+            selectedRoleFilter === 'super_admin'
+              ? 'bg-amber-500/15 border-amber-500/50 shadow-lg shadow-amber-500/10 scale-[1.02]'
+              : 'bg-white/80 dark:bg-[#0c1324]/80 border-slate-200/80 dark:border-slate-800/80 hover:-translate-y-1 hover:shadow-md'
+          }`}
+        >
+          <div className="flex items-center justify-between text-amber-500 mb-2.5">
             <span className="text-xs font-black">سوبر أدمن</span>
-            <Crown className="w-4 h-4 text-rose-500" />
+            <div className="w-7 h-7 rounded-xl bg-amber-500/15 flex items-center justify-center">
+              <Crown className="w-4 h-4 text-amber-500 animate-pulse" />
+            </div>
           </div>
-          <div className="text-2xl font-black text-rose-600 dark:text-rose-400">
+          <div className="text-2xl sm:text-3xl font-black text-amber-600 dark:text-amber-400">
             {stats.superAdmin}
           </div>
-          <div className="text-[10px] text-rose-500/70 mt-1">كامل الصلاحيات والإشراف</div>
+          <div className="text-[10px] text-amber-500/80 mt-1 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            <span>تحكم وإشراف كامل</span>
+          </div>
         </div>
 
-        {/* المسؤولين Admins */}
-        <div className="p-4 rounded-2xl bg-purple-500/5 dark:bg-purple-950/20 border border-purple-500/20 shadow-sm">
-          <div className="flex items-center justify-between text-purple-500 mb-2">
+        {/* 3. مسؤولو المنصة Admins */}
+        <div 
+          onClick={() => setSelectedRoleFilter('admin')}
+          className={`p-4 rounded-3xl transition-all duration-300 cursor-pointer backdrop-blur-md border ${
+            selectedRoleFilter === 'admin'
+              ? 'bg-purple-500/15 border-purple-500/50 shadow-lg shadow-purple-500/10 scale-[1.02]'
+              : 'bg-white/80 dark:bg-[#0c1324]/80 border-slate-200/80 dark:border-slate-800/80 hover:-translate-y-1 hover:shadow-md'
+          }`}
+        >
+          <div className="flex items-center justify-between text-purple-500 mb-2.5">
             <span className="text-xs font-bold">مسؤولو المنصة</span>
-            <ShieldCheck className="w-4 h-4 text-purple-500" />
+            <div className="w-7 h-7 rounded-xl bg-purple-500/15 flex items-center justify-center">
+              <ShieldCheck className="w-4 h-4 text-purple-500" />
+            </div>
           </div>
-          <div className="text-2xl font-black text-purple-600 dark:text-purple-400">
+          <div className="text-2xl sm:text-3xl font-black text-purple-600 dark:text-purple-400">
             {stats.admin}
           </div>
-          <div className="text-[10px] text-purple-500/70 mt-1">إدارة المحتوى والأسئلة</div>
+          <div className="text-[10px] text-purple-500/80 mt-1 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+            <span>إدارة المحتوى والأسئلة</span>
+          </div>
         </div>
 
-        {/* المعلمين Teachers */}
-        <div className="p-4 rounded-2xl bg-blue-500/5 dark:bg-blue-950/20 border border-blue-500/20 shadow-sm">
-          <div className="flex items-center justify-between text-blue-500 mb-2">
-            <span className="text-xs font-bold">المعلمون المعتمدون</span>
-            <GraduationCap className="w-4 h-4 text-blue-500" />
+        {/* 4. المعلمين Teachers */}
+        <div 
+          onClick={() => setSelectedRoleFilter('teacher')}
+          className={`p-4 rounded-3xl transition-all duration-300 cursor-pointer backdrop-blur-md border ${
+            selectedRoleFilter === 'teacher'
+              ? 'bg-blue-500/15 border-blue-500/50 shadow-lg shadow-blue-500/10 scale-[1.02]'
+              : 'bg-white/80 dark:bg-[#0c1324]/80 border-slate-200/80 dark:border-slate-800/80 hover:-translate-y-1 hover:shadow-md'
+          }`}
+        >
+          <div className="flex items-center justify-between text-blue-500 mb-2.5">
+            <span className="text-xs font-bold">المعلمون</span>
+            <div className="w-7 h-7 rounded-xl bg-blue-500/15 flex items-center justify-center">
+              <GraduationCap className="w-4 h-4 text-blue-500" />
+            </div>
           </div>
-          <div className="text-2xl font-black text-blue-600 dark:text-blue-400">
+          <div className="text-2xl sm:text-3xl font-black text-blue-600 dark:text-blue-400">
             {stats.teacher}
           </div>
-          <div className="text-[10px] text-blue-500/70 mt-1">المحاضرات والمذكرات</div>
+          <div className="text-[10px] text-blue-500/80 mt-1 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+            <span>المحاضرات والشروحات</span>
+          </div>
         </div>
 
-        {/* الطلاب Students */}
-        <div className="p-4 rounded-2xl bg-slate-500/5 dark:bg-slate-900/40 border border-slate-300 dark:border-slate-800 shadow-sm col-span-2 sm:col-span-1">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
+        {/* 5. الطلاب Students */}
+        <div 
+          onClick={() => setSelectedRoleFilter('student')}
+          className={`p-4 rounded-3xl transition-all duration-300 cursor-pointer backdrop-blur-md border ${
+            selectedRoleFilter === 'student'
+              ? 'bg-emerald-500/15 border-emerald-500/50 shadow-lg shadow-emerald-500/10 scale-[1.02]'
+              : 'bg-white/80 dark:bg-[#0c1324]/80 border-slate-200/80 dark:border-slate-800/80 hover:-translate-y-1 hover:shadow-md'
+          }`}
+        >
+          <div className="flex items-center justify-between text-emerald-500 mb-2.5">
             <span className="text-xs font-bold">الطلاب</span>
-            <Users className="w-4 h-4 text-slate-400" />
+            <div className="w-7 h-7 rounded-xl bg-emerald-500/15 flex items-center justify-center">
+              <Sparkles className="w-4 h-4 text-emerald-500" />
+            </div>
           </div>
-          <div className="text-2xl font-black text-slate-800 dark:text-slate-200">
+          <div className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400">
             {stats.student}
           </div>
-          <div className="text-[10px] text-slate-400 mt-1">تأسيس واختبارات</div>
+          <div className="text-[10px] text-emerald-500/80 mt-1 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            <span>تأسيس وتدريب كمي</span>
+          </div>
+        </div>
+
+        {/* 6. المحظورون Banned */}
+        <div 
+          onClick={() => setSelectedRoleFilter('banned')}
+          className={`p-4 rounded-3xl transition-all duration-300 cursor-pointer backdrop-blur-md border ${
+            selectedRoleFilter === 'banned'
+              ? 'bg-rose-500/15 border-rose-500/50 shadow-lg shadow-rose-500/10 scale-[1.02]'
+              : 'bg-white/80 dark:bg-[#0c1324]/80 border-slate-200/80 dark:border-slate-800/80 hover:-translate-y-1 hover:shadow-md'
+          }`}
+        >
+          <div className="flex items-center justify-between text-rose-500 mb-2.5">
+            <span className="text-xs font-bold">المحظورون</span>
+            <div className="w-7 h-7 rounded-xl bg-rose-500/15 flex items-center justify-center">
+              <Ban className="w-4 h-4 text-rose-500" />
+            </div>
+          </div>
+          <div className="text-2xl sm:text-3xl font-black text-rose-600 dark:text-rose-400">
+            {stats.banned}
+          </div>
+          <div className="text-[10px] text-rose-500/80 mt-1 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+            <span>حسابات موقوفة</span>
+          </div>
         </div>
       </div>
 
-      {/* شريط البحث والفلترة (Search and Filter Bar) */}
-      <div className="p-4 rounded-2xl bg-white dark:bg-[#0c1222] border border-slate-200 dark:border-slate-800/80 mb-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+      {/* شريط البحث والفلترة الفخم */}
+      <div className="p-4 sm:p-5 rounded-3xl bg-white/80 dark:bg-[#0c1324]/85 backdrop-blur-xl border border-slate-200/80 dark:border-slate-800/80 mb-6 shadow-xl shadow-slate-950/5 flex flex-col lg:flex-row items-center justify-between gap-4">
         {/* حقل البحث الفوري */}
-        <div className="relative w-full md:w-96">
-          <Search className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <div className="relative w-full lg:w-[420px]">
+          <Search className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="البحث بالاسم أو البريد الإلكتروني أو تليجرام..."
-            className="w-full pl-4 pr-10 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500/50"
+            className="w-full pl-10 pr-11 py-3 rounded-2xl bg-slate-50/90 dark:bg-slate-900/90 border border-slate-200/80 dark:border-slate-700/80 text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 transition-all shadow-inner"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 transition"
             >
               <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
 
-        {/* فلاتر الرتب الفورية */}
-        <div className="flex items-center gap-1.5 w-full md:w-auto overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+        {/* فلاتر الرتب التفاعلية كـ Segmented Control */}
+        <div className="flex items-center gap-1.5 w-full lg:w-auto overflow-x-auto pb-1 lg:pb-0 scrollbar-none">
           {[
-            { id: 'all', label: 'الكل', count: stats.total },
-            { id: 'super_admin', label: '👑 سوبر أدمن', count: stats.superAdmin },
-            { id: 'admin', label: '🛡️ مسؤول', count: stats.admin },
-            { id: 'teacher', label: '🎓 معلم', count: stats.teacher },
-            { id: 'student', label: '🎯 طالب', count: stats.student },
-            { id: 'banned', label: '🚫 المحظورين', count: stats.banned },
+            { id: 'all', label: 'الكل', count: stats.total, icon: '👥' },
+            { id: 'super_admin', label: 'سوبر أدمن', count: stats.superAdmin, icon: '👑' },
+            { id: 'admin', label: 'مسؤول', count: stats.admin, icon: '🛡️' },
+            { id: 'teacher', label: 'معلم', count: stats.teacher, icon: '🎓' },
+            { id: 'student', label: 'طالب', count: stats.student, icon: '🎯' },
+            { id: 'banned', label: 'محظور', count: stats.banned, icon: '🚫' },
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setSelectedRoleFilter(tab.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+              className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all duration-200 whitespace-nowrap flex items-center gap-2 ${
                 selectedRoleFilter === tab.id
-                  ? 'bg-rose-500 text-white shadow-md shadow-rose-500/20'
-                  : 'bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-black shadow-md shadow-amber-500/25 scale-[1.02]'
+                  : 'bg-slate-100/90 dark:bg-slate-900/80 text-slate-600 dark:text-slate-400 hover:bg-slate-200/90 dark:hover:bg-slate-800/90 border border-slate-200/60 dark:border-slate-800'
               }`}
             >
+              <span>{tab.icon}</span>
               <span>{tab.label}</span>
               <span
-                className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
                   selectedRoleFilter === tab.id
-                    ? 'bg-white/20 text-white'
-                    : 'bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                    ? 'bg-slate-950/20 text-slate-950 font-black'
+                    : 'bg-slate-200/80 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
                 }`}
               >
                 {tab.count}
@@ -544,28 +718,30 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
         </div>
       </div>
 
-      {/* جدول البيانات الرئيسي (Interactive Data Table & Mobile Cards) */}
-      <div className="rounded-2xl bg-white dark:bg-[#0c1222] border border-slate-200 dark:border-slate-800/80 shadow-sm overflow-hidden">
+      {/* جدول البيانات الرئيسي الفخم (Interactive Data Table & Mobile Cards) */}
+      <div className="rounded-3xl bg-white/80 dark:bg-[#0c1324]/85 backdrop-blur-xl border border-slate-200/80 dark:border-slate-800/80 shadow-2xl overflow-hidden mb-12">
         {/* العرض المكتبي والتابلت (Desktop & Tablet Table View) */}
         <div className="overflow-x-auto hidden md:block">
           <table className="w-full text-right border-collapse">
             <thead>
-              <tr className="bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 text-xs font-bold">
-                <th className="py-4 px-4 sm:px-6">المستخدم</th>
-                <th className="py-4 px-4 sm:px-6">البريد الإلكتروني</th>
-                <th className="py-4 px-4 sm:px-6">تليجرام</th>
-                <th className="py-4 px-4 sm:px-6">الرتبة الحالية</th>
-                <th className="py-4 px-4 sm:px-6">تاريخ الانضمام</th>
-                <th className="py-4 px-4 sm:px-6 text-center">الإجراءات (الرتبة / الحظر / الحذف)</th>
+              <tr className="bg-slate-50/90 dark:bg-slate-900/90 border-b border-slate-200/80 dark:border-slate-800 text-slate-400 dark:text-slate-400 text-xs font-black uppercase tracking-wider">
+                <th className="py-4.5 px-6">المستخدم</th>
+                <th className="py-4.5 px-6">البريد الإلكتروني</th>
+                <th className="py-4.5 px-6">تليجرام</th>
+                <th className="py-4.5 px-6">الرتبة الحالية</th>
+                <th className="py-4.5 px-6">تاريخ الانضمام</th>
+                <th className="py-4.5 px-6 text-center">الإجراءات والصلاحيات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs sm:text-sm">
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400">
-                    <Users className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                    <p className="font-bold">لم يتم العثور على أي مستخدمين مطابقين للبحث</p>
-                    <p className="text-xs mt-1">جرب تغيير كلمات البحث أو إعادة ضبط الفلتر</p>
+                  <td colSpan={6} className="py-16 text-center text-slate-400">
+                    <div className="w-16 h-16 mx-auto mb-3 rounded-3xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400 shadow-inner">
+                      <Users className="w-8 h-8 opacity-60" />
+                    </div>
+                    <p className="font-black text-base text-slate-800 dark:text-slate-200">لم يتم العثور على أي مستخدمين مطابقين للبحث</p>
+                    <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">جرب تغيير كلمات البحث أو اختيار تبويب رتبة أخرى من الفلاتر العلوية</p>
                   </td>
                 </tr>
               ) : (
@@ -576,40 +752,48 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                   return (
                     <tr
                       key={user.id}
-                      className={`transition-colors ${
-                        user.isBanned 
-                          ? 'bg-rose-500/5 hover:bg-rose-500/10 dark:bg-rose-950/15' 
-                          : 'hover:bg-slate-50/80 dark:hover:bg-slate-900/40'
+                      className={`transition-all duration-150 ${
+                        isTargetSuperAdminOrOwner
+                          ? 'bg-amber-500/[0.04] dark:bg-amber-500/[0.03] hover:bg-amber-500/[0.08]'
+                          : user.isBanned 
+                          ? 'bg-rose-500/[0.05] dark:bg-rose-950/20 hover:bg-rose-500/10' 
+                          : 'hover:bg-slate-50/90 dark:hover:bg-slate-800/40'
                       }`}
                     >
-                      {/* الاسم و الأفاتار */}
-                      <td className="py-4 px-4 sm:px-6">
-                        <div className="flex items-center gap-3">
-                          <div className={`relative w-9 h-9 rounded-xl flex items-center justify-center font-black border flex-shrink-0 ${
-                            user.isBanned
+                      {/* الاسم والأفاتار */}
+                      <td className="py-4 px-6">
+                        <div className="flex items-center gap-3.5">
+                          <div className={`relative w-10 h-10 rounded-2xl flex items-center justify-center font-black border flex-shrink-0 shadow-sm ${
+                            isTargetSuperAdminOrOwner
+                              ? 'bg-gradient-to-br from-amber-400/20 to-amber-600/30 text-amber-500 border-amber-500/40'
+                              : user.isBanned
                               ? 'bg-rose-100 dark:bg-rose-950 text-rose-600 border-rose-300 dark:border-rose-800'
-                              : 'bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700'
+                              : 'bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 text-slate-700 dark:text-slate-200 border-slate-300/80 dark:border-slate-700'
                           }`}>
                             {user.avatarUrl ? (
                               <img
                                 src={user.avatarUrl}
                                 alt={user.fullName}
-                                className="w-full h-full object-cover rounded-xl"
+                                className="w-full h-full object-cover rounded-2xl"
                               />
                             ) : (
-                              <span>{user.fullName.charAt(0) || 'م'}</span>
+                              <span className="text-sm font-black">{user.fullName.charAt(0) || 'م'}</span>
                             )}
-                            {user.role === 'admin' && (
-                              <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-purple-500 rounded-full flex items-center justify-center text-[8px] text-white">
+                            {isTargetSuperAdminOrOwner ? (
+                              <div className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 rounded-full flex items-center justify-center text-[9px] text-slate-950 shadow">
+                                👑
+                              </div>
+                            ) : user.role === 'admin' && (
+                              <div className="absolute -top-1 -right-1 w-4 h-4 bg-purple-500 rounded-full flex items-center justify-center text-[8px] text-white shadow">
                                 🛡️
                               </div>
                             )}
                           </div>
                           <div>
-                            <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5 flex-wrap">
-                              <span>{user.fullName}</span>
+                            <div className="font-bold text-slate-900 dark:text-white flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-bold">{user.fullName}</span>
                               {isCurrentLoggedUser && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 font-normal">
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold border border-amber-500/30">
                                   (أنت)
                                 </span>
                               )}
@@ -619,36 +803,44 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                                   محظور
                                 </span>
                               )}
+                              {user.createdAt && (Date.now() - new Date(user.createdAt).getTime() < 48 * 60 * 60 * 1000) && !isTargetSuperAdminOrOwner && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-black flex items-center gap-0.5 animate-pulse shadow-sm">
+                                  ⚡ جديد
+                                </span>
+                              )}
                             </div>
-                            <div className="text-[11px] text-slate-400 font-mono mt-0.5">
-                              {user.id}
+                            <div className="text-[11px] text-slate-400 font-mono mt-0.5 flex items-center gap-1">
+                              <span>ID:</span>
+                              <span className="truncate max-w-[150px]">{user.id}</span>
                             </div>
                           </div>
                         </div>
                       </td>
 
                       {/* البريد الإلكتروني */}
-                      <td className="py-4 px-4 sm:px-6 text-slate-600 dark:text-slate-300 font-mono text-xs">
-                        <div className="flex items-center gap-1.5">
-                          <Mail className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                          <span>{user.email}</span>
+                      <td className="py-4 px-6 text-slate-600 dark:text-slate-300 font-mono text-xs">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-400 shrink-0">
+                            <Mail className="w-3.5 h-3.5" />
+                          </div>
+                          <span className="truncate max-w-[200px]">{user.email}</span>
                         </div>
                       </td>
 
                       {/* معرف تليجرام */}
-                      <td className="py-4 px-4 sm:px-6 text-slate-600 dark:text-slate-300">
+                      <td className="py-4 px-6 text-slate-600 dark:text-slate-300">
                         {user.telegramUsername ? (
                           <a
                             href={`https://t.me/${user.telegramUsername}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-sky-500 hover:underline font-mono text-xs"
+                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-500 hover:text-sky-400 border border-sky-500/30 transition-all font-mono text-xs font-bold"
                           >
                             <Send className="w-3 h-3 text-sky-400" />
                             <span>@{user.telegramUsername}</span>
                           </a>
                         ) : user.telegramId ? (
-                          <span className="text-xs font-mono text-slate-400">
+                          <span className="text-xs font-mono text-slate-400 px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800">
                             ID: {user.telegramId}
                           </span>
                         ) : (
@@ -656,15 +848,17 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                         )}
                       </td>
 
-                      {/* الرتبة الحالية مع الشارة المميزة */}
-                      <td className="py-4 px-4 sm:px-6">
+                      {/* الرتبة الحالية */}
+                      <td className="py-4 px-6">
                         {renderRoleBadge(user.role)}
                       </td>
 
                       {/* تاريخ الانضمام */}
-                      <td className="py-4 px-4 sm:px-6 text-slate-500 dark:text-slate-400 text-xs">
-                        <div className="flex items-center gap-1.5">
-                          <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                      <td className="py-4 px-6 text-slate-500 dark:text-slate-400 text-xs">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-400 shrink-0">
+                            <Calendar className="w-3.5 h-3.5" />
+                          </div>
                           <span>
                             {new Date(user.createdAt).toLocaleDateString('ar-SA', {
                               year: 'numeric',
@@ -675,24 +869,24 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                         </div>
                       </td>
 
-                      {/* عمود الإجراءات: تغيير الرتبة + الحظر + المسح */}
-                      <td className="py-4 px-4 sm:px-6 text-center">
-                        <div className="flex items-center justify-center gap-1.5 flex-nowrap">
+                      {/* عمود الإجراءات */}
+                      <td className="py-4 px-6 text-center">
+                        <div className="flex items-center justify-center gap-2 flex-nowrap">
                           {/* اختيار الرتبة */}
                           <div className="inline-block relative min-w-[130px]">
                             <select
                               value={user.role}
                               disabled={!isAuthorizedAdmin || user.isBanned}
                               onChange={(e) => handleSelectRole(user, e.target.value as UserRole)}
-                              className={`w-full px-2.5 py-1.5 rounded-xl text-xs font-bold appearance-none transition-all cursor-pointer text-center ${
+                              className={`w-full px-3 py-1.5 rounded-xl text-xs font-bold appearance-none transition-all cursor-pointer text-center ${
                                 !isAuthorizedAdmin || user.isBanned
                                   ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed border border-slate-200 dark:border-slate-700'
                                   : user.role === 'super_admin'
-                                  ? 'bg-rose-500/10 text-rose-600 border border-rose-500/40 hover:border-rose-500 font-black'
+                                  ? 'bg-amber-500/10 text-amber-600 dark:text-amber-300 border border-amber-500/40 hover:border-amber-500 font-black'
                                   : user.role === 'admin'
-                                  ? 'bg-purple-500/10 text-purple-600 border border-purple-500/40 hover:border-purple-500'
+                                  ? 'bg-purple-500/10 text-purple-600 dark:text-purple-300 border border-purple-500/40 hover:border-purple-500'
                                   : user.role === 'teacher'
-                                  ? 'bg-blue-500/10 text-blue-600 border border-blue-500/40 hover:border-blue-500'
+                                  ? 'bg-blue-500/10 text-blue-600 dark:text-blue-300 border border-blue-500/40 hover:border-blue-500'
                                   : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-amber-500'
                               }`}
                             >
@@ -703,7 +897,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                             </select>
                           </div>
 
-                          {/* زر حظر / فك حظر الحساب */}
+                          {/* زر حظر / فك حظر */}
                           <button
                             onClick={() => handleToggleBan(user)}
                             disabled={!isSuperAdmin || isCurrentLoggedUser || isTargetSuperAdminOrOwner}
@@ -718,9 +912,9 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                                 ? 'إلغاء حظر الحساب'
                                 : 'حظر هذا الحساب'
                             }
-                            className={`p-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
+                            className={`p-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
                               user.isBanned
-                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25'
+                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 shadow-sm'
                                 : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/20'
                             } disabled:opacity-25 disabled:cursor-not-allowed`}
                           >
@@ -737,7 +931,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                             )}
                           </button>
 
-                          {/* زر مسح الحساب نهائياً */}
+                          {/* زر مسح الحساب */}
                           <button
                             onClick={() => handleDeleteUser(user)}
                             disabled={!isSuperAdmin || isCurrentLoggedUser || isTargetSuperAdminOrOwner}
@@ -750,7 +944,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                                 ? 'لا يمكن مسح السوبر أدمن'
                                 : 'مسح الحساب نهائياً'
                             }
-                            className="p-2 rounded-xl text-xs font-bold transition-all bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/25 disabled:opacity-25 disabled:cursor-not-allowed flex items-center gap-1"
+                            className="p-2 rounded-xl text-xs font-bold transition-all bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/25 disabled:opacity-25 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                             <span className="hidden xl:inline">مسح</span>
@@ -815,6 +1009,11 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                             <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 font-bold flex items-center gap-0.5">
                               <Ban className="w-2.5 h-2.5" />
                               محظور
+                            </span>
+                          )}
+                          {user.createdAt && (Date.now() - new Date(user.createdAt).getTime() < 48 * 60 * 60 * 1000) && !isTargetSuperAdminOrOwner && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-black flex items-center gap-0.5 animate-pulse">
+                              ⚡ جديد
                             </span>
                           )}
                         </div>
@@ -1288,6 +1487,364 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* نافذة سكربت حل ظهور المستخدمين في الداشبورد (SQL Fix Modal) */}
+      {/* ========================================================================= */}
+      {showSqlModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-in fade-in font-cairo">
+          <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-3xl bg-white dark:bg-[#0d1322] border border-slate-200 dark:border-slate-800 p-6 shadow-2xl relative">
+            <button
+              onClick={() => setShowSqlModal(false)}
+              className="absolute top-4 left-4 p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-500">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                  تفعيل ظهور جميع المستخدمين في الداشبورد
+                </h3>
+                <p className="text-xs text-slate-400">
+                  حل قيود الأمان (Row Level Security) في Supabase بخطوات بسيطة (أقل من 30 ثانية)
+                </p>
+              </div>
+            </div>
+
+            {/* الخطوات */}
+            <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-slate-700 dark:text-slate-300 mb-4 space-y-1.5 leading-relaxed">
+              <p className="font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                <span>📌 خطوات الحل الفوري:</span>
+              </p>
+              <p>1. اضغط على زر <strong>"نسخ كود SQL بالكامل"</strong> أدناه.</p>
+              <p>2. افتح صفحة <strong>SQL Editor</strong> في لوحة تحكم Supabase عبر الزر المباشر بالأسفل.</p>
+              <p>3. الصق الكود واضغط <strong>Run</strong>، ثم اضغط <strong>"تحديث اللوحة الآن"</strong> وستظهر كافة الحسابات فوراً!</p>
+            </div>
+
+            {/* صندوق الكود */}
+            <div className="flex-1 overflow-hidden flex flex-col border border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-950 mb-4">
+              <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800 bg-slate-900/60 text-xs text-slate-400">
+                <span className="font-mono">FIX_DASHBOARD_USERS_NOW.sql</span>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(SQL_FIX_SCRIPT);
+                    setCopiedSql(true);
+                    setTimeout(() => setCopiedSql(false), 3000);
+                    showToast('تم نسخ كود SQL بالكامل إلى الحافظة بنجاح! الصقه في Supabase واضغط Run', 'success');
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold transition text-[11px]"
+                >
+                  {copiedSql ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedSql ? 'تم النسخ!' : 'نسخ الكود بالكامل'}</span>
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 text-[11px] font-mono text-emerald-400/90 whitespace-pre leading-relaxed select-all">
+                {SQL_FIX_SCRIPT}
+              </div>
+            </div>
+
+            {/* الأزرار بالأسفل */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+              <a
+                href="https://supabase.com/dashboard/project/djkwgwdlygxqcateivbc/sql/new"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 transition flex items-center gap-2"
+              >
+                <span>فتح Supabase SQL Editor</span>
+                <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+              </a>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    loadData();
+                    showToast('جاري تحديث بيانات المستخدمين...', 'info' as any);
+                  }}
+                  className="px-5 py-2.5 rounded-xl text-xs font-black bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-sm transition flex items-center gap-1.5"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+                  <span>تحديث اللوحة الآن</span>
+                </button>
+                <button
+                  onClick={() => setShowSqlModal(false)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition"
+                >
+                  إغلاق
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+const SQL_FIX_SCRIPT = `-- ==============================================================================
+-- 🚀 منصة طرقع للقدرات - السكربت النهائي الشامل لحل مشكلة ظهور المستخدمين في الداشبورد
+-- ==============================================================================
+
+-- 1. التأكد من نوع الرتب user_role
+DO $$ BEGIN
+    CREATE TYPE public.user_role AS ENUM ('student', 'teacher', 'admin', 'super_admin');
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
+
+ALTER TYPE public.user_role ADD VALUE IF NOT EXISTS 'super_admin';
+
+-- 2. إضافة كافة الأعمدة المطلوبة في جدول public.profiles بأمان تام
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS full_name TEXT DEFAULT 'طالب طرقع';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS target_score INT DEFAULT 100;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS telegram_username TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS telegram_id BIGINT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT '';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT false;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS ban_reason TEXT DEFAULT NULL;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS banned_at TIMESTAMPTZ DEFAULT NULL;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+
+-- إضافة عمود role كـ user_role
+DO $$ BEGIN
+    ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS role public.user_role DEFAULT 'student'::public.user_role;
+EXCEPTION WHEN OTHERS THEN
+    ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'student';
+END $$;
+
+-- 3. استيراد كافة الحسابات المسجلة حالياً في auth.users إلى جدول profiles
+INSERT INTO public.profiles (id, email, full_name, role, target_score, created_at, updated_at)
+SELECT 
+    u.id,
+    u.email,
+    COALESCE(
+        CASE WHEN LOWER(TRIM(u.email)) = 'yassooooo27m@gmail.com' THEN 'Yoska' ELSE NULL END,
+        u.raw_user_meta_data->>'full_name',
+        split_part(u.email, '@', 1),
+        'طالب طرقع'
+    ),
+    CASE 
+        WHEN LOWER(TRIM(u.email)) = 'yassooooo27m@gmail.com' THEN 'super_admin'::public.user_role
+        ELSE COALESCE((u.raw_user_meta_data->>'role')::public.user_role, 'student'::public.user_role)
+    END,
+    COALESCE(
+        CASE 
+            WHEN (u.raw_user_meta_data->>'target_score') ~ '^[0-9]+$' 
+            THEN (u.raw_user_meta_data->>'target_score')::int 
+            ELSE 100 
+        END, 
+        100
+    ),
+    COALESCE(u.created_at, now()),
+    now()
+FROM auth.users u
+ON CONFLICT (id) DO UPDATE
+SET 
+    email = COALESCE(EXCLUDED.email, profiles.email),
+    full_name = CASE 
+        WHEN LOWER(TRIM(EXCLUDED.email)) = 'yassooooo27m@gmail.com' THEN 'Yoska'
+        ELSE COALESCE(profiles.full_name, EXCLUDED.full_name)
+    END,
+    role = CASE 
+        WHEN LOWER(TRIM(EXCLUDED.email)) = 'yassooooo27m@gmail.com' THEN 'super_admin'::public.user_role
+        ELSE profiles.role
+    END,
+    updated_at = now();
+
+-- نسخ البريد لجميع الصفوف التي كان فيها الإيميل فارغاً
+UPDATE public.profiles p
+SET email = u.email
+FROM auth.users u
+WHERE p.id = u.id AND (p.email IS NULL OR p.email = '');
+
+-- إنشاء فهرس سريع للبحث بالبريد
+CREATE INDEX IF NOT EXISTS idx_profiles_email ON public.profiles(email);
+
+-- 4. تثبيت حساب السوبر أدمن الرئيسي Yoska في auth.users و profiles
+UPDATE auth.users
+SET 
+  email_confirmed_at = COALESCE(email_confirmed_at, NOW()),
+  raw_user_meta_data = COALESCE(raw_user_meta_data, '{}'::jsonb) || '{"role": "super_admin", "full_name": "Yoska"}'::jsonb,
+  raw_app_meta_data = COALESCE(raw_app_meta_data, '{}'::jsonb) || '{"role": "super_admin"}'::jsonb
+WHERE LOWER(TRIM(email)) = 'yassooooo27m@gmail.com';
+
+UPDATE public.profiles
+SET 
+  role = 'super_admin'::public.user_role,
+  full_name = 'Yoska',
+  is_banned = false
+WHERE LOWER(TRIM(email)) = 'yassooooo27m@gmail.com';
+
+-- 5. تحديث دالة وتريجر تسجيل المستخدمين الجدد (handle_new_user)
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger AS $$
+BEGIN
+  INSERT INTO public.profiles (
+    id, 
+    email, 
+    full_name, 
+    role, 
+    target_score, 
+    telegram_username, 
+    telegram_id,
+    created_at,
+    updated_at
+  )
+  VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(
+      CASE WHEN LOWER(TRIM(NEW.email)) = 'yassooooo27m@gmail.com' THEN 'Yoska' ELSE NULL END,
+      NEW.raw_user_meta_data->>'full_name', 
+      split_part(NEW.email, '@', 1),
+      'طالب طرقع'
+    ),
+    CASE 
+      WHEN LOWER(TRIM(NEW.email)) = 'yassooooo27m@gmail.com' THEN 'super_admin'::public.user_role
+      ELSE COALESCE((NEW.raw_user_meta_data->>'role')::public.user_role, 'student'::public.user_role)
+    END,
+    COALESCE(
+      CASE 
+        WHEN (NEW.raw_user_meta_data->>'target_score') ~ '^[0-9]+$' 
+        THEN (NEW.raw_user_meta_data->>'target_score')::int 
+        ELSE 100 
+      END, 
+      100
+    ),
+    NEW.raw_user_meta_data->>'telegram_username',
+    CASE 
+      WHEN (NEW.raw_user_meta_data->>'telegram_id') ~ '^[0-9]+$' 
+      THEN (NEW.raw_user_meta_data->>'telegram_id')::bigint 
+      ELSE NULL 
+    END,
+    NOW(),
+    NOW()
+  )
+  ON CONFLICT (id) DO UPDATE
+  SET 
+    email = EXCLUDED.email,
+    full_name = COALESCE(EXCLUDED.full_name, profiles.full_name),
+    telegram_username = COALESCE(EXCLUDED.telegram_username, profiles.telegram_username),
+    updated_at = NOW();
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- 6. حل مشكلة RLS: فتح قراءة وتعديل جدول profiles لظهور جميع المستخدمين في الداشبورد
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow select profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Public profiles are viewable by everyone." ON public.profiles;
+DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Allow authenticated and admins to read profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Profiles are viewable by everyone" ON public.profiles;
+DROP POLICY IF EXISTS "Allow insert profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Allow update profiles" ON public.profiles;
+
+CREATE POLICY "Allow select profiles"
+  ON public.profiles FOR SELECT
+  USING (true);
+
+CREATE POLICY "Allow insert profiles"
+  ON public.profiles FOR INSERT
+  WITH CHECK (true);
+
+CREATE POLICY "Allow update profiles"
+  ON public.profiles FOR UPDATE
+  USING (true);
+
+-- 7. إنشاء دوال إدارة الرتب والحظر والحذف (RPCs)
+CREATE OR REPLACE FUNCTION public.is_super_admin()
+RETURNS boolean AS $$
+BEGIN
+    RETURN (auth.jwt() ->> 'email' = 'yassooooo27m@gmail.com')
+        OR ((auth.jwt() -> 'app_metadata' ->> 'role') = 'super_admin')
+        OR EXISTS (
+            SELECT 1 FROM public.profiles 
+            WHERE id = auth.uid() AND (role = 'super_admin' OR email = 'yassooooo27m@gmail.com')
+        );
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, auth;
+
+CREATE OR REPLACE FUNCTION public.admin_update_user_role(
+    target_user_id UUID,
+    new_role public.user_role,
+    reason TEXT DEFAULT NULL
+)
+RETURNS boolean AS $$
+BEGIN
+    UPDATE public.profiles
+    SET role = new_role, updated_at = now()
+    WHERE id = target_user_id;
+
+    BEGIN
+        UPDATE auth.users
+        SET raw_app_meta_data = COALESCE(raw_app_meta_data, '{}'::jsonb) || jsonb_build_object('role', new_role::text)
+        WHERE id = target_user_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+
+    RETURN true;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
+
+CREATE OR REPLACE FUNCTION public.admin_toggle_ban_user(
+    target_user_id UUID,
+    p_is_banned BOOLEAN,
+    p_reason TEXT DEFAULT NULL
+)
+RETURNS boolean AS $$
+BEGIN
+    UPDATE public.profiles
+    SET 
+        is_banned = p_is_banned,
+        ban_reason = CASE WHEN p_is_banned THEN p_reason ELSE NULL END,
+        banned_at = CASE WHEN p_is_banned THEN now() ELSE NULL END,
+        updated_at = now()
+    WHERE id = target_user_id;
+
+    RETURN true;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
+
+CREATE OR REPLACE FUNCTION public.admin_delete_user(
+    target_user_id UUID
+)
+RETURNS boolean AS $$
+BEGIN
+    DELETE FROM public.profiles WHERE id = target_user_id;
+    BEGIN
+        DELETE FROM auth.users WHERE id = target_user_id;
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
+    RETURN true;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
+
+GRANT EXECUTE ON FUNCTION public.admin_update_user_role(UUID, public.user_role, TEXT) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.admin_toggle_ban_user(UUID, BOOLEAN, TEXT) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.admin_delete_user(UUID) TO authenticated, anon;
+
+-- 8. تفعيل البث اللحظي (Realtime) لجدول profiles
+DO $$ BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;
+EXCEPTION WHEN OTHERS THEN null;
+END $$;
+
+-- 9. الاستعلام للتحقق
+SELECT id, email, full_name, role, target_score, is_banned, created_at
+FROM public.profiles
+ORDER BY (role = 'super_admin') DESC, created_at DESC;
+`;

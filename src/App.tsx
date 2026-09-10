@@ -74,7 +74,7 @@ export const App: React.FC = () => {
           try {
             const { data: profile } = await supabase
               .from('profiles')
-              .select('role, full_name, target_score, telegram_username, avatar_url, is_banned, ban_reason')
+              .select('*')
               .eq('id', session.user.id)
               .maybeSingle();
 
@@ -135,7 +135,7 @@ export const App: React.FC = () => {
           try {
             const { data: profile } = await supabase
               .from('profiles')
-              .select('role, full_name, target_score, telegram_username, avatar_url, is_banned, ban_reason')
+              .select('*')
               .eq('id', session.user.id)
               .maybeSingle();
 
@@ -635,37 +635,6 @@ export const App: React.FC = () => {
       {currentView === 'home' && (
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col gap-12 pb-24 md:pb-8">
 
-          {/* مسار التأسيس التفاعلي من الصفر حتى الاحتراف */}
-          <FoundationRoadmap
-            modules={modules}
-            onSelectLesson={(mod, les) => openLessonClassroom(mod, les)}
-            onStartModuleQuiz={() => startMockExam()}
-          />
-
-          {/* ترحيب بالمستخدم المسجل */}
-          {currentUser && (
-            <div className="flex items-center justify-between p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 animate-in fade-in">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-black text-sm">
-                  {currentUser.fullName ? currentUser.fullName.trim().charAt(0) : 'ط'}
-                </div>
-                <div>
-                  <h4 className="font-bold text-sm text-slate-900 dark:text-white">
-                    مرحباً بك مجدداً، {currentUser.fullName}!
-                  </h4>
-                  <p className="text-xs text-slate-500">
-                    أنت مسجل الآن وجاهز لاختبارات قدرات كمي • درجتك المستهدفة: {currentUser.targetScore || 100} 🎯
-                  </p>
-                </div>
-              </div>
-
-              <div className="hidden sm:flex items-center gap-2 text-xs font-bold text-amber-600 dark:text-amber-400 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-xl border border-amber-500/20">
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>هدفنا 100 🎯</span>
-              </div>
-            </div>
-          )}
-
           {/* قسم الهيرو (Hero Section) بهوية طرقع الذهبية */}
           <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent dark:from-[#11192e] dark:to-[#070b14] border border-amber-500/20 p-6 sm:p-12 shadow-sm">
 
@@ -724,11 +693,18 @@ export const App: React.FC = () => {
                   <img
                     src="/frame_000012.png"
                     alt="شعار منصة طرقع"
-                    className="w-full h-auto object-contain drop-shadow-md group-hover:scale-105 transition-transform duration-300"
+                    className="w-full h-auto max-h-48 object-contain drop-shadow-md group-hover:scale-105 transition-transform duration-300"
                     onError={(e) => {
-                      (e.target as HTMLElement).style.display = 'none';
+                      const el = e.target as HTMLElement;
+                      el.style.display = 'none';
+                      const fallback = el.parentElement?.querySelector('.logo-fallback') as HTMLElement;
+                      if (fallback) fallback.style.display = 'flex';
                     }}
                   />
+                  <div className="logo-fallback hidden flex-col items-center justify-center gap-2 text-slate-950">
+                    <span className="text-6xl font-black font-cairo">ط</span>
+                    <span className="text-xl font-black">منصة طرقع</span>
+                  </div>
                   <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
                   <div className="absolute bottom-4 inset-x-4 text-center">
                     <span className="text-xs font-bold text-white bg-black/40 backdrop-blur-md px-3 py-1 rounded-full border border-white/20">
@@ -741,6 +717,37 @@ export const App: React.FC = () => {
             </div>
 
           </section>
+
+          {/* ترحيب بالمستخدم المسجل */}
+          {currentUser && (
+            <div className="flex items-center justify-between p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 animate-in fade-in">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-black text-sm">
+                  {currentUser.fullName ? currentUser.fullName.trim().charAt(0) : 'ط'}
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-slate-900 dark:text-white">
+                    مرحباً بك مجدداً، {currentUser.fullName}!
+                  </h4>
+                  <p className="text-xs text-slate-500">
+                    أنت مسجل الآن وجاهز لاختبارات قدرات كمي • درجتك المستهدفة: {currentUser.targetScore || 100} 🎯
+                  </p>
+                </div>
+              </div>
+
+              <div className="hidden sm:flex items-center gap-2 text-xs font-bold text-amber-600 dark:text-amber-400 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-xl border border-amber-500/20">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>هدفنا 100 🎯</span>
+              </div>
+            </div>
+          )}
+
+          {/* مسار التأسيس التفاعلي من الصفر حتى الاحتراف (خارطة الأبواب التأسيسية) */}
+          <FoundationRoadmap
+            modules={modules}
+            onSelectLesson={(mod, les) => openLessonClassroom(mod, les)}
+            onStartModuleQuiz={() => startMockExam()}
+          />
 
           {/* أوضاع الاختبار الثلاثة (بأسلوب Alaqsam التفاعلي) */}
           <section className="flex flex-col gap-4">

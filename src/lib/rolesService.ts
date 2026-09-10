@@ -35,6 +35,10 @@ export const rolesService = {
           .from('profiles')
           .select('*');
 
+        if (error) {
+          console.warn('[rolesService.getUsers] Supabase fetch notice:', error);
+        }
+
         if (!error && data && data.length > 0) {
           const sorted = [...data].sort((a: any, b: any) => {
             const tA = new Date(a.created_at || a.updated_at || 0).getTime();
@@ -43,11 +47,11 @@ export const rolesService = {
           });
 
           supabaseUsers = sorted.map((d: any) => {
-            const email = d.email || (d.telegram_username ? `@${d.telegram_username}` : `${d.id.substring(0, 8)}@user.tarqa`);
-            const isOwner = email.toLowerCase() === 'yassooooo27m@gmail.com';
+            const email = d.email || (d.telegram_username ? `@${d.telegram_username}` : `مستخدم_${d.id.substring(0, 6)}`);
+            const isOwner = (d.email && d.email.toLowerCase() === 'yassooooo27m@gmail.com') || d.id === 'usr-admin-01';
             return {
               id: d.id,
-              email,
+              email: d.email || email,
               fullName: isOwner ? (d.full_name && d.full_name !== 'طالب طرقع' ? d.full_name : 'Yoska') : (d.full_name || 'طالب طرقع'),
               role: isOwner ? 'super_admin' : ((d.role as UserRole) || 'student'),
               targetScore: d.target_score || 100,
@@ -101,6 +105,27 @@ export const rolesService = {
       }
     } catch {}
 
+    // استيراد المستخدم الحالي المخزن محلياً لضمان عدم سقوطه
+    try {
+      const currentRaw = localStorage.getItem('tarqa_current_user');
+      if (currentRaw) {
+        const cu = JSON.parse(currentRaw);
+        if (cu && cu.id && !localUsers.some(u => u.id === cu.id || (u.email && cu.email && u.email.toLowerCase() === cu.email.toLowerCase()))) {
+          localUsers.push({
+            id: cu.id,
+            email: cu.email || 'user@tarqa.app',
+            fullName: cu.fullName || 'طالب طرقع',
+            role: cu.role || 'student',
+            targetScore: cu.targetScore || 100,
+            telegramUsername: cu.telegramUsername,
+            telegramId: cu.telegramId,
+            avatarUrl: cu.avatarUrl,
+            createdAt: new Date().toISOString(),
+          });
+        }
+      }
+    } catch {}
+
     // دمج قوائم المستخدمين لضمان عدم ضياع أي مستخدم سجل جديداً
     const userMap = new Map<string, UserWithRole>();
 
@@ -114,7 +139,6 @@ export const rolesService = {
     for (const u of localUsers) {
       if (['usr-admin-02', 'usr-teacher-03', 'usr-teacher-04', 'usr-student-05', 'usr-student-06', 'usr-student-07'].includes(u.id)) continue;
       if (u.email?.endsWith('@student.com')) continue;
-      if (u.email?.endsWith('@tarqa.app') && !u.email.startsWith('tg_')) continue;
 
       const key = (u.email ? u.email.toLowerCase() : '') || u.id;
       if (!userMap.has(key)) {
@@ -124,14 +148,29 @@ export const rolesService = {
 
     let resultUsers = Array.from(userMap.values());
 
-    // ضمان وجود الحساب الإداري الرئيسي (Yoska) في رأس القائمة كسوبر أدمن
-    const yoska = resultUsers.find(u => u.email.toLowerCase() === 'yassooooo27m@gmail.com');
-    if (yoska) {
-      yoska.role = 'super_admin';
-      yoska.fullName = 'Yoska';
+    // ضمان وجود الحساب الإداري الرئيسي (Yoska) في رأس القائمة دائماً كسوبر أدمن
+    const yoskaIndex = resultUsers.findIndex(u => u.email?.toLowerCase() === 'yassooooo27m@gmail.com');
+    let yoskaUser: UserWithRole;
+    if (yoskaIndex >= 0) {
+      yoskaUser = {
+        ...resultUsers[yoskaIndex],
+        role: 'super_admin',
+        fullName: resultUsers[yoskaIndex].fullName && resultUsers[yoskaIndex].fullName !== 'طالب طرقع' ? resultUsers[yoskaIndex].fullName : 'Yoska',
+      };
+      resultUsers.splice(yoskaIndex, 1);
     } else {
-      resultUsers.unshift(INITIAL_DEMO_USERS[0]);
+      yoskaUser = { ...INITIAL_DEMO_USERS[0], role: 'super_admin', fullName: 'Yoska' };
     }
+
+    // ترتيب باقي الأعضاء بحيث يظهر الأحدث تسجيلاً أولاً
+    resultUsers.sort((a, b) => {
+      const tA = new Date(a.createdAt || a.lastSignInAt || 0).getTime();
+      const tB = new Date(b.createdAt || b.lastSignInAt || 0).getTime();
+      return tB - tA;
+    });
+
+    // وضع السوبر أدمن Yoska في رأس القائمة
+    resultUsers.unshift(yoskaUser);
 
     try {
       localStorage.setItem('tarqa_all_users_roles', JSON.stringify(resultUsers));

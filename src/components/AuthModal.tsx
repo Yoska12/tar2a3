@@ -150,6 +150,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           ? 'تم تسجيل الدخول بنجاح! مرحباً بك.'
           : 'تم تسجيل الدخول بنجاح! مرحباً بك في طرقع.'
       );
+      window.dispatchEvent(new Event('tarqa_roles_changed'));
+      window.dispatchEvent(new Event('tarqa_user_changed'));
       if (onUserLoggedIn) onUserLoggedIn(result.user);
       setTimeout(() => onClose(), 800);
     } catch (err: any) {
@@ -185,6 +187,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           ? `تم إنشاء الحساب بنجاح! تم تحديد هدفك: ${data.targetScore || 100} 🎯`
           : `تم إنشاء الحساب بنجاح! تم حفظ بياناتك وهدفك 100 🎯`
       );
+      window.dispatchEvent(new Event('tarqa_roles_changed'));
+      window.dispatchEvent(new Event('tarqa_user_changed'));
       if (onUserLoggedIn) onUserLoggedIn(result.user);
       setTimeout(() => onClose(), 1000);
     } catch (err: any) {
@@ -224,6 +228,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       });
 
       setAuthSuccess(`أهلاً بك يا ${user.fullName}! تم تسجيل الدخول بنجاح عبر تليجرام @${cleanUsername} 🎯`);
+      window.dispatchEvent(new Event('tarqa_roles_changed'));
+      window.dispatchEvent(new Event('tarqa_user_changed'));
       if (onUserLoggedIn) onUserLoggedIn(user);
       setTimeout(() => onClose(), 800);
     } catch (err: any) {

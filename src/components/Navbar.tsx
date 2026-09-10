@@ -197,12 +197,12 @@ export const Navbar: React.FC<NavbarProps> = ({
                     onClick={() => onSelectTab('admin-roles')}
                     className={`px-3 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 ${
                       activeTab === 'admin-roles'
-                        ? 'bg-purple-600 text-white shadow-sm font-black'
-                        : 'text-purple-600 dark:text-purple-400 hover:bg-purple-500/10'
+                        ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/25 font-black scale-[1.02]'
+                        : 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 border border-amber-500/20'
                     }`}
                   >
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    <span>إدارة الرتب 🛡️</span>
+                    <Crown className="w-3.5 h-3.5 text-amber-500 fill-amber-500/20" />
+                    <span>إدارة الرتب 👑</span>
                   </button>
                 )}
               </>
@@ -472,15 +472,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                       onClick={() => handleTabClick('admin-roles')}
                       className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-bold transition ${
                         activeTab === 'admin-roles'
-                          ? 'bg-purple-600 text-white font-black'
-                          : 'text-purple-600 dark:text-purple-400 hover:bg-purple-500/10'
+                          ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-black shadow-md shadow-amber-500/25'
+                          : 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 border border-amber-500/20'
                       }`}
                     >
                       <div className="flex items-center gap-2.5">
-                        <Crown className="w-4 h-4" />
-                        <span>إدارة الرتب والصلاحيات</span>
+                        <Crown className="w-4 h-4 text-amber-500" />
+                        <span>إدارة الرتب والصلاحيات 👑</span>
                       </div>
-                      <ChevronLeft className="w-4 h-4 opacity-50" />
+                      <ChevronLeft className="w-4 h-4 opacity-70" />
                     </button>
                   )}
                 </div>

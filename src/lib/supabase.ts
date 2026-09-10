@@ -80,7 +80,11 @@ export const syncUserToMembersDashboard = async (user: TarqaUser) => {
     );
 
     if (idx >= 0) {
-      list[idx] = { ...list[idx], ...record };
+      list[idx] = { 
+        ...list[idx], 
+        ...record, 
+        createdAt: list[idx].createdAt || record.createdAt 
+      };
     } else {
       list.unshift(record);
     }
@@ -111,10 +115,18 @@ export const syncUserToMembersDashboard = async (user: TarqaUser) => {
           payload.email = record.email;
         }
 
-        const { error } = await supabase.from('profiles').upsert(payload);
-        if (error && error.code !== '42501') {
-          delete payload.email;
-          await supabase.from('profiles').upsert(payload);
+        // محاولة التحديث أولاً لحسابات المستخدمين الموثقين
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update(payload)
+          .eq('id', record.id);
+
+        if (updateError) {
+          const { error: upsertError } = await supabase.from('profiles').upsert(payload);
+          if (upsertError) {
+            delete payload.email;
+            await supabase.from('profiles').upsert(payload);
+          }
         }
       }
     } catch {
@@ -222,7 +234,7 @@ export const authService = {
         try {
           const { data: profile } = await supabase
             .from('profiles')
-            .select('role, full_name, target_score, telegram_username, avatar_url, is_banned, ban_reason')
+            .select('*')
             .eq('id', data.user.id)
             .maybeSingle();
 
@@ -358,13 +370,21 @@ export const authService = {
             telegram_username: params.telegramUsername || null,
             updated_at: new Date().toISOString(),
           };
-          const { error: profileError } = await supabase.from('profiles').upsert(profilePayload);
-          if (profileError) {
-            delete profilePayload.email;
-            await supabase.from('profiles').upsert(profilePayload);
+          // محاولة التحديث أولاً (إذا كان التريجر handle_new_user قد أنشأ الصف بالفعل)
+          const { error: updateErr } = await supabase
+            .from('profiles')
+            .update(profilePayload)
+            .eq('id', data.user.id);
+
+          if (updateErr) {
+            const { error: profileError } = await supabase.from('profiles').upsert(profilePayload);
+            if (profileError) {
+              delete profilePayload.email;
+              await supabase.from('profiles').upsert(profilePayload);
+            }
           }
         } catch (profileErr) {
-          console.warn('[Profiles] direct upsert notice:', profileErr);
+          console.warn('[Profiles] direct update/upsert notice:', profileErr);
         }
 
         const user: TarqaUser = {
@@ -379,6 +399,7 @@ export const authService = {
         localStorage.setItem('tarqa_current_user', JSON.stringify(user));
         syncUserToMembersDashboard(user);
         window.dispatchEvent(new Event('tarqa_user_changed'));
+        window.dispatchEvent(new Event('tarqa_roles_changed'));
         return { user, isDemo: false };
       } catch (err: any) {
         console.error('Supabase SignUp failed:', err);
@@ -407,6 +428,7 @@ export const authService = {
     localStorage.setItem('tarqa_current_user', JSON.stringify(newUser));
     syncUserToMembersDashboard(newUser);
     window.dispatchEvent(new Event('tarqa_user_changed'));
+    window.dispatchEvent(new Event('tarqa_roles_changed'));
 
     return { user: newUser, isDemo: true };
   },

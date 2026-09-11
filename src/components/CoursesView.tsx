@@ -48,6 +48,7 @@ import { KashierCheckoutModal } from './KashierCheckoutModal';
 import { getKashierSettings, KashierTransaction } from '../lib/kashierService';
 import { sanitizeUrl } from '../lib/securityUtils';
 import { fileStorageService } from '../lib/fileStorageService';
+import { PdfPreviewModal } from './PdfPreviewModal';
 
 interface CoursesViewProps {
   currentUser?: TarqaUser | null;
@@ -162,6 +163,10 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
     fileType: 'pdf' as 'pdf' | 'worksheet' | 'summary' | 'book',
     isFreePreview: false,
   });
+
+  // نافذة معاينة وتصفح ملف PDF التفاعلية
+  const [previewFile, setPreviewFile] = useState<CourseFileItem | null>(null);
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
 
   // حالة رفع ملف PDF في نافذة الملفات
   const [isUploadingPdf, setIsUploadingPdf] = useState(false);
@@ -311,6 +316,13 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
 
   // تحميل أو فتح ملف
   const handleFileAction = async (file: CourseFileItem, previewMode = false) => {
+    if (previewMode) {
+      // المعاينة والتصفح متاحان دائماً لجميع الطلاب
+      setPreviewFile(file);
+      setIsPreviewModalOpen(true);
+      return;
+    }
+
     const hasAccess = file.isFreePreview || subscriptionInfo.isSubscribed;
     if (hasAccess) {
       downloadTrackingService.trackDownload(
@@ -323,7 +335,13 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
         },
         currentUser
       );
-      await fileStorageService.downloadOrPreviewFile(file.fileUrl, file.title, previewMode);
+      await fileStorageService.downloadOrPreviewFile(
+        file.fileUrl,
+        file.title,
+        false,
+        file.title,
+        file.description
+      );
     } else {
       setShowSubscribeModal(true);
     }
@@ -926,19 +944,22 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
 
                       <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                         <button
+                          type="button"
                           onClick={() => handleFileAction(file, false)}
-                          className="flex-1 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                          className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
                         >
                           <Download className="w-3.5 h-3.5" />
                           <span>تحميل الملف</span>
                         </button>
 
                         <button
+                          type="button"
                           onClick={() => handleFileAction(file, true)}
-                          className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs transition cursor-pointer"
-                          title="معاينة"
+                          className="px-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer active:scale-95"
+                          title="معاينة وتصفح محتوى الملف"
                         >
-                          <Eye className="w-3.5 h-3.5" />
+                          <Eye className="w-3.5 h-3.5 text-amber-500" />
+                          <span>معاينة</span>
                         </button>
 
                         {isEditor && isEditMode && (
@@ -1761,6 +1782,22 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* ======================================================================= */}
+      {/* 9. نافذة معاينة وتصفح ملفات PDF التفاعلية للطلاب */}
+      {/* ======================================================================= */}
+      <PdfPreviewModal
+        isOpen={isPreviewModalOpen}
+        onClose={() => {
+          setIsPreviewModalOpen(false);
+          setPreviewFile(null);
+        }}
+        file={previewFile}
+        currentUser={currentUser}
+        isSubscribed={subscriptionInfo.isSubscribed}
+        onSubscribeClick={() => setShowSubscribeModal(true)}
+        onDownloadClick={(fileToDownload) => handleFileAction(fileToDownload, false)}
+      />
     </div>
   );
 };

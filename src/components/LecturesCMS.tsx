@@ -1001,11 +1001,11 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                   <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-2">
                     <button
                       type="button"
-                      onClick={() => fileStorageService.downloadOrPreviewFile(file.fileUrl, file.title, true)}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-blue-600 hover:text-white text-slate-700 dark:text-slate-300 font-bold text-xs transition cursor-pointer"
+                      onClick={() => fileStorageService.downloadOrPreviewFile(file.fileUrl, file.title, true, file.title, file.description)}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-700 dark:text-slate-300 font-bold text-xs transition cursor-pointer"
                       title="فتح أو تجربة تحميل الملف"
                     >
-                      <Download className="w-3.5 h-3.5" />
+                      <Eye className="w-3.5 h-3.5" />
                       <span>معاينة</span>
                     </button>
 

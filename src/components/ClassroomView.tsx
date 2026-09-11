@@ -17,14 +17,16 @@ import {
   Maximize,
   Minimize,
   Lightbulb,
-  Award
+  Award,
+  Eye
 } from 'lucide-react';
-import { Lesson, CourseModule, LessonAttachment } from '../types';
+import { Lesson, CourseModule, LessonAttachment, CourseFileItem } from '../types';
 import { TarqaUser } from '../lib/supabase';
 import { SecureVideoPlayer } from './SecureVideoPlayer';
 import { downloadTrackingService } from '../lib/downloadTrackingService';
 import { sanitizeUrl } from '../lib/securityUtils';
 import { fileStorageService } from '../lib/fileStorageService';
+import { PdfPreviewModal } from './PdfPreviewModal';
 
 interface ClassroomViewProps {
   currentModule: CourseModule;
@@ -53,6 +55,10 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const youtubeIframeRef = useRef<HTMLIFrameElement>(null);
   const vimeoIframeRef = useRef<HTMLIFrameElement>(null);
+
+  // حالة معاينة ملف الـ PDF المرفق
+  const [previewFile, setPreviewFile] = useState<CourseFileItem | null>(null);
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
 
   // استخراج رابط الـ Embed ليوتيوب
   // فحص واستخراج روابط التشغيل لليوتيوب وفيميو والروابط المباشرة
@@ -560,26 +566,56 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                           </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            downloadTrackingService.trackDownload(
-                              {
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPreviewFile({
                                 id: att.id,
                                 title: att.title,
+                                description: `ملف ومذكرة شرح مرفقة بدرس: ${currentLesson.title}`,
                                 fileUrl: att.fileUrl,
-                                fileType: att.fileType,
                                 fileSize: att.fileSize,
-                              },
-                              currentUser
-                            );
-                            fileStorageService.downloadOrPreviewFile(att.fileUrl, att.title, false);
-                          }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-sm shrink-0 cursor-pointer active:scale-95"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>تحميل</span>
-                        </button>
+                                pagesCount: 'ملف الدرس',
+                                fileType: att.fileType as any,
+                                isFreePreview: true,
+                              });
+                              setIsPreviewModalOpen(true);
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs transition cursor-pointer active:scale-95"
+                            title="معاينة وتصفح محتوى الملف"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-amber-500" />
+                            <span>معاينة</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              downloadTrackingService.trackDownload(
+                                {
+                                  id: att.id,
+                                  title: att.title,
+                                  fileUrl: att.fileUrl,
+                                  fileType: att.fileType,
+                                  fileSize: att.fileSize,
+                                },
+                                currentUser
+                              );
+                              fileStorageService.downloadOrPreviewFile(
+                                att.fileUrl,
+                                att.title,
+                                false,
+                                att.title,
+                                `ملف مرفق بدرس: ${currentLesson.title}`
+                              );
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-sm cursor-pointer active:scale-95"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>تحميل</span>
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -710,6 +746,27 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
         </div>
 
       </div>
+
+      {/* نافذة معاينة ملف PDF التفاعلية لملفات الدرس المرفقة */}
+      <PdfPreviewModal
+        isOpen={isPreviewModalOpen}
+        onClose={() => {
+          setIsPreviewModalOpen(false);
+          setPreviewFile(null);
+        }}
+        file={previewFile}
+        currentUser={currentUser}
+        isSubscribed={true}
+        onDownloadClick={(fileToDownload) => {
+          fileStorageService.downloadOrPreviewFile(
+            fileToDownload.fileUrl,
+            fileToDownload.title,
+            false,
+            fileToDownload.title,
+            fileToDownload.description
+          );
+        }}
+      />
     </div>
   );
 };

@@ -1,4 +1,5 @@
 import { CourseModule, CourseFileItem } from '../types';
+export type { CourseFileItem };
 
 /**
  * باب واحد فقط للمحاضرات اسمه "المحاضرات" تنفيذاً لطلب المستخدم
@@ -151,7 +152,7 @@ export const mockCourseFiles: CourseFileItem[] = [
     id: 'file-1',
     title: 'مذكرة طرقع الشاملة لتأسيس القدرات (الملف الكامل 2025)',
     description: 'الحقيبة الشاملة لكافة قواعد التأسيس، القوانين الذهبية، وأكثر من 500 تمرين ومسألة محلولة بأحدث استراتيجيات طرقع الخاطفة.',
-    fileUrl: 'https://tarqa.app/files/tarqa_complete_foundation_2025.pdf',
+    fileUrl: 'vault://pdf_tarqa_foundation_2025',
     fileSize: '14.8 MB',
     pagesCount: '185 صفحة',
     fileType: 'pdf',
@@ -163,7 +164,7 @@ export const mockCourseFiles: CourseFileItem[] = [
     id: 'file-2',
     title: 'كتيب القوانين الذهبية وطرق الحل السريع في ثوانٍ',
     description: 'ملخص مركز وشامل لكافة قوانين الهندسة، الجبر، الحساب، والإحصاء بطريقة الحفظ البصري المبتكرة.',
-    fileUrl: 'https://tarqa.app/files/golden_rules_summary.pdf',
+    fileUrl: 'vault://pdf_golden_rules_summary',
     fileSize: '3.4 MB',
     pagesCount: '42 صفحة',
     fileType: 'summary',
@@ -175,7 +176,7 @@ export const mockCourseFiles: CourseFileItem[] = [
     id: 'file-3',
     title: 'أوراق العمل التطبيقية ومفاتيح الحل النموذجية',
     description: 'تمارين تفاعلية بعد كل درس لاختبار استيعاب الطالب وسرعة الإجابة مع خطوات الحل النموذجية المفصلة.',
-    fileUrl: 'https://tarqa.app/files/practice_worksheets.pdf',
+    fileUrl: 'vault://pdf_practice_worksheets',
     fileSize: '6.1 MB',
     pagesCount: '78 صفحة',
     fileType: 'worksheet',

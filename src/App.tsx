@@ -28,7 +28,7 @@ import { SuperAdminRolesPanel } from './components/SuperAdminRolesPanel';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { mockFoundationModules } from './data/foundationModules';
 import { mockCategories, mockQuestions } from './data/mockQuestions';
-import { QuizSettings, QuizResult, Category, Question, CourseModule, Lesson, UserRole } from './types';
+import { QuizSettings, QuizResult, Category, Question, CourseModule, Lesson, UserRole, CourseFileItem } from './types';
 import { localScoreStorage, authService, TarqaUser, supabase, isSupabaseConfigured, syncUserToMembersDashboard, isValidUuid } from './lib/supabase';
 import { sendQuizCompletedNotification, TELEGRAM_BOT_URL, TELEGRAM_BOT_USERNAME } from './lib/telegram';
 import { coursesStorage, CLOUD_LECTURES_STORE_ID, CLOUD_LECTURES_STORE_EMAIL } from './lib/subscriptionService';
@@ -46,6 +46,7 @@ export const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<'home' | 'courses' | 'quiz' | 'result' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles'>('home');
   const [activeTab, setActiveTab] = useState<'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles'>('home');
   const [modules, setModules] = useState<CourseModule[]>(() => coursesStorage.getModules());
+  const [courseFiles, setCourseFiles] = useState<CourseFileItem[]>(() => coursesStorage.getFiles());
   const [activeModule, setActiveModule] = useState<CourseModule>(() => coursesStorage.getModules()[0] || mockFoundationModules[0]);
   const [activeLesson, setActiveLesson] = useState<Lesson>(() => coursesStorage.getModules()[0]?.lessons?.[0] || mockFoundationModules[0].lessons[0]);
   const [isAuthOpen, setIsAuthOpen] = useState<boolean>(false);
@@ -540,11 +541,24 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('tarqa_courses_modules_changed', handleModulesChanged);
   }, []);
 
+  // الاستماع الفوري لتحديثات ملفات ومذكرات الدورة
+  useEffect(() => {
+    const handleFilesChanged = (e: any) => {
+      const newFiles = e.detail || coursesStorage.getFiles();
+      setCourseFiles([...newFiles]);
+    };
+    window.addEventListener('tarqa_courses_files_changed', handleFilesChanged);
+    return () => window.removeEventListener('tarqa_courses_files_changed', handleFilesChanged);
+  }, []);
+
   // مزامنة فورية صامتة عند بدء تشغيل الموقع لجلب أحدث محاضرات تم تعديلها أو إضافتها سحابياً
   useEffect(() => {
     coursesStorage.syncFromCloud().then((cloudData) => {
       if (cloudData?.modules && cloudData.modules.length > 0) {
         setModules([...cloudData.modules]);
+      }
+      if (cloudData?.files && cloudData.files.length > 0) {
+        setCourseFiles([...cloudData.files]);
       }
     });
   }, []);
@@ -856,6 +870,7 @@ export const App: React.FC = () => {
           {currentUser?.role === 'admin' || currentUser?.role === 'teacher' || currentUser?.role === 'super_admin' || isOwnerEmail(currentUser?.email) ? (
             <LecturesCMS
               modules={modules}
+              files={courseFiles}
               onAddLesson={(modId, newLesson) => {
                 const updated = coursesStorage.addLesson(modId, newLesson);
                 setModules([...updated]);
@@ -885,7 +900,23 @@ export const App: React.FC = () => {
                 setModules([...reset]);
               }}
               onSyncCloud={async () => {
-                coursesStorage.syncToCloud(modules);
+                coursesStorage.syncToCloud(modules, courseFiles);
+              }}
+              onAddFile={(newFile) => {
+                const updated = coursesStorage.addFile(newFile);
+                setCourseFiles([...updated]);
+              }}
+              onUpdateFile={(updatedFile) => {
+                const updated = coursesStorage.updateFile(updatedFile);
+                setCourseFiles([...updated]);
+              }}
+              onDeleteFile={(fileId) => {
+                const updated = coursesStorage.deleteFile(fileId);
+                setCourseFiles([...updated]);
+              }}
+              onToggleFilePreview={(fileId) => {
+                const updated = coursesStorage.toggleFilePreview(fileId);
+                setCourseFiles([...updated]);
               }}
             />
           ) : (

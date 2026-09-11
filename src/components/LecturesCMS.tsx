@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Plus, 
   Edit3, 
@@ -22,11 +22,19 @@ import {
   Shield,
   Gift,
   RotateCcw,
-  Check
+  Check,
+  Paperclip,
+  FileUp,
+  Download,
+  Search,
+  BookOpen,
+  FolderOpen
 } from 'lucide-react';
-import { CourseModule, Lesson, LessonAttachment, VideoProvider } from '../types';
+import { CourseModule, Lesson, LessonAttachment, VideoProvider, CourseFileItem, AttachmentType } from '../types';
 import { FileUploadZone } from './FileUploadZone';
 import { uploadLessonVideo } from '../lib/videoUploadService';
+import { coursesStorage } from '../lib/subscriptionService';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface LecturesCMSProps {
   modules: CourseModule[];
@@ -38,6 +46,11 @@ interface LecturesCMSProps {
   onReorderLessons: (moduleId: string, lessonId: string, direction: 'up' | 'down') => void;
   onResetDefault?: () => void;
   onSyncCloud?: () => Promise<void>;
+  files?: CourseFileItem[];
+  onAddFile?: (newFile: CourseFileItem) => void;
+  onUpdateFile?: (updatedFile: CourseFileItem) => void;
+  onDeleteFile?: (fileId: string) => void;
+  onToggleFilePreview?: (fileId: string) => void;
 }
 
 export const LecturesCMS: React.FC<LecturesCMSProps> = ({
@@ -50,11 +63,36 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
   onReorderLessons,
   onResetDefault,
   onSyncCloud,
+  files,
+  onAddFile,
+  onUpdateFile,
+  onDeleteFile,
+  onToggleFilePreview,
 }) => {
+  // تبويب العرض الحالي: المحاضرات أو المذكرات والملفات
+  const [activeTab, setActiveTab] = useState<'lectures' | 'files'>('lectures');
   const [selectedModuleId, setSelectedModuleId] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
+
+  // حالة ملفات ومذكرات الدورة
+  const [courseFiles, setCourseFiles] = useState<CourseFileItem[]>(() => files || coursesStorage.getFiles());
+
+  useEffect(() => {
+    if (files) {
+      setCourseFiles(files);
+    }
+  }, [files]);
+
+  useEffect(() => {
+    const handleFilesChanged = (e: any) => {
+      const updated = e.detail || coursesStorage.getFiles();
+      setCourseFiles([...updated]);
+    };
+    window.addEventListener('tarqa_courses_files_changed', handleFilesChanged);
+    return () => window.removeEventListener('tarqa_courses_files_changed', handleFilesChanged);
+  }, []);
 
   // حالة نموذج إضافة/تعديل درس
   const [formData, setFormData] = useState<{
@@ -84,7 +122,45 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
   const [videoUploadProgress, setVideoUploadProgress] = useState(0);
   const [videoUploadError, setVideoUploadError] = useState<string | null>(null);
-  const videoInputRef = React.useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+
+  // ============================================================================
+  // حالة نافذة إضافة / تعديل ملف (File Management Modal)
+  // ============================================================================
+  const [isFileModalOpen, setIsFileModalOpen] = useState(false);
+  const [editingFile, setEditingFile] = useState<CourseFileItem | null>(null);
+  const [fileModalMode, setFileModalMode] = useState<'course_file' | 'lesson_attachment'>('course_file');
+  const [targetLessonId, setTargetLessonId] = useState<string>('');
+
+  const [fileFormData, setFileFormData] = useState<{
+    title: string;
+    description: string;
+    fileUrl: string;
+    fileSize: string;
+    pagesCount: string;
+    fileType: 'pdf' | 'worksheet' | 'summary' | 'book';
+    isFreePreview: boolean;
+  }>({
+    title: '',
+    description: '',
+    fileUrl: '',
+    fileSize: '',
+    pagesCount: '',
+    fileType: 'pdf',
+    isFreePreview: false,
+  });
+
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [fileUploadProgress, setFileUploadProgress] = useState(0);
+  const [fileUploadError, setFileUploadError] = useState<string | null>(null);
+  const filePickerRef = useRef<HTMLInputElement>(null);
+
+  // نافذة إدارة مرفقات المحاضرة السريعة (Quick Lesson Attachments Modal)
+  const [managingLessonAttachments, setManagingLessonAttachments] = useState<Lesson | null>(null);
+
+  // فلترة وبحث الملفات
+  const [fileSearchQuery, setFileSearchQuery] = useState('');
+  const [fileTypeFilter, setFileTypeFilter] = useState<'all' | 'pdf' | 'summary' | 'worksheet' | 'book'>('all');
 
   const handleVideoFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -112,6 +188,72 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
       setVideoUploadError(err?.message || 'حدث خطأ أثناء الرفع');
     } finally {
       setIsUploadingVideo(false);
+    }
+  };
+
+  // رفع ملف PDF مباشر من الجهاز
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  const handlePDFFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.pdf') && !file.type.includes('pdf')) {
+      setFileUploadError('يرجى اختيار ملف بصيغة PDF فقط.');
+      return;
+    }
+
+    setIsUploadingFile(true);
+    setFileUploadProgress(15);
+    setFileUploadError(null);
+
+    // ملء العنوان والحجم تلقائياً
+    if (!fileFormData.title.trim()) {
+      setFileFormData((prev) => ({ ...prev, title: file.name.replace(/\.pdf$/i, '') }));
+    }
+    const formattedSize = formatBytes(file.size);
+    setFileFormData((prev) => ({ ...prev, fileSize: formattedSize }));
+
+    try {
+      let publicUrl = '';
+      const cleanName = `file_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+
+      if (isSupabaseConfigured) {
+        setFileUploadProgress(45);
+        const { data, error } = await supabase.storage
+          .from('lecture-files')
+          .upload(`course-files/${cleanName}`, file, { cacheControl: '3600', upsert: false });
+
+        if (error) throw error;
+        const { data: urlData } = supabase.storage
+          .from('lecture-files')
+          .getPublicUrl(data.path);
+        publicUrl = urlData.publicUrl;
+      } else {
+        setFileUploadProgress(70);
+        await new Promise((r) => setTimeout(r, 600));
+        publicUrl = `https://tarqa.app/storage/lecture-files/${cleanName}`;
+      }
+
+      setFileUploadProgress(100);
+      setFileFormData((prev) => ({
+        ...prev,
+        fileUrl: publicUrl,
+      }));
+      setToast({ text: 'تم رفع ملف الـ PDF بنجاح! 📄✅', type: 'success' });
+    } catch (err: any) {
+      console.error('File upload error:', err);
+      setFileUploadError(err?.message || 'حدث خطأ أثناء رفع الملف.');
+    } finally {
+      setIsUploadingFile(false);
+      setFileUploadProgress(0);
+      if (filePickerRef.current) filePickerRef.current.value = '';
     }
   };
 
@@ -155,13 +297,68 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
     setIsModalOpen(true);
   };
 
-  React.useEffect(() => {
+  // فتح نافذة إضافة ملف عام للدورة
+  const openAddCourseFileModal = () => {
+    setEditingFile(null);
+    setFileModalMode('course_file');
+    setTargetLessonId('');
+    setFileFormData({
+      title: '',
+      description: '',
+      fileUrl: '',
+      fileSize: '',
+      pagesCount: '',
+      fileType: 'pdf',
+      isFreePreview: false,
+    });
+    setFileUploadError(null);
+    setIsFileModalOpen(true);
+  };
+
+  // فتح نافذة تعديل ملف
+  const openEditCourseFileModal = (file: CourseFileItem) => {
+    setEditingFile(file);
+    setFileModalMode('course_file');
+    setTargetLessonId('');
+    setFileFormData({
+      title: file.title,
+      description: file.description || '',
+      fileUrl: file.fileUrl,
+      fileSize: file.fileSize || '',
+      pagesCount: file.pagesCount || '',
+      fileType: file.fileType || 'pdf',
+      isFreePreview: !!file.isFreePreview,
+    });
+    setFileUploadError(null);
+    setIsFileModalOpen(true);
+  };
+
+  // فتح نافذة إرفاق ملف بدرس محدد
+  const openAttachFileToLesson = (lesson: Lesson) => {
+    setEditingFile(null);
+    setFileModalMode('lesson_attachment');
+    setTargetLessonId(lesson.id);
+    setFileFormData({
+      title: `مذكرة شرح - ${lesson.title}`,
+      description: `مذكرة وتمارين تدريبية مخصصة لدرس: ${lesson.title}`,
+      fileUrl: '',
+      fileSize: '',
+      pagesCount: '',
+      fileType: 'pdf',
+      isFreePreview: lesson.isFreePreview,
+    });
+    setFileUploadError(null);
+    setIsFileModalOpen(true);
+  };
+
+  useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(null), 3500);
       return () => clearTimeout(timer);
     }
   }, [toast]);
 
+  // حفظ المحاضرة
   const handleSaveLesson = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title.trim()) {
@@ -210,9 +407,126 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
     setIsModalOpen(false);
   };
 
+  // حفظ نموذج الملف (سواء كان ملف عام للدورة أو مرفق بمحاضرة)
+  const handleSaveFileForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fileFormData.title.trim()) {
+      alert('يرجى إدخال عنوان أو اسم الملف');
+      return;
+    }
+    if (!fileFormData.fileUrl.trim()) {
+      alert('يرجى رفع ملف PDF أو إدخال رابط التحميل المباشر');
+      return;
+    }
+
+    if (fileModalMode === 'lesson_attachment') {
+      // إرفاق بمحاضرة محددة
+      const targetLesson = allLessons.find((l) => l.id === targetLessonId);
+      if (!targetLesson) {
+        alert('يرجى اختيار المحاضرة التابع لها الملف');
+        return;
+      }
+
+      const newAttachment: LessonAttachment = {
+        id: 'att-' + Date.now(),
+        lessonId: targetLesson.id,
+        title: fileFormData.title.trim(),
+        fileUrl: fileFormData.fileUrl.trim(),
+        fileSize: fileFormData.fileSize.trim() || '10 MB',
+        fileType: (fileFormData.fileType === 'book' ? 'pdf' : fileFormData.fileType) as AttachmentType,
+        downloadCount: 0,
+      };
+
+      const updatedLesson: Lesson = {
+        ...targetLesson,
+        attachments: [...(targetLesson.attachments || []), newAttachment],
+      };
+
+      onUpdateLesson(updatedLesson);
+      if (managingLessonAttachments?.id === targetLesson.id) {
+        setManagingLessonAttachments(updatedLesson);
+      }
+      setToast({ text: `تم إرفاق الملف بمحاضرة "${targetLesson.title}" بنجاح! 📎✅`, type: 'success' });
+    } else {
+      // ملف عام لقسم المذكرات والملفات
+      if (editingFile) {
+        const updated: CourseFileItem = {
+          ...editingFile,
+          title: fileFormData.title.trim(),
+          description: fileFormData.description.trim(),
+          fileUrl: fileFormData.fileUrl.trim(),
+          fileSize: fileFormData.fileSize.trim() || '12 MB',
+          pagesCount: fileFormData.pagesCount.trim() || undefined,
+          fileType: fileFormData.fileType,
+          isFreePreview: fileFormData.isFreePreview,
+        };
+        if (onUpdateFile) {
+          onUpdateFile(updated);
+        } else {
+          const res = coursesStorage.updateFile(updated);
+          setCourseFiles([...res]);
+        }
+        setToast({ text: 'تم حفظ تعديلات الملف بنجاح! 📄✅', type: 'success' });
+      } else {
+        const newFile: CourseFileItem = {
+          id: 'file-' + Date.now(),
+          title: fileFormData.title.trim(),
+          description: fileFormData.description.trim(),
+          fileUrl: fileFormData.fileUrl.trim(),
+          fileSize: fileFormData.fileSize.trim() || '12 MB',
+          pagesCount: fileFormData.pagesCount.trim() || '50 صفحة',
+          fileType: fileFormData.fileType,
+          isFreePreview: fileFormData.isFreePreview,
+          downloadCount: 0,
+          uploadedAt: new Date().toISOString(),
+        };
+        if (onAddFile) {
+          onAddFile(newFile);
+        } else {
+          const res = coursesStorage.addFile(newFile);
+          setCourseFiles([...res]);
+        }
+        setToast({ text: 'تمت إضافة ونشر الملف في قسم المذكرات بنجاح! 📄🎉', type: 'success' });
+      }
+    }
+
+    setIsFileModalOpen(false);
+  };
+
+  // حذف ملف عام
+  const handleDeleteCourseFile = (fileId: string, title: string) => {
+    if (window.confirm(`هل أنت متأكد من حذف ملف "${title}" نهائياً من قسم المذكرات؟`)) {
+      if (onDeleteFile) {
+        onDeleteFile(fileId);
+      } else {
+        const res = coursesStorage.deleteFile(fileId);
+        setCourseFiles([...res]);
+      }
+      setToast({ text: `تم حذف ملف "${title}" بنجاح! 🗑️`, type: 'info' });
+    }
+  };
+
+  // تبديل المعاينة المجانية لملف عام
+  const handleToggleCourseFilePreview = (fileId: string) => {
+    if (onToggleFilePreview) {
+      onToggleFilePreview(fileId);
+    } else {
+      const res = coursesStorage.toggleFilePreview(fileId);
+      setCourseFiles([...res]);
+    }
+    setToast({ text: 'تم تحديث حالة المعاينة المجانية للملف 🎁', type: 'info' });
+  };
+
   const filteredModules = selectedModuleId === 'all' 
     ? modules 
     : modules.filter((m) => m.id === selectedModuleId);
+
+  const filteredFiles = courseFiles.filter((file) => {
+    const matchesSearch = file.title.toLowerCase().includes(fileSearchQuery.toLowerCase()) ||
+      (file.description && file.description.toLowerCase().includes(fileSearchQuery.toLowerCase()));
+    const matchesType = fileTypeFilter === 'all' || file.fileType === fileTypeFilter;
+    return matchesSearch && matchesType;
+  });
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300 relative">
@@ -232,7 +546,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
         </div>
       )}
 
-      {/* رأس الصفحة والإحصائيات السريعة */}
+      {/* رأس الصفحة والإجراءات الرئيسية */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-bold mb-2">
@@ -240,7 +554,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
             <span>لوحة إدارة المحاضرات والمذكرات (Lectures CMS)</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
-            إدارة مسار تأسيس القدرات بالفيديو
+            {activeTab === 'lectures' ? 'إدارة مسار تأسيس القدرات بالفيديو' : 'إدارة بنك المذكرات وملفات الـ PDF'}
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
             رفع وتعديل شروحات الأبواب التأسيسية، ربط ملفات PDF، وتحديد المعاينات المجانية.
@@ -259,7 +573,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                 await onSyncCloud();
                 setToast({ text: 'تمت المزامنة السحابية بنجاح! التعديلات منشورة الآن لجميع الطلاب ☁️✅', type: 'success' });
               }}
-              className="inline-flex items-center gap-1 px-2.5 sm:px-4 py-2 sm:py-3 rounded-xl sm:rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-bold text-xs transition active:scale-95 shadow-sm"
+              className="inline-flex items-center gap-1 px-2.5 sm:px-4 py-2 sm:py-3 rounded-xl sm:rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-bold text-xs transition active:scale-95 shadow-sm cursor-pointer"
               title="مزامنة فورية مع السحابة لكافة الطلاب"
             >
               <UploadCloud className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500" />
@@ -267,7 +581,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
             </button>
           )}
 
-          {onResetDefault && (
+          {onResetDefault && activeTab === 'lectures' && (
             <button
               onClick={() => {
                 if (window.confirm('هل أنت متأكد من رغبتك في استعادة المحاضرات الافتراضية؟ سيتم إعادة تحميل المسار التأسيسي الأصلي.')) {
@@ -275,7 +589,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                   setToast({ text: 'تمت استعادة المحاضرات الافتراضية بنجاح! 🔄', type: 'info' });
                 }
               }}
-              className="inline-flex items-center gap-1 px-2.5 sm:px-4 py-2 sm:py-3 rounded-xl sm:rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition active:scale-95 border border-slate-200 dark:border-slate-700"
+              className="inline-flex items-center gap-1 px-2.5 sm:px-4 py-2 sm:py-3 rounded-xl sm:rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition active:scale-95 border border-slate-200 dark:border-slate-700 cursor-pointer"
               title="استعادة البيانات الافتراضية"
             >
               <RotateCcw className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500" />
@@ -283,12 +597,23 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
             </button>
           )}
 
+          {/* زر إضافة ملف / مذكرة بارز وواضح جداً */}
+          <button
+            onClick={() => openAddCourseFileModal()}
+            className="inline-flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 sm:py-3 rounded-xl sm:rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm transition shadow-lg shadow-blue-500/20 active:scale-95 cursor-pointer"
+            title="إضافة ملف PDF أو مذكرة جديدة للموقع"
+          >
+            <FileUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span>إضافة ملف / مذكرة 📄</span>
+          </button>
+
+          {/* زر إضافة محاضرة */}
           <button
             onClick={() => openAddModal()}
-            className="inline-flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2 sm:py-3 rounded-xl sm:rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs sm:text-sm transition shadow-lg shadow-amber-500/20 active:scale-95"
+            className="inline-flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 sm:py-3 rounded-xl sm:rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs sm:text-sm transition shadow-lg shadow-amber-500/20 active:scale-95 cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            <span>إضافة محاضرة</span>
+            <span>إضافة محاضرة 🎥</span>
           </button>
         </div>
       </div>
@@ -319,216 +644,436 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
           <p className="text-[11px] text-slate-400 mt-1">متوسط 20 دقيقة للدرس</p>
         </div>
 
-        <div className="p-5 rounded-3xl bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 shadow-sm">
-          <div className="text-xs font-bold text-slate-400">المذكرات المرفقة (PDF)</div>
-          <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1">
-            {totalAttachments} مذكرة
+        <div 
+          onClick={() => setActiveTab('files')}
+          className="p-5 rounded-3xl bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 shadow-sm cursor-pointer hover:border-blue-500/50 transition group"
+          title="اضغط للانتقال لقسم المذكرات والملفات"
+        >
+          <div className="text-xs font-bold text-slate-400 flex items-center justify-between">
+            <span>ملفات ومذكرات الدورة (PDF)</span>
+            <FileText className="w-3.5 h-3.5 text-blue-500 group-hover:scale-110 transition" />
           </div>
-          <p className="text-[11px] text-blue-400 mt-1">مربوطة بـ Supabase Storage</p>
+          <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1">
+            {courseFiles.length} ملف
+          </div>
+          <p className="text-[11px] text-blue-400 mt-1">إضافة وإدارة المذكرات 📄</p>
         </div>
       </div>
 
-      {/* الفلترة حسب الباب */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+      {/* شريط التبديل بين المحاضرات والمذكرات */}
+      <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
         <button
-          onClick={() => setSelectedModuleId('all')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
-            selectedModuleId === 'all'
-              ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
+          onClick={() => setActiveTab('lectures')}
+          className={`flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 transition cursor-pointer ${
+            activeTab === 'lectures'
+              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
-          جميع الأبواب ({allLessons.length})
+          <Video className="w-4 h-4" />
+          <span>المحاضرات والدروس ({allLessons.length})</span>
         </button>
 
-        {modules.map((m) => (
-          <button
-            key={m.id}
-            onClick={() => setSelectedModuleId(m.id)}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
-              selectedModuleId === m.id
-                ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
-                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            {m.title} ({m.lessons.length})
-          </button>
-        ))}
+        <button
+          onClick={() => setActiveTab('files')}
+          className={`flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 transition cursor-pointer ${
+            activeTab === 'files'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>المذكرات وملفات الدورة (PDF) ({courseFiles.length})</span>
+        </button>
       </div>
 
-      {/* قائمة الدروس منظمة حسب الأبواب */}
-      <div className="space-y-6">
-        {filteredModules.map((mod) => (
-          <div
-            key={mod.id}
-            className="bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm"
-          >
-            {/* رأس الباب */}
-            <div className="p-5 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center font-black text-sm">
-                  {mod.orderIndex}
+      {/* ======================================================================= */}
+      {/* 1. تبويب المحاضرات والدروس */}
+      {/* ======================================================================= */}
+      {activeTab === 'lectures' && (
+        <div className="space-y-6">
+          {/* الفلترة حسب الباب */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+            <button
+              onClick={() => setSelectedModuleId('all')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                selectedModuleId === 'all'
+                  ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              جميع الأبواب ({allLessons.length})
+            </button>
+
+            {modules.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => setSelectedModuleId(m.id)}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                  selectedModuleId === m.id
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                    : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                {m.title} ({m.lessons.length})
+              </button>
+            ))}
+          </div>
+
+          {/* قائمة الدروس منظمة حسب الأبواب */}
+          <div className="space-y-6">
+            {filteredModules.map((mod) => (
+              <div
+                key={mod.id}
+                className="bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm"
+              >
+                {/* رأس الباب */}
+                <div className="p-5 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center font-black text-sm">
+                      {mod.orderIndex}
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-base text-slate-900 dark:text-white">
+                        {mod.title}
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-0.5">{mod.description}</p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => openAddModal(mod.id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-700 dark:text-slate-200 font-bold text-xs transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>إضافة درس لهذا الباب</span>
+                  </button>
                 </div>
-                <div>
-                  <h3 className="font-bold text-base text-slate-900 dark:text-white">
-                    {mod.title}
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">{mod.description}</p>
-                </div>
+
+                {/* جدول الدروس في الباب */}
+                {mod.lessons.length > 0 ? (
+                  <div className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                    {mod.lessons.map((lesson, idx) => (
+                      <div
+                        key={lesson.id}
+                        className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/70 dark:hover:bg-slate-900/30 transition"
+                      >
+                        <div className="flex items-start gap-3 min-w-0">
+                          <div className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
+                            {idx + 1}
+                          </div>
+
+                          <div className="min-w-0 space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-bold text-sm text-slate-900 dark:text-white">
+                                {lesson.title}
+                              </h4>
+                              {lesson.isFreePreview && (
+                                <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-500 text-[10px] font-bold">
+                                  معاينة مجانية
+                                </span>
+                              )}
+                              {!lesson.isPublished && (
+                                <span className="px-2 py-0.5 rounded bg-rose-500/15 text-rose-400 text-[10px] font-bold">
+                                  مسودة (مخفي)
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="text-xs text-slate-400 line-clamp-1">
+                              {lesson.description}
+                            </p>
+
+                            <div className="flex items-center gap-3 text-[11px] text-slate-400 pt-0.5">
+                              <span>⏱️ {lesson.durationMinutes} دقيقة</span>
+                              <span>•</span>
+                              <span>🎥 {lesson.videoProvider}</span>
+                              <span>•</span>
+                              <button
+                                onClick={() => setManagingLessonAttachments(lesson)}
+                                className="inline-flex items-center gap-1 text-blue-500 hover:text-blue-400 font-bold transition cursor-pointer"
+                                title="عرض وإدارة مذكرات هذا الدرس"
+                              >
+                                <Paperclip className="w-3 h-3" />
+                                <span>{lesson.attachments?.length || 0} مذكرات مرفقة</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* أزرار الإدارة والترتيب */}
+                        <div className="flex items-center gap-1 sm:gap-1.5 self-end sm:self-center shrink-0">
+                          {/* زر إرفاق ملف مباشر لهذه المحاضرة */}
+                          <button
+                            onClick={() => openAttachFileToLesson(lesson)}
+                            className="p-1.5 sm:p-2 rounded-xl text-blue-500 hover:bg-blue-500/10 border border-blue-500/30 transition cursor-pointer"
+                            title="إرفاق ملف / مذكرة PDF لهذا الدرس مباشرة 📎"
+                          >
+                            <Paperclip className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
+                          </button>
+
+                          {/* أزرار الترتيب */}
+                          <button
+                            onClick={() => onReorderLessons(mod.id, lesson.id, 'up')}
+                            disabled={idx === 0}
+                            className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 transition cursor-pointer"
+                            title="تحريك لأعلى"
+                          >
+                            <ArrowUp className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => onReorderLessons(mod.id, lesson.id, 'down')}
+                            disabled={idx === mod.lessons.length - 1}
+                            className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 transition cursor-pointer"
+                            title="تحريك لأسفل"
+                          >
+                            <ArrowDown className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
+                          </button>
+
+                          <div className="h-3.5 sm:h-4 w-px bg-slate-200 dark:bg-slate-800 mx-0.5 sm:mx-1" />
+
+                          {/* زر المعاينة المجانية */}
+                          {onToggleFreePreview && (
+                            <button
+                              onClick={() => {
+                                onToggleFreePreview(lesson.id);
+                                setToast({
+                                  text: lesson.isFreePreview ? 'تم إلغاء المعاينة المجانية للدرس' : 'أصبح الدرس متاحاً كمعاينة مجانية 🎁',
+                                  type: 'info',
+                                });
+                              }}
+                              className={`p-1.5 sm:p-2 rounded-xl border text-xs font-bold transition cursor-pointer ${
+                                lesson.isFreePreview
+                                  ? 'text-amber-500 border-amber-500/30 bg-amber-500/10'
+                                  : 'text-slate-400 border-slate-200 dark:border-slate-800 hover:text-amber-500'
+                              }`}
+                              title={lesson.isFreePreview ? 'معاينة مجانية (اضغط للإلغاء)' : 'غير مجاني (اضغط لجعله مجانياً)'}
+                            >
+                              <Gift className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
+                            </button>
+                          )}
+
+                          {/* زر تبديل النشر */}
+                          <button
+                            onClick={() => {
+                              onTogglePublish(lesson.id);
+                              setToast({
+                                text: lesson.isPublished ? 'تم إخفاء المحاضرة من الطلاب (مسودة)' : 'تم نشر المحاضرة للطلاب بنجاح! 👁️',
+                                type: 'info',
+                              });
+                            }}
+                            className={`p-1.5 sm:p-2 rounded-xl border text-xs font-bold transition cursor-pointer ${
+                              lesson.isPublished
+                                ? 'text-emerald-500 border-emerald-500/30 bg-emerald-500/10'
+                                : 'text-rose-400 border-rose-500/30 bg-rose-500/10'
+                            }`}
+                            title={lesson.isPublished ? 'منشور (اضغط للإخفاء)' : 'مخفي (اضغط للنشر)'}
+                          >
+                            {lesson.isPublished ? <Eye className="w-3 sm:w-3.5 h-3 sm:h-3.5" /> : <EyeOff className="w-3 sm:w-3.5 h-3 sm:h-3.5" />}
+                          </button>
+
+                          {/* تعديل */}
+                          <button
+                            onClick={() => openEditModal(lesson)}
+                            className="p-1.5 sm:p-2 rounded-xl text-slate-500 hover:text-amber-500 hover:bg-amber-500/10 border border-slate-200 dark:border-slate-800 transition cursor-pointer"
+                            title="تعديل المحاضرة"
+                          >
+                            <Edit3 className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
+                          </button>
+
+                          {/* حذف */}
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`هل أنت متأكد من حذف محاضرة "${lesson.title}"؟ سيتم حذفها نهائياً من الموقع ولن تعود.`)) {
+                                onDeleteLesson(lesson.id);
+                                setToast({ text: `تم حذف محاضرة "${lesson.title}" بنجاح! 🗑️`, type: 'info' });
+                              }
+                            }}
+                            className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 border border-slate-200 dark:border-slate-800 transition cursor-pointer"
+                            title="حذف المحاضرة نهائياً"
+                          >
+                            <Trash2 className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-8 text-center text-slate-400 text-xs">
+                    لا توجد محاضرات في هذا الباب حالياً. اضغط "إضافة درس" للبدء.
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================= */}
+      {/* 2. تبويب المذكرات وملفات الدورة (PDF Management Tab) */}
+      {/* ======================================================================= */}
+      {activeTab === 'files' && (
+        <div className="space-y-6">
+          {/* شريط البحث والفلترة وزر إضافة ملف */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white dark:bg-[#0a0f1d] p-4 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="ابحث في المذكرات والملفات بالاسم أو الوصف..."
+                  value={fileSearchQuery}
+                  onChange={(e) => setFileSearchQuery(e.target.value)}
+                  className="w-full pl-3 pr-10 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+                />
               </div>
 
-              <button
-                onClick={() => openAddModal(mod.id)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-700 dark:text-slate-200 font-bold text-xs transition"
+              <select
+                value={fileTypeFilter}
+                onChange={(e) => setFileTypeFilter(e.target.value as any)}
+                className="px-3.5 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:border-blue-500 cursor-pointer"
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span>إضافة درس لهذا الباب</span>
-              </button>
+                <option value="all">جميع أنواع الملفات ({courseFiles.length})</option>
+                <option value="pdf">مذكرات كاملة</option>
+                <option value="summary">خرائط مفاهيم</option>
+                <option value="worksheet">أوراق عمل وتدريبات</option>
+                <option value="book">كتب ومراجع</option>
+              </select>
             </div>
 
-            {/* جدول الدروس في الباب */}
-            {mod.lessons.length > 0 ? (
-              <div className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                {mod.lessons.map((lesson, idx) => (
-                  <div
-                    key={lesson.id}
-                    className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/70 dark:hover:bg-slate-900/30 transition"
-                  >
-                    <div className="flex items-start gap-3 min-w-0">
-                      <div className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
-                        {idx + 1}
+            <button
+              onClick={() => openAddCourseFileModal()}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition shadow-md shadow-blue-600/20 active:scale-95 cursor-pointer shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              <span>إضافة ملف PDF جديد</span>
+            </button>
+          </div>
+
+          {/* شبكة كروت المذكرات */}
+          {filteredFiles.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredFiles.map((file) => (
+                <div
+                  key={file.id}
+                  className="p-5 rounded-3xl bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 flex flex-col justify-between gap-4 hover:border-blue-500/40 hover:shadow-lg transition group"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="w-12 h-12 rounded-2xl bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
+                        <FileText className="w-6 h-6" />
                       </div>
 
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="font-bold text-sm text-slate-900 dark:text-white">
-                            {lesson.title}
-                          </h4>
-                          {lesson.isFreePreview && (
-                            <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-500 text-[10px] font-bold">
-                              معاينة مجانية
-                            </span>
-                          )}
-                          {!lesson.isPublished && (
-                            <span className="px-2 py-0.5 rounded bg-rose-500/15 text-rose-400 text-[10px] font-bold">
-                              مسودة (مخفي)
-                            </span>
-                          )}
-                        </div>
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        {file.isFreePreview ? (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-500 text-[10px] font-black">
+                            معاينة مجانية 🎁
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-500 text-[10px] font-bold">
+                            خاص بالمشتركين 🔒
+                          </span>
+                        )}
 
-                        <p className="text-xs text-slate-400 line-clamp-1">
-                          {lesson.description}
-                        </p>
-
-                        <div className="flex items-center gap-3 text-[11px] text-slate-400 pt-0.5">
-                          <span>⏱️ {lesson.durationMinutes} دقيقة</span>
-                          <span>•</span>
-                          <span>🎥 {lesson.videoProvider}</span>
-                          <span>•</span>
-                          <span>📑 {lesson.attachments?.length || 0} مذكرات</span>
-                        </div>
+                        <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-bold">
+                          {file.fileType === 'pdf' ? 'مذكرة كاملة' : file.fileType === 'summary' ? 'خريطة مفاهيم' : file.fileType === 'worksheet' ? 'ورقة عمل' : 'مرجع'}
+                        </span>
                       </div>
                     </div>
 
-                    {/* أزرار الإدارة والترتيب */}
-                    <div className="flex items-center gap-1 sm:gap-1.5 self-end sm:self-center shrink-0">
-                      {/* أزرار الترتيب */}
-                      <button
-                        onClick={() => onReorderLessons(mod.id, lesson.id, 'up')}
-                        disabled={idx === 0}
-                        className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 transition"
-                        title="تحريك لأعلى"
-                      >
-                        <ArrowUp className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
-                      </button>
+                    <div>
+                      <h4 className="font-black text-sm text-slate-900 dark:text-white line-clamp-1 group-hover:text-blue-500 transition">
+                        {file.title}
+                      </h4>
+                      <p className="text-xs text-slate-400 line-clamp-2 mt-1 leading-relaxed">
+                        {file.description || 'مذكرة تدريبية شاملة لقسم تأسيس القدرات.'}
+                      </p>
+                    </div>
 
-                      <button
-                        onClick={() => onReorderLessons(mod.id, lesson.id, 'down')}
-                        disabled={idx === mod.lessons.length - 1}
-                        className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 transition"
-                        title="تحريك لأسفل"
-                      >
-                        <ArrowDown className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
-                      </button>
-
-                      <div className="h-3.5 sm:h-4 w-px bg-slate-200 dark:bg-slate-800 mx-0.5 sm:mx-1" />
-
-                      {/* زر المعاينة المجانية */}
-                      {onToggleFreePreview && (
-                        <button
-                          onClick={() => {
-                            onToggleFreePreview(lesson.id);
-                            setToast({
-                              text: lesson.isFreePreview ? 'تم إلغاء المعاينة المجانية للدرس' : 'أصبح الدرس متاحاً كمعاينة مجانية 🎁',
-                              type: 'info',
-                            });
-                          }}
-                          className={`p-1.5 sm:p-2 rounded-xl border text-xs font-bold transition ${
-                            lesson.isFreePreview
-                              ? 'text-amber-500 border-amber-500/30 bg-amber-500/10'
-                              : 'text-slate-400 border-slate-200 dark:border-slate-800 hover:text-amber-500'
-                          }`}
-                          title={lesson.isFreePreview ? 'معاينة مجانية (اضغط للإلغاء)' : 'غير مجاني (اضغط لجعله مجانياً)'}
-                        >
-                          <Gift className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
-                        </button>
+                    <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400 pt-1">
+                      {file.fileSize && <span>📦 {file.fileSize}</span>}
+                      {file.pagesCount && (
+                        <>
+                          <span>•</span>
+                          <span>📄 {file.pagesCount}</span>
+                        </>
                       )}
+                    </div>
+                  </div>
 
-                      {/* زر تبديل النشر */}
+                  {/* أزرار الإجراءات */}
+                  <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-2">
+                    <a
+                      href={file.fileUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-blue-600 hover:text-white text-slate-700 dark:text-slate-300 font-bold text-xs transition cursor-pointer"
+                      title="فتح أو تجربة تحميل الملف"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>معاينة</span>
+                    </a>
+
+                    <div className="flex items-center gap-1">
                       <button
-                        onClick={() => {
-                          onTogglePublish(lesson.id);
-                          setToast({
-                            text: lesson.isPublished ? 'تم إخفاء المحاضرة من الطلاب (مسودة)' : 'تم نشر المحاضرة للطلاب بنجاح! 👁️',
-                            type: 'info',
-                          });
-                        }}
-                        className={`p-1.5 sm:p-2 rounded-xl border text-xs font-bold transition ${
-                          lesson.isPublished
+                        onClick={() => handleToggleCourseFilePreview(file.id)}
+                        className={`p-2 rounded-xl border text-xs font-bold transition cursor-pointer ${
+                          file.isFreePreview
                             ? 'text-emerald-500 border-emerald-500/30 bg-emerald-500/10'
-                            : 'text-rose-400 border-rose-500/30 bg-rose-500/10'
+                            : 'text-slate-400 border-slate-200 dark:border-slate-800 hover:text-emerald-500'
                         }`}
-                        title={lesson.isPublished ? 'منشور (اضغط للإخفاء)' : 'مخفي (اضغط للنشر)'}
+                        title={file.isFreePreview ? 'معاينة مجانية (اضغط للتعطيل)' : 'اجعل الملف متاحاً مجاناً للجميع'}
                       >
-                        {lesson.isPublished ? <Eye className="w-3 sm:w-3.5 h-3 sm:h-3.5" /> : <EyeOff className="w-3 sm:w-3.5 h-3 sm:h-3.5" />}
+                        <Gift className="w-3.5 h-3.5" />
                       </button>
 
-                      {/* تعديل */}
                       <button
-                        onClick={() => openEditModal(lesson)}
-                        className="p-1.5 sm:p-2 rounded-xl text-slate-500 hover:text-amber-500 hover:bg-amber-500/10 border border-slate-200 dark:border-slate-800 transition"
-                        title="تعديل المحاضرة"
+                        onClick={() => openEditCourseFileModal(file)}
+                        className="p-2 rounded-xl text-slate-500 hover:text-blue-500 hover:bg-blue-500/10 border border-slate-200 dark:border-slate-800 transition cursor-pointer"
+                        title="تعديل بيانات الملف"
                       >
-                        <Edit3 className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
+                        <Edit3 className="w-3.5 h-3.5" />
                       </button>
 
-                      {/* حذف */}
                       <button
-                        onClick={() => {
-                          if (window.confirm(`هل أنت متأكد من حذف محاضرة "${lesson.title}"؟ سيتم حذفها نهائياً من الموقع ولن تعود.`)) {
-                            onDeleteLesson(lesson.id);
-                            setToast({ text: `تم حذف محاضرة "${lesson.title}" بنجاح! 🗑️`, type: 'info' });
-                          }
-                        }}
-                        className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 border border-slate-200 dark:border-slate-800 transition"
-                        title="حذف المحاضرة نهائياً"
+                        onClick={() => handleDeleteCourseFile(file.id, file.title)}
+                        className="p-2 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 border border-slate-200 dark:border-slate-800 transition cursor-pointer"
+                        title="حذف الملف نهائياً"
                       >
-                        <Trash2 className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
-                ))}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-12 text-center bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 rounded-3xl space-y-3">
+              <div className="w-14 h-14 rounded-2xl bg-blue-500/10 text-blue-500 flex items-center justify-center mx-auto">
+                <FileText className="w-7 h-7" />
               </div>
-            ) : (
-              <div className="p-8 text-center text-slate-400 text-xs">
-                لا توجد محاضرات في هذا الباب حالياً. اضغط "إضافة درس" للبدء.
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+              <h4 className="font-bold text-sm text-slate-900 dark:text-white">
+                لا توجد ملفات أو مذكرات مطابقة للبحث
+              </h4>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                يمكنك إضافة أول مذكرة أو ملف PDF الآن ليتسنى لجميع الطلاب تحميلها ودراستها.
+              </p>
+              <button
+                onClick={() => openAddCourseFileModal()}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition shadow-md shadow-blue-600/20 active:scale-95 cursor-pointer mt-2"
+              >
+                <Plus className="w-4 h-4" />
+                <span>إضافة مذكرة PDF الآن</span>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
-      {/* نافذة منبثقة لإضافة / تعديل المحاضرة (Modal Drawer) */}
+      {/* ======================================================================= */}
+      {/* 3. نافذة منبثقة لإضافة / تعديل المحاضرة (Lecture Modal) */}
+      {/* ======================================================================= */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
           <div className="bg-white dark:bg-[#0c1222] border border-slate-200 dark:border-slate-800 w-full max-w-2xl rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 my-8 animate-in zoom-in-95">
@@ -550,7 +1095,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
 
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="p-2 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -655,7 +1200,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                   </div>
                 </div>
 
-                {/* خيار رفع الفيديو كخيار بديل مع التوضيح */}
+                {/* خيار رفع الفيديو كخيار بديل */}
                 <div className="pt-2 border-t border-amber-500/20">
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">أو رفع ملف فيديو من جهازك (للمعاينة المباشرة):</span>
@@ -764,14 +1309,14 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold text-slate-600 dark:text-slate-400 transition"
+                  className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold text-slate-600 dark:text-slate-400 transition cursor-pointer"
                 >
                   إلغاء
                 </button>
 
                 <button
                   type="submit"
-                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-md shadow-amber-500/20 active:scale-95"
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-md shadow-amber-500/20 active:scale-95 cursor-pointer"
                 >
                   <Save className="w-4 h-4" />
                   <span>{editingLesson ? 'حفظ التعديلات' : 'إضافة ونشر الدرس'}</span>
@@ -779,6 +1324,385 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
               </div>
 
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================= */}
+      {/* 4. نافذة إضافة / تعديل ملف ومذكرة (File Management Modal) */}
+      {/* ======================================================================= */}
+      {isFileModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white dark:bg-[#0c1222] border border-blue-500/30 w-full max-w-xl rounded-3xl p-6 sm:p-8 shadow-2xl space-y-5 my-8 animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
+                  <FileUp className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                    {editingFile 
+                      ? 'تعديل بيانات الملف / المذكرة'
+                      : fileModalMode === 'lesson_attachment'
+                      ? 'إرفاق ملف بمحاضرة'
+                      : 'إضافة ملف أو مذكرة جديدة (PDF)'
+                    }
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    رفع ملفات PDF، أوراق العمل، والمذكرات التأسيسية
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsFileModalOpen(false)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveFileForm} className="space-y-4">
+              {/* اختيار نوع الإضافة إن لم تكن مخصصة لدرس مسبق */}
+              {!editingFile && (
+                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-900 rounded-2xl">
+                  <button
+                    type="button"
+                    onClick={() => setFileModalMode('course_file')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                      fileModalMode === 'course_file'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    📄 ملف عام للدورة والمذكرات
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFileModalMode('lesson_attachment')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                      fileModalMode === 'lesson_attachment'
+                        ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    📎 إرفاق بمحاضرة محددة
+                  </button>
+                </div>
+              )}
+
+              {/* إذا كان إرفاق بمحاضرة، نطلب تحديد المحاضرة */}
+              {fileModalMode === 'lesson_attachment' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    اختر المحاضرة التابع لها هذا الملف:
+                  </label>
+                  <select
+                    value={targetLessonId}
+                    onChange={(e) => setTargetLessonId(e.target.value)}
+                    required
+                    className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="">-- اختر المحاضرة من القائمة --</option>
+                    {modules.map((mod) => (
+                      <optgroup key={mod.id} label={mod.title}>
+                        {mod.lessons.map((les) => (
+                          <option key={les.id} value={les.id}>
+                            {mod.orderIndex}.{les.orderIndex} {les.title}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* عنوان الملف */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  عنوان أو اسم الملف / المذكرة *:
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="مثال: مذكرة طرقع الشاملة لتأسيس الكمي (الملف الكامل)"
+                  value={fileFormData.title}
+                  onChange={(e) => setFileFormData({ ...fileFormData, title: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              {/* وصف الملف */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  وصف محتوى الملف:
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="وصف مختصر لمحتوى المذكرة وأهم التمارين الموجودة بها..."
+                  value={fileFormData.description}
+                  onChange={(e) => setFileFormData({ ...fileFormData, description: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 resize-none"
+                />
+              </div>
+
+              {/* نوع المرفق */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  نوع الملف:
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { id: 'pdf', label: 'مذكرة كاملة' },
+                    { id: 'summary', label: 'خريطة مفاهيم' },
+                    { id: 'worksheet', label: 'ورقة عمل' },
+                    { id: 'book', label: 'كتاب / مرجع' },
+                  ].map((type) => (
+                    <button
+                      key={type.id}
+                      type="button"
+                      onClick={() => setFileFormData({ ...fileFormData, fileType: type.id as any })}
+                      className={`py-2 px-3 rounded-xl text-xs font-bold transition border cursor-pointer ${
+                        fileFormData.fileType === type.id
+                          ? 'bg-blue-500/15 border-blue-500 text-blue-500'
+                          : 'border-slate-200 dark:border-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      {type.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* قسم رفع الملف أو إدخال الرابط */}
+              <div className="p-4 rounded-2xl bg-blue-500/5 dark:bg-slate-900 border border-blue-500/20 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <UploadCloud className="w-4 h-4 text-blue-500" />
+                    <span>ملف الـ PDF ورابط التحميل *</span>
+                  </span>
+                  <span className="text-[10px] font-bold text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded-full">
+                    مستودع سحابي آمن
+                  </span>
+                </div>
+
+                {/* خيار رفع ملف مباشر من الكمبيوتر */}
+                <div>
+                  <input
+                    ref={filePickerRef}
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    onChange={handlePDFFileSelect}
+                    className="hidden"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => filePickerRef.current?.click()}
+                    disabled={isUploadingFile}
+                    className="w-full py-3 px-4 rounded-xl border-2 border-dashed border-blue-500/40 hover:border-blue-500 bg-white dark:bg-slate-800/80 text-xs font-bold text-slate-700 dark:text-slate-200 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {isUploadingFile ? (
+                      <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>جارٍ رفع ملف الـ PDF ({fileUploadProgress}%)...</span>
+                      </div>
+                    ) : (
+                      <>
+                        <UploadCloud className="w-4 h-4 text-blue-500" />
+                        <span>اضغط لرفع ملف PDF من جهازك مباشرة 📤</span>
+                      </>
+                    )}
+                  </button>
+
+                  {fileUploadError && (
+                    <p className="text-[11px] font-bold text-rose-500 mt-1">{fileUploadError}</p>
+                  )}
+                </div>
+
+                {/* رابط التحميل المباشر */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                    أو ضع رابط تحميل مباشر (URL / Google Drive / Supabase):
+                  </label>
+                  <input
+                    type="url"
+                    required
+                    placeholder="https://tarqa.app/files/math_foundation_2025.pdf"
+                    value={fileFormData.fileUrl}
+                    onChange={(e) => setFileFormData({ ...fileFormData, fileUrl: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 text-left dir-ltr"
+                  />
+                </div>
+              </div>
+
+              {/* حجم الملف وعدد الصفحات */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    حجم الملف (تلقائي أو مخصص):
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="مثال: 14.8 MB"
+                    value={fileFormData.fileSize}
+                    onChange={(e) => setFileFormData({ ...fileFormData, fileSize: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                {fileModalMode === 'course_file' && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      عدد الصفحات:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="مثال: 185 صفحة"
+                      value={fileFormData.pagesCount}
+                      onChange={(e) => setFileFormData({ ...fileFormData, pagesCount: e.target.value })}
+                      className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* خيار المعاينة المجانية */}
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="cmsFileFreeCheck"
+                  checked={fileFormData.isFreePreview}
+                  onChange={(e) => setFileFormData({ ...fileFormData, isFreePreview: e.target.checked })}
+                  className="w-4 h-4 accent-blue-500 rounded cursor-pointer"
+                />
+                <label htmlFor="cmsFileFreeCheck" className="text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer">
+                  إتاحة هذا الملف كمعاينة مجانية 🎁 (يمكن لأي طالب تحميله مجاناً بدون اشتراك)
+                </label>
+              </div>
+
+              {/* أزرار الحفظ والإلغاء */}
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsFileModalOpen(false)}
+                  className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold text-slate-600 dark:text-slate-400 transition cursor-pointer"
+                >
+                  إلغاء
+                </button>
+
+                <button
+                  type="submit"
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition shadow-md shadow-blue-600/20 active:scale-95 cursor-pointer"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{editingFile ? 'حفظ تعديلات الملف' : 'حفظ ونشر الملف'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================= */}
+      {/* 5. نافذة إدارة مرفقات المحاضرة السريعة (Quick Lesson Attachments Modal) */}
+      {/* ======================================================================= */}
+      {managingLessonAttachments && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white dark:bg-[#0c1222] border border-blue-500/30 w-full max-w-lg rounded-3xl p-6 shadow-2xl space-y-5 my-8 animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <Paperclip className="w-4 h-4 text-blue-500" />
+                  <span>مرفقات ومذكرات المحاضرة</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5 truncate max-w-sm">
+                  {managingLessonAttachments.title}
+                </p>
+              </div>
+
+              <button
+                onClick={() => setManagingLessonAttachments(null)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {(managingLessonAttachments.attachments && managingLessonAttachments.attachments.length > 0) ? (
+                <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
+                  {managingLessonAttachments.attachments.map((att) => (
+                    <div key={att.id} className="p-3 flex items-center justify-between gap-3 text-xs bg-white dark:bg-slate-900">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
+                          <FileText className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-bold text-slate-900 dark:text-white truncate">
+                            {att.title}
+                          </div>
+                          <div className="text-[10px] text-slate-400 flex items-center gap-2">
+                            <span>{att.fileSize}</span>
+                            <span>•</span>
+                            <span className="text-blue-500 font-semibold">
+                              {att.fileType === 'pdf' ? 'مذكرة' : att.fileType === 'summary' ? 'خريطة مفاهيم' : 'ورقة عمل'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <a
+                          href={att.fileUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-500/10 transition"
+                          title="تحميل المذكرة"
+                        >
+                          <Download className="w-4 h-4" />
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`هل أنت متأكد من حذف المرفق "${att.title}" من هذا الدرس؟`)) {
+                              const updatedLesson: Lesson = {
+                                ...managingLessonAttachments,
+                                attachments: (managingLessonAttachments.attachments || []).filter((a) => a.id !== att.id),
+                              };
+                              onUpdateLesson(updatedLesson);
+                              setManagingLessonAttachments(updatedLesson);
+                              setToast({ text: `تم حذف المرفق "${att.title}" بنجاح! 🗑️`, type: 'info' });
+                            }
+                          }}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition cursor-pointer"
+                          title="حذف المرفق"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-6 text-center text-slate-400 text-xs border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
+                  لا توجد مذكرات أو ملفات مرفقة بهذا الدرس حتى الآن.
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  const lesson = managingLessonAttachments;
+                  setManagingLessonAttachments(null);
+                  openAttachFileToLesson(lesson);
+                }}
+                className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-blue-600/20"
+              >
+                <Plus className="w-4 h-4" />
+                <span>إضافة مذكرة جديدة لهذا الدرس 📄</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

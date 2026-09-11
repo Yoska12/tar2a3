@@ -335,12 +335,9 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
         },
         currentUser
       );
-      await fileStorageService.downloadOrPreviewFile(
-        file.fileUrl,
-        file.title,
-        false,
-        file.title,
-        file.description
+      await fileStorageService.downloadWatermarkedFile(
+        file,
+        currentUser
       );
     } else {
       setShowSubscribeModal(true);

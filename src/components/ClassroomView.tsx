@@ -602,12 +602,14 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                                 },
                                 currentUser
                               );
-                              fileStorageService.downloadOrPreviewFile(
-                                att.fileUrl,
-                                att.title,
-                                false,
-                                att.title,
-                                `ملف مرفق بدرس: ${currentLesson.title}`
+                              fileStorageService.downloadWatermarkedFile(
+                                {
+                                  title: att.title,
+                                  fileUrl: att.fileUrl,
+                                  description: `ملف ومذكرة شرح مرفقة بدرس: ${currentLesson.title}`,
+                                  pagesCount: 'ملف الدرس',
+                                },
+                                currentUser
                               );
                             }}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-sm cursor-pointer active:scale-95"
@@ -758,12 +760,9 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
         currentUser={currentUser}
         isSubscribed={true}
         onDownloadClick={(fileToDownload) => {
-          fileStorageService.downloadOrPreviewFile(
-            fileToDownload.fileUrl,
-            fileToDownload.title,
-            false,
-            fileToDownload.title,
-            fileToDownload.description
+          fileStorageService.downloadWatermarkedFile(
+            fileToDownload,
+            currentUser
           );
         }}
       />

@@ -46,6 +46,7 @@ import {
 import { downloadTrackingService } from '../lib/downloadTrackingService';
 import { KashierCheckoutModal } from './KashierCheckoutModal';
 import { getKashierSettings, KashierTransaction } from '../lib/kashierService';
+import { sanitizeUrl } from '../lib/securityUtils';
 
 interface CoursesViewProps {
   currentUser?: TarqaUser | null;
@@ -265,7 +266,10 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
         },
         currentUser
       );
-      window.open(file.fileUrl, '_blank');
+      const safeUrl = sanitizeUrl(file.fileUrl);
+      if (safeUrl !== '#') {
+        window.open(safeUrl, '_blank', 'noopener,noreferrer');
+      }
     } else {
       setShowSubscribeModal(true);
     }

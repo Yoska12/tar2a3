@@ -102,7 +102,23 @@ export const KashierCheckoutModal: React.FC<KashierCheckoutModalProps> = ({
     if (!isOpen) return;
 
     const handleKashierMessage = (event: MessageEvent) => {
-      // التحقق من مصدر الحدث ومحتوى البيانات
+      // 1. التحقق الصارم من موثوقية مصدر الرسالة (Origin Validation) لمنع ثغرات تزييف الدفع عبر postMessage
+      const origin = (event.origin || '').toLowerCase();
+      const isTrustedKashier =
+        origin.endsWith('.kashier.io') ||
+        origin === 'https://kashier.io' ||
+        origin === 'https://checkout.kashier.io' ||
+        origin === 'https://payments.kashier.io' ||
+        origin === 'https://api.kashier.io' ||
+        origin === 'https://test-api.kashier.io';
+      const isSelfOrigin = origin === window.location.origin.toLowerCase();
+
+      // رفض أي رسالة غير قادمة من نطاق كاشير المعتمد أو النطاق المحلي في وضع المحاكاة
+      if (!isTrustedKashier && !(isSimulated && isSelfOrigin)) {
+        return;
+      }
+
+      // 2. التحقق من محتوى البيانات
       const data = event.data;
       if (!data) return;
 

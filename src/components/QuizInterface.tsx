@@ -22,6 +22,7 @@ import {
 import { Question, OptionId, QuizSettings, QuizResult } from '../types';
 import { MathRenderer } from './MathRenderer';
 import { getAntiHackSettings, logSecurityViolation } from '../lib/antiHack';
+import { sanitizeSvg } from '../lib/securityUtils';
 
 interface QuizInterfaceProps {
   questions: Question[];
@@ -514,7 +515,7 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
               {currentQuestion.svgDiagram && (
                 <div 
                   className="my-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 flex items-center justify-center"
-                  dangerouslySetInnerHTML={{ __html: currentQuestion.svgDiagram }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeSvg(currentQuestion.svgDiagram) }}
                 />
               )}
 

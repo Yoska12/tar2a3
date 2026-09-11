@@ -35,6 +35,7 @@ import { FileUploadZone } from './FileUploadZone';
 import { uploadLessonVideo } from '../lib/videoUploadService';
 import { coursesStorage } from '../lib/subscriptionService';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { sanitizeUrl } from '../lib/securityUtils';
 
 interface LecturesCMSProps {
   modules: CourseModule[];
@@ -1007,7 +1008,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                   {/* أزرار الإجراءات */}
                   <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-2">
                     <a
-                      href={file.fileUrl}
+                      href={sanitizeUrl(file.fileUrl)}
                       target="_blank"
                       rel="noreferrer"
                       className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-blue-600 hover:text-white text-slate-700 dark:text-slate-300 font-bold text-xs transition cursor-pointer"
@@ -1656,7 +1657,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
 
                       <div className="flex items-center gap-1.5 shrink-0">
                         <a
-                          href={att.fileUrl}
+                          href={sanitizeUrl(att.fileUrl)}
                           target="_blank"
                           rel="noreferrer"
                           className="p-1.5 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-500/10 transition"

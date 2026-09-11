@@ -23,6 +23,7 @@ import { Lesson, CourseModule, LessonAttachment } from '../types';
 import { TarqaUser } from '../lib/supabase';
 import { SecureVideoPlayer } from './SecureVideoPlayer';
 import { downloadTrackingService } from '../lib/downloadTrackingService';
+import { sanitizeUrl } from '../lib/securityUtils';
 
 interface ClassroomViewProps {
   currentModule: CourseModule;
@@ -559,9 +560,9 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                         </div>
 
                         <a
-                          href={att.fileUrl}
+                          href={sanitizeUrl(att.fileUrl)}
                           target="_blank"
-                          rel="noreferrer"
+                          rel="noopener noreferrer"
                           download
                           onClick={() => {
                             downloadTrackingService.trackDownload(

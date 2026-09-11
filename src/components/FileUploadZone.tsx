@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { UploadCloud, FileText, Trash2, CheckCircle2, AlertCircle, File, Download, Loader2 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { LessonAttachment, AttachmentType } from '../types';
+import { sanitizeUrl } from '../lib/securityUtils';
 
 interface FileUploadZoneProps {
   lessonId: string;
@@ -260,9 +261,9 @@ export const FileUploadZone: React.FC<FileUploadZoneProps> = ({
 
                 <div className="flex items-center gap-1.5 shrink-0">
                   <a
-                    href={att.fileUrl}
+                    href={sanitizeUrl(att.fileUrl)}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="p-1.5 rounded-lg text-slate-400 hover:text-amber-500 hover:bg-amber-500/10 transition"
                     title="تحميل المذكرة"
                   >

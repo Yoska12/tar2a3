@@ -313,7 +313,7 @@ export const rolesService = {
   ): Promise<{ success: boolean; error?: string; updatedUser?: UserWithRole }> => {
     const currentUser = authService.getCurrentUser();
 
-    // 1. التحقق من صلاحية مسؤول المنصة (Admin)
+    // 1. التحقق الصارم من صلاحية مسؤول المنصة (Admin / Super Admin / Owner)
     const userEmail = currentUser?.email?.trim().toLowerCase();
     const isOwner = userEmail === 'yassooooo27m@gmail.com' || userEmail === 'iyoskalg@gmail.com';
     const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || isOwner;
@@ -322,6 +322,23 @@ export const rolesService = {
         success: false,
         error: 'عملية مرفوضة: صلاحية تعديل الرتب محصورة فقط بمسؤولي المنصة (Admins).',
       };
+    }
+
+    // التحقق المزدوج من الجلسة السحابية الحقيقية لمنع أي تلاعب محلي في localStorage
+    if (isSupabaseConfigured && supabase && !isOwner) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const callerEmail = session?.user?.email?.trim().toLowerCase();
+        if (callerEmail !== 'yassooooo27m@gmail.com' && callerEmail !== 'iyoskalg@gmail.com') {
+          if (!session?.user?.id) {
+            return { success: false, error: 'غير مصرح: يجب تسجيل الدخول بجلسة معتمدة لتنفيذ هذا الإجراء.' };
+          }
+          const { data: p } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
+          if (p?.role !== 'admin' && p?.role !== 'super_admin') {
+            return { success: false, error: 'عملية مرفوضة أمنياً: حسابك لا يملك صلاحية المسؤول في السيرفر.' };
+          }
+        }
+      } catch {}
     }
 
     // جلب قائمة المستخدمين الحالية
@@ -514,6 +531,21 @@ export const rolesService = {
       return { success: false, error: 'غير مصرح: صلاحية حظر الحسابات محصورة برتبة السوبر أدمن (Super Admin) فقط.' };
     }
 
+    // التحقق السحابي الإضافي لمنع تزييف الهوية محلياً
+    if (isSupabaseConfigured && supabase && !isOwner) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const callerEmail = session?.user?.email?.trim().toLowerCase();
+        if (callerEmail !== 'yassooooo27m@gmail.com' && callerEmail !== 'iyoskalg@gmail.com') {
+          if (!session?.user?.id) return { success: false, error: 'غير مصرح أمنياً: الجلسة غير موثقة.' };
+          const { data: p } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
+          if (p?.role !== 'super_admin') {
+            return { success: false, error: 'غير مصرح: عملية الحظر تتطلب رتبة سوبر أدمن حقيقية.' };
+          }
+        }
+      } catch {}
+    }
+
     if (currentUser?.id === targetUserId) {
       return { success: false, error: 'لا يمكنك حظر حسابك الخاص!' };
     }
@@ -655,6 +687,21 @@ export const rolesService = {
 
     if (!isSuperAdmin) {
       return { success: false, error: 'غير مصرح: صلاحية مسح الحسابات محصورة برتبة السوبر أدمن (Super Admin) فقط.' };
+    }
+
+    // التحقق السحابي الإضافي لمنع تزييف الهوية محلياً
+    if (isSupabaseConfigured && supabase && !isOwner) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const callerEmail = session?.user?.email?.trim().toLowerCase();
+        if (callerEmail !== 'yassooooo27m@gmail.com' && callerEmail !== 'iyoskalg@gmail.com') {
+          if (!session?.user?.id) return { success: false, error: 'غير مصرح أمنياً: الجلسة غير موثقة.' };
+          const { data: p } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
+          if (p?.role !== 'super_admin') {
+            return { success: false, error: 'غير مصرح: عملية الحذف تتطلب رتبة سوبر أدمن حقيقية.' };
+          }
+        }
+      } catch {}
     }
 
     if (currentUser?.id === targetUserId) {

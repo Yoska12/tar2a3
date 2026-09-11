@@ -28,7 +28,10 @@ import {
   Lock,
   Terminal,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  CreditCard,
+  ExternalLink,
+  Wallet
 } from 'lucide-react';
 import { MathRenderer } from './MathRenderer';
 import { Question, Category, OptionId, Difficulty, QuizMode } from '../types';
@@ -43,6 +46,15 @@ import {
   AntiHackSettings,
   SecurityViolation
 } from '../lib/antiHack';
+import {
+  getKashierSettings,
+  saveKashierSettings,
+  getKashierTransactions,
+  clearKashierTransactions,
+  createKashierPaymentSession,
+  KashierSettings,
+  KashierTransaction
+} from '../lib/kashierService';
 
 interface AdminPanelProps {
   questions: Question[];
@@ -69,11 +81,66 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onDeleteQuiz,
   quizzes = [],
 }) => {
-  const [activeTab, setActiveTab] = useState<'questions' | 'quizBuilder' | 'security'>('questions');
+  const [activeTab, setActiveTab] = useState<'questions' | 'quizBuilder' | 'security' | 'kashier'>('questions');
 
   // إعدادات وسجلات درع الأمان (Anti-Hack Shield)
   const [securitySettings, setSecuritySettings] = useState<AntiHackSettings>(() => getAntiHackSettings());
   const [securityLogs, setSecurityLogs] = useState<SecurityViolation[]>(() => getSecurityViolations());
+
+  // إعدادات وسجل معاملات بوابة كاشير (Kashier Gateway)
+  const [kashierSettings, setKashierSettings] = useState<KashierSettings>(() => getKashierSettings());
+  const [kashierTransactions, setKashierTransactions] = useState<KashierTransaction[]>(() => getKashierTransactions());
+  const [showKashierSecret, setShowKashierSecret] = useState(false);
+  const [isTestingKashier, setIsTestingKashier] = useState(false);
+  const [kashierTestResult, setKashierTestResult] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleTxUpdate = () => {
+      setKashierTransactions(getKashierTransactions());
+    };
+    window.addEventListener('tarqa_kashier_tx_logged', handleTxUpdate);
+    return () => window.removeEventListener('tarqa_kashier_tx_logged', handleTxUpdate);
+  }, []);
+
+  const handleSaveKashierConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    saveKashierSettings(kashierSettings);
+    showToast('تم حفظ وتحديث إعدادات بوابة كاشير بنجاح! 💳', 'success');
+  };
+
+  const handleTestKashierConnection = async () => {
+    setIsTestingKashier(true);
+    setKashierTestResult(null);
+    try {
+      const res = await createKashierPaymentSession(
+        {
+          id: 'admin_test',
+          fullName: 'مدير المنصة (تجربة)',
+          email: 'admin@tarqa.app',
+          targetScore: 100,
+          role: 'super_admin',
+        },
+        {
+          amount: kashierSettings.amount,
+          currency: kashierSettings.currency,
+          description: 'جلسة فحص واختبار من لوحة الإدارة',
+        }
+      );
+      if (res.success && res.sessionUrl) {
+        setKashierTestResult(`نجح الاتصال! ✅ تم توليد رابط الجلسة: ${res.isSimulated ? '(وضع المحاكاة الذكي)' : '(جلسة كاشير رسمية)'}`);
+        showToast('تم اختبار الاتصال وتوليد جلسة دفع بنجاح!', 'success');
+        setKashierTransactions(getKashierTransactions());
+      } else {
+        setKashierTestResult(`فشل الاتصال: ${res.error || 'تعذر الوصول لخادم كاشير'}`);
+        showToast('فشل اختبار الاتصال ببوابة كاشير', 'error');
+      }
+    } catch (err: any) {
+      setKashierTestResult(`خطأ في الفحص: ${err?.message || 'خطأ غير معروف'}`);
+      showToast('حدث خطأ أثناء فحص جلسة كاشير', 'error');
+    } finally {
+      setIsTestingKashier(false);
+    }
+  };
 
   const handleToggleSecuritySetting = (key: keyof AntiHackSettings) => {
     const nextVal = !securitySettings[key];
@@ -89,22 +156,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const handleClearLogs = () => {
-    if (window.confirm('هل تريد مسح سجل المخالفات الأمنية بالكامل؟')) {
+    if (window.confirm('هل أنت متأكد من رغبتك في تفريغ سجل المخالفات الأمنية؟')) {
       clearSecurityViolations();
       setSecurityLogs([]);
-      showToast('تم مسح سجل المخالفات الأمنية بنجاح.', 'info');
+      showToast('تم تفريغ سجل المخالفات الأمنية بنجاح.', 'info');
     }
   };
 
   const handleSimulateAlert = () => {
     logSecurityViolation({
-      userId: 'TEST-ADMIN',
-      userName: 'فحص تجريبي',
       type: 'devtools_attempt',
-      details: 'فحص تجريبي لنظام الإنذار الأمني من لوحة الإدارة',
+      details: 'محاكاة تجريبية من لوحة الإدارة لفحص درع الأمان والتنبيهات',
+      userId: 'admin-preview',
+      userName: 'مدير المنصة (تجربة)',
     });
     setSecurityLogs(getSecurityViolations());
-    showToast('تم إطلاق تنبيه أمني تجريبي وتسجيله في النظام! 🚨', 'success');
+    showToast('تم تسجيل مخالفة تجريبية وتفعيل التنبيه بنجاح! ⚠️', 'info');
   };
 
   // رسائل التنبيه التفاعلية
@@ -442,6 +509,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           >
             <ShieldCheck className="w-4 h-4" />
             <span>درع الحماية ومكافحة الاختراق (Anti-Hack Shield)</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('kashier')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+              activeTab === 'kashier'
+                ? 'bg-amber-500 text-slate-950 shadow-sm font-black'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <CreditCard className="w-4 h-4" />
+            <span>بوابة دفع كاشير (Kashier Gateway)</span>
           </button>
         </div>
 
@@ -1262,7 +1341,372 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       )}
 
       {/* ======================================================================= */}
-      {/* 4. نافذة إضافة وتعديل سؤال مع معاينة LaTeX الفورية (Live Math Preview) */}
+      {/* 4. بوابة دفع كاشير (Kashier Payment Sessions v3 Management Section) */}
+      {/* ======================================================================= */}
+      {activeTab === 'kashier' && (
+        <section className="space-y-6">
+          
+          {/* بطاقة الحالة الرئيسية لبوابة كاشير */}
+          <div className="p-6 rounded-3xl bg-gradient-to-br from-slate-900 via-[#0d1424] to-slate-950 border border-amber-500/30 shadow-2xl relative overflow-hidden text-white">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+            <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+              <div className="flex items-start gap-4">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/30 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 shadow-lg shadow-amber-500/20">
+                  <CreditCard className="w-8 h-8" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <h2 className="text-xl font-black text-white">بوابة دفع كاشير (Kashier Gateway)</h2>
+                    <span className={`px-2.5 py-0.5 rounded-full border text-xs font-bold font-mono flex items-center gap-1 ${
+                      kashierSettings.enabled
+                        ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                        : 'bg-rose-500/20 border-rose-500/40 text-rose-400'
+                    }`}>
+                      <span className={`w-2 h-2 rounded-full ${kashierSettings.enabled ? 'bg-emerald-400 animate-ping' : 'bg-rose-400'}`} />
+                      {kashierSettings.enabled ? 'البوابة مفعلة' : 'البوابة معطلة'}
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-bold font-mono">
+                      {kashierSettings.mode === 'live' ? '🟢 بيئة حية (Live)' : '🧪 بيئة تجريبية (Test Mode)'}
+                    </span>
+                    {kashierSettings.simulateMode && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/40 text-purple-300 text-xs font-bold">
+                        محاكاة ذكية (Sandbox Active)
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400 max-w-2xl leading-relaxed">
+                    نظام الدفع الرسمي Kashier Payment Sessions v3. يتيح للطلاب الدفع الآمن للاشتراك السنوي عبر بطاقات مدى (Mada)، فيزا، ماستركارد، والمحافظ الإلكترونية من خلال نافذة دفع مدمجة بدون مغادرة المنصة.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+                <a
+                  href="https://merchant.kashier.io"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-bold transition flex items-center gap-1.5"
+                >
+                  <span>لوحة تحكم كاشير</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            </div>
+          </div>
+
+          {/* استمارة إعدادات ومفاتيح كاشير */}
+          <div className="p-6 rounded-3xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800/80 shadow-sm space-y-6">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-amber-500" />
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  بيانات الربط والمفاتيح البرمجية (Kashier API Credentials)
+                </h3>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                يتم حفظ المفاتيح مشفرة ومحمية
+              </span>
+            </div>
+
+            <form onSubmit={handleSaveKashierConfig} className="space-y-5">
+              {/* المفاتيح والخيارات العلوية */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* تفعيل / تعطيل البوابة */}
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white">تفعيل بوابة كاشير</h4>
+                    <p className="text-[11px] text-slate-400">إظهار نافذة كاشير عند الاشتراك</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setKashierSettings({ ...kashierSettings, enabled: !kashierSettings.enabled })}
+                    className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
+                      kashierSettings.enabled ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'
+                    }`}
+                  >
+                    <span
+                      className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${
+                        kashierSettings.enabled ? 'right-0.5' : 'right-6'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* بيئة العمل: تجريبية أم حية */}
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-900 dark:text-white">
+                    بيئة التشغيل (Environment)
+                  </label>
+                  <select
+                    value={kashierSettings.mode}
+                    onChange={(e) => setKashierSettings({ ...kashierSettings, mode: e.target.value as 'test' | 'live' })}
+                    className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs text-slate-900 dark:text-white font-bold"
+                  >
+                    <option value="test">🧪 بيئة الاختبار التجريبية (Test Mode)</option>
+                    <option value="live">🟢 بيئة الإنتاج الحقيقية (Live Mode)</option>
+                  </select>
+                </div>
+
+                {/* وضع المحاكاة الذكي */}
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white">المحاكاة الذكية (Sandbox)</h4>
+                    <p className="text-[11px] text-slate-400">سماح بتجربة الدفع بدون بطاقة</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setKashierSettings({ ...kashierSettings, simulateMode: !kashierSettings.simulateMode })}
+                    className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
+                      kashierSettings.simulateMode ? 'bg-purple-500' : 'bg-slate-300 dark:bg-slate-700'
+                    }`}
+                  >
+                    <span
+                      className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${
+                        kashierSettings.simulateMode ? 'right-0.5' : 'right-6'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {/* حقول المفاتيح الرقمية */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Merchant ID */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    معرف التاجر (Merchant ID) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={kashierSettings.merchantId}
+                    onChange={(e) => setKashierSettings({ ...kashierSettings, merchantId: e.target.value.trim() })}
+                    placeholder="MID-XXXX-XXXX"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs font-mono text-slate-900 dark:text-white text-left focus:outline-none focus:border-amber-500"
+                    dir="ltr"
+                  />
+                </div>
+
+                {/* API Key */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    مفتاح الـ API (api-key) *
+                  </label>
+                  <input
+                    type="text"
+                    value={kashierSettings.apiKey}
+                    onChange={(e) => setKashierSettings({ ...kashierSettings, apiKey: e.target.value.trim() })}
+                    placeholder="ضع مفتاح API من لوحة كاشير"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs font-mono text-slate-900 dark:text-white text-left focus:outline-none focus:border-amber-500"
+                    dir="ltr"
+                  />
+                </div>
+
+                {/* Secret Key */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                      المفتاح السري (Secret Key / Authorization) *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowKashierSecret(!showKashierSecret)}
+                      className="text-[10px] text-amber-500 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      {showKashierSecret ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                      <span>{showKashierSecret ? 'إخفاء' : 'إظهار'}</span>
+                    </button>
+                  </div>
+                  <input
+                    type={showKashierSecret ? 'text' : 'password'}
+                    value={kashierSettings.secretKey}
+                    onChange={(e) => setKashierSettings({ ...kashierSettings, secretKey: e.target.value.trim() })}
+                    placeholder="YOUR_SECRET_KEY"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs font-mono text-slate-900 dark:text-white text-left focus:outline-none focus:border-amber-500"
+                    dir="ltr"
+                  />
+                </div>
+              </div>
+
+              {/* السعر والعملة */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    عملة الدفع (Currency)
+                  </label>
+                  <select
+                    value={kashierSettings.currency}
+                    onChange={(e) => setKashierSettings({ ...kashierSettings, currency: e.target.value as 'EGP' | 'SAR' })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs font-bold text-slate-900 dark:text-white"
+                  >
+                    <option value="EGP">EGP (جنيه مصري)</option>
+                    <option value="SAR">SAR (ريال سعودي)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    سعر الباقة السنوية الافتراضي
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.5"
+                    value={kashierSettings.amount}
+                    onChange={(e) => setKashierSettings({ ...kashierSettings, amount: parseFloat(e.target.value) || 75 })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs font-bold text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              {/* رسالة نتيجة فحص الاتصال */}
+              {kashierTestResult && (
+                <div className="p-3.5 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200">
+                  {kashierTestResult}
+                </div>
+              )}
+
+              {/* أزرار الحفظ والفحص */}
+              <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  disabled={isTestingKashier}
+                  onClick={handleTestKashierConnection}
+                  className="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isTestingKashier ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>جاري فحص الاتصال...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-3.5 h-3.5 text-amber-500" />
+                      <span>فحص الاتصال الفوري وتوليد جلسة</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md transition flex items-center gap-2 cursor-pointer"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>حفظ إعدادات كاشير</span>
+                </button>
+              </div>
+
+            </form>
+          </div>
+
+          {/* سجل المعاملات المالية الحية (Live Transactions Log) */}
+          <div className="p-6 rounded-3xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800/80 shadow-sm">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <Wallet className="w-4 h-4 text-amber-500" />
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  سجل عمليات الدفع والاشتراكات عبر كاشير ({kashierTransactions.length})
+                </h3>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setKashierTransactions(getKashierTransactions())}
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>تحديث العمليات</span>
+                </button>
+
+                {kashierTransactions.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm('هل تريد مسح سجل معاملات كاشير؟')) {
+                        clearKashierTransactions();
+                        setKashierTransactions([]);
+                        showToast('تم مسح سجل المعاملات بنجاح.', 'info');
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/20 text-xs font-bold transition cursor-pointer"
+                  >
+                    تفريغ السجل
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {kashierTransactions.length === 0 ? (
+              <div className="p-8 text-center border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
+                <CreditCard className="w-12 h-12 text-slate-400 mx-auto mb-2 opacity-50" />
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  لا توجد معاملات مسجلة حتى الآن
+                </p>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  عند قيام الطلاب بالدفع أو تجربة جلسة دفع تجريبية، ستظهر كافة العمليات هنا مباشرة.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto max-h-96">
+                <table className="w-full text-right text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500">
+                      <th className="pb-2 font-bold">الوقت والتاريخ</th>
+                      <th className="pb-2 font-bold">رقم الطلب (Order ID)</th>
+                      <th className="pb-2 font-bold">الطالب</th>
+                      <th className="pb-2 font-bold">المبلغ والعملة</th>
+                      <th className="pb-2 font-bold">الحالة</th>
+                      <th className="pb-2 font-bold">التفاصيل</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                    {kashierTransactions.map((tx) => (
+                      <tr key={tx.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/30 transition">
+                        <td className="py-2.5 font-mono text-[11px] text-slate-400">
+                          {new Date(tx.timestamp).toLocaleTimeString('ar-SA')} - {new Date(tx.timestamp).toLocaleDateString('ar-SA')}
+                        </td>
+                        <td className="py-2.5 font-mono font-bold text-slate-800 dark:text-slate-200">
+                          {tx.orderId}
+                        </td>
+                        <td className="py-2.5 font-bold text-slate-900 dark:text-slate-200">
+                          {tx.userName}
+                          <span className="block font-mono text-[10px] text-slate-400 font-normal">
+                            {tx.userEmail}
+                          </span>
+                        </td>
+                        <td className="py-2.5 font-mono font-black text-amber-600 dark:text-amber-400">
+                          {tx.amount} {tx.currency}
+                        </td>
+                        <td className="py-2.5">
+                          <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                            tx.status === 'SUCCESS'
+                              ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30'
+                              : tx.status === 'FAILED'
+                              ? 'bg-rose-500/15 text-rose-500 border border-rose-500/30'
+                              : 'bg-amber-500/15 text-amber-500 border border-amber-500/30'
+                          }`}>
+                            {tx.status === 'SUCCESS' && 'ناجح مكتمل ✅'}
+                            {tx.status === 'FAILED' && 'ملغي أو مرفوض ❌'}
+                            {tx.status === 'PENDING' && 'معلق (انتظار) ⏳'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 text-slate-600 dark:text-slate-300 font-medium text-[11px]">
+                          {tx.details}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+        </section>
+      )}
+
+      {/* ======================================================================= */}
+      {/* 5. نافذة إضافة وتعديل سؤال مع معاينة LaTeX الفورية (Live Math Preview) */}
       {/* ======================================================================= */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">

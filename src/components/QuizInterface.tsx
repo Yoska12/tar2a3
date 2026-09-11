@@ -14,10 +14,14 @@ import {
   Minimize2,
   HelpCircle,
   Zap,
-  BookmarkCheck
+  BookmarkCheck,
+  ShieldAlert,
+  ShieldCheck,
+  Lock
 } from 'lucide-react';
 import { Question, OptionId, QuizSettings, QuizResult } from '../types';
 import { MathRenderer } from './MathRenderer';
+import { getAntiHackSettings, logSecurityViolation } from '../lib/antiHack';
 
 interface QuizInterfaceProps {
   questions: Question[];
@@ -54,6 +58,13 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
   const [showNavDrawer, setShowNavDrawer] = useState<boolean>(false);
   const [showConfirmSubmit, setShowConfirmSubmit] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+
+  // نظام درع مكافحة الغش ورصد مغادرة التبويب (Anti-Cheat Exam Shield)
+  const antiHackConfig = useMemo(() => getAntiHackSettings(), []);
+  const [cheatViolationsCount, setCheatViolationsCount] = useState<number>(0);
+  const [showCheatWarningModal, setShowCheatWarningModal] = useState<boolean>(false);
+  const [isTerminatedForCheating, setIsTerminatedForCheating] = useState<boolean>(false);
+  const maxAllowedViolations = antiHackConfig.maxExamTabSwitches || 3;
 
   const currentQuestion = questions[currentIndex];
 
@@ -297,6 +308,40 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
     onFinish(result);
   };
 
+  // مراقبة مغادرة شاشة الاختبار والتبديل بين النوافذ (Anti-Cheat Tab Switching Guard)
+  useEffect(() => {
+    if (!antiHackConfig.enabled || !antiHackConfig.detectTabSwitch) return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        setCheatViolationsCount((prev) => {
+          const next = prev + 1;
+          logSecurityViolation({
+            userId: 'STUDENT',
+            userName: 'طالب في جلسة اختبار',
+            type: 'tab_switch',
+            details: `مغادرة شاشة الاختبار إلى تطبيق أو تبويب آخر (المخالفة ${next} من ${maxAllowedViolations})`,
+          });
+
+          if (next >= maxAllowedViolations && antiHackConfig.autoSubmitOnCheat) {
+            setIsTerminatedForCheating(true);
+            setTimeout(() => {
+              handleAutoSubmit();
+            }, 3000);
+          } else {
+            setShowCheatWarningModal(true);
+          }
+          return next;
+        });
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [antiHackConfig, maxAllowedViolations, calculateResult, onFinish]);
+
   // تنسيق الوقت (دقائق:ثواني)
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -341,6 +386,12 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
 
           {/* المؤقت الزمني وأزرار التحكم العلوية */}
           <div className="flex items-center gap-2 sm:gap-4">
+            
+            {/* مؤشر درع الحماية ضد الغش */}
+            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-bold select-none" title="نظام مكافحة الغش والرقابة الذكية مفعل">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>درع الحماية 🛡️</span>
+            </div>
             
             {/* مؤقت قياس الذكي */}
             {settings.timeLimitSeconds > 0 && (
@@ -406,8 +457,19 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
         {/* العمود الرئيسي: بطاقة السؤال والخيارات وأدوات التحكم (8 أو 9 أعمدة) */}
         <div className="lg:col-span-8 xl:col-span-9 flex flex-col gap-4">
           
-          {/* بطاقة السؤال الرئيسية */}
-          <div className="bg-white dark:bg-[#0d1424] rounded-2xl p-5 sm:p-8 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between flex-1 relative overflow-hidden">
+          {/* بطاقة السؤال الرئيسية (محمية ضد النسخ والسرقة) */}
+          <div 
+            onCopy={(e) => {
+              e.preventDefault();
+              logSecurityViolation({
+                userId: 'STUDENT',
+                userName: 'طالب في جلسة اختبار',
+                type: 'copy_attempt',
+                details: 'محاولة نسخ نص السؤال أو الخيارات أثناء الاختبار',
+              });
+            }}
+            className="bg-white dark:bg-[#0d1424] rounded-2xl p-5 sm:p-8 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between flex-1 relative overflow-hidden select-none"
+          >
             
             {/* رأس السؤال والتصنيف */}
             <div>
@@ -722,6 +784,50 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
             </div>
 
           </div>
+        </div>
+      )}
+
+      {/* نافذة التنبيه الأمني عند مغادرة شاشة الاختبار */}
+      {showCheatWarningModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-amber-500/50 rounded-3xl p-6 sm:p-8 max-w-md w-full text-center shadow-2xl animate-fadeIn">
+            <div className="w-16 h-16 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 mx-auto mb-4 text-3xl animate-bounce">
+              ⚠️
+            </div>
+            <h3 className="text-lg sm:text-xl font-black text-amber-400 mb-2">
+              تنبيه أمني: تم رصد مغادرة شاشة الاختبار!
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-4">
+              نظام طرقع الذكي رصد مغادرة نافذة الاختبار. يرجى الاستمرار داخل صفحة الاختبار لحماية درجاتك ومنع إلغاء الاختبار تلقائياً.
+            </p>
+            <div className="p-3 rounded-2xl bg-slate-800 border border-slate-700 mb-6 flex items-center justify-between text-xs">
+              <span className="text-slate-400">المخالفات المرصودة:</span>
+              <span className="font-black text-amber-400 font-mono text-sm">
+                {cheatViolationsCount} / {maxAllowedViolations}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCheatWarningModal(false)}
+              className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm transition shadow-lg shadow-amber-500/20 active:scale-95 cursor-pointer"
+            >
+              فهمت، العودة للاختبار فوراً ↩️
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* شاشة إنهاء الاختبار التلقائي عند تجاوز حد محاولات الغش */}
+      {isTerminatedForCheating && (
+        <div className="fixed inset-0 z-50 bg-rose-950/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center text-white">
+          <ShieldAlert className="w-20 h-20 text-rose-500 mb-4 animate-bounce" />
+          <h2 className="text-2xl font-black text-rose-400 mb-2">
+            تم إنهاء وسحب الاختبار آلياً!
+          </h2>
+          <p className="text-sm text-slate-300 max-w-md mb-4 leading-relaxed">
+            تم رصد تكرار مغادرة شاشة الاختبار بما يخالف معايير النزاهة المعتمدة لدى منصة طرقع ({cheatViolationsCount} مخالفات). جاري حفظ النتيجة ورصد المخالفة...
+          </p>
+          <div className="w-8 h-8 border-3 border-rose-500 border-t-transparent rounded-full animate-spin" />
         </div>
       )}
 

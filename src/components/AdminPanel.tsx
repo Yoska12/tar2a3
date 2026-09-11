@@ -21,12 +21,28 @@ import {
   Save,
   X,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Shield,
+  ShieldCheck,
+  ShieldAlert,
+  Lock,
+  Terminal,
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
 import { MathRenderer } from './MathRenderer';
 import { Question, Category, OptionId, Difficulty, QuizMode } from '../types';
 import { rolesService } from '../lib/rolesService';
 import { localScoreStorage } from '../lib/supabase';
+import {
+  getAntiHackSettings,
+  saveAntiHackSettings,
+  getSecurityViolations,
+  clearSecurityViolations,
+  logSecurityViolation,
+  AntiHackSettings,
+  SecurityViolation
+} from '../lib/antiHack';
 
 interface AdminPanelProps {
   questions: Question[];
@@ -53,7 +69,43 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onDeleteQuiz,
   quizzes = [],
 }) => {
-  const [activeTab, setActiveTab] = useState<'questions' | 'quizBuilder'>('questions');
+  const [activeTab, setActiveTab] = useState<'questions' | 'quizBuilder' | 'security'>('questions');
+
+  // إعدادات وسجلات درع الأمان (Anti-Hack Shield)
+  const [securitySettings, setSecuritySettings] = useState<AntiHackSettings>(() => getAntiHackSettings());
+  const [securityLogs, setSecurityLogs] = useState<SecurityViolation[]>(() => getSecurityViolations());
+
+  const handleToggleSecuritySetting = (key: keyof AntiHackSettings) => {
+    const nextVal = !securitySettings[key];
+    const updated = saveAntiHackSettings({ [key]: nextVal });
+    setSecuritySettings(updated);
+    showToast(`تم ${nextVal ? 'تفعيل' : 'تعطيل'} الإعداد الأمني بنجاح! 🛡️`, 'info');
+  };
+
+  const handleUpdateMaxTabSwitches = (count: number) => {
+    const updated = saveAntiHackSettings({ maxExamTabSwitches: count });
+    setSecuritySettings(updated);
+    showToast(`تم تحديث الحد الأقصى لمخالفات الاختبار إلى (${count}) مرات.`, 'info');
+  };
+
+  const handleClearLogs = () => {
+    if (window.confirm('هل تريد مسح سجل المخالفات الأمنية بالكامل؟')) {
+      clearSecurityViolations();
+      setSecurityLogs([]);
+      showToast('تم مسح سجل المخالفات الأمنية بنجاح.', 'info');
+    }
+  };
+
+  const handleSimulateAlert = () => {
+    logSecurityViolation({
+      userId: 'TEST-ADMIN',
+      userName: 'فحص تجريبي',
+      type: 'devtools_attempt',
+      details: 'فحص تجريبي لنظام الإنذار الأمني من لوحة الإدارة',
+    });
+    setSecurityLogs(getSecurityViolations());
+    showToast('تم إطلاق تنبيه أمني تجريبي وتسجيله في النظام! 🚨', 'success');
+  };
 
   // رسائل التنبيه التفاعلية
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
@@ -378,6 +430,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           >
             <Layers className="w-4 h-4" />
             <span>منشئ الاختبارات المخصصة {quizzes.length > 0 && `(${quizzes.length})`}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('security')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+              activeTab === 'security'
+                ? 'bg-amber-500 text-slate-950 shadow-sm font-black'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>درع الحماية ومكافحة الاختراق (Anti-Hack Shield)</span>
           </button>
         </div>
 
@@ -843,6 +907,355 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 );
               })}
             </div>
+          </div>
+
+        </section>
+      )}
+
+      {/* ======================================================================= */}
+      {/* 3. درع الحماية ومكافحة الاختراق (Anti-Hack Shield Management Section) */}
+      {/* ======================================================================= */}
+      {activeTab === 'security' && (
+        <section className="space-y-6">
+          
+          {/* بطاقة الحالة الرئيسية لدرع الحماية */}
+          <div className="p-6 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 border border-amber-500/30 shadow-2xl relative overflow-hidden text-white">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+            <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+              <div className="flex items-start gap-4">
+                <div className="w-16 h-16 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 shadow-lg shadow-amber-500/20">
+                  <ShieldCheck className="w-8 h-8 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <h2 className="text-xl font-black text-white">درع طرقع الأمني ومكافحة الاختراق</h2>
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-xs font-bold font-mono flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                      نشط ومراقب (Shield Core v3.0)
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 max-w-2xl leading-relaxed">
+                    نظام أمني متكامل لحماية بنك الأسئلة من التسريب، حظر أدوات المطورين والفحص (DevTools)، منع نسخ الأسئلة والمذكرات، كشف محاولات الغش بمغادرة شاشة الاختبار، وحماية جلسات المستخدمين من التلاعب.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={handleSimulateAlert}
+                  className="px-4 py-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 font-bold text-xs transition active:scale-95 flex items-center gap-2 cursor-pointer"
+                  title="إطلاق تنبيه تجريبي لفحص النظام"
+                >
+                  <AlertTriangle className="w-4 h-4 text-amber-400" />
+                  <span>فحص الإنذار التجريبي 🚨</span>
+                </button>
+              </div>
+            </div>
+
+            {/* مؤشرات حية سريعة */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-6 border-t border-slate-800/80">
+              <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                <span className="text-[11px] text-slate-400 block mb-1">فحص العناصر (DevTools)</span>
+                <span className={`text-xs font-bold ${securitySettings.blockDevTools ? 'text-emerald-400' : 'text-slate-500'}`}>
+                  {securitySettings.blockDevTools ? 'محظور تماماً ✅' : 'معطل ⚠️'}
+                </span>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                <span className="text-[11px] text-slate-400 block mb-1">نسخ الأسئلة وتحديدها</span>
+                <span className={`text-xs font-bold ${securitySettings.blockCopyCut ? 'text-emerald-400' : 'text-slate-500'}`}>
+                  {securitySettings.blockCopyCut ? 'محمي من النسخ ✅' : 'متاح ⚠️'}
+                </span>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                <span className="text-[11px] text-slate-400 block mb-1">رصد مغادرة الاختبار</span>
+                <span className={`text-xs font-bold ${securitySettings.detectTabSwitch ? 'text-emerald-400' : 'text-slate-500'}`}>
+                  {securitySettings.detectTabSwitch ? `نشط (${securitySettings.maxExamTabSwitches} مخالفات)` : 'معطل ⚠️'}
+                </span>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                <span className="text-[11px] text-slate-400 block mb-1">إجمالي المخالفات المرصودة</span>
+                <span className="text-xs font-bold text-amber-400 font-mono">
+                  {securityLogs.length} مخالفة مسجلة
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* لوحة تحكم مفاتيح الحماية والتبديل (Security Modules Toggles) */}
+          <div className="p-6 rounded-3xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800/80 shadow-sm">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+              <Lock className="w-4 h-4 text-amber-500" />
+              <span>إعدادات وحدات الأمان ومكافحة الاختراق</span>
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              
+              {/* 1. حظر DevTools والفحص */}
+              <div className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex flex-col justify-between gap-3">
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="font-bold text-xs text-slate-900 dark:text-white">حظر أدوات المطورين (F12)</span>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSecuritySetting('blockDevTools')}
+                      className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                        securitySettings.blockDevTools ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'
+                      }`}
+                    >
+                      <span className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
+                        securitySettings.blockDevTools ? 'left-6' : 'left-1'
+                      }`} />
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    يعطل مفاتيح F12 و Ctrl+Shift+I و Ctrl+Shift+J و Ctrl+U لمنع فحص العناصر وسرقة نصوص الأسئلة.
+                  </p>
+                </div>
+              </div>
+
+              {/* 2. حظر القائمة المنسدلة للزر الأيمن */}
+              <div className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex flex-col justify-between gap-3">
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="font-bold text-xs text-slate-900 dark:text-white">تعطيل الزر الأيمن (Context Menu)</span>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSecuritySetting('blockContextMenu')}
+                      className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                        securitySettings.blockContextMenu ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'
+                      }`}
+                    >
+                      <span className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
+                        securitySettings.blockContextMenu ? 'left-6' : 'left-1'
+                      }`} />
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    يمنع فتح قائمة الفحص وحفظ الصور بالفأرة في كافة صفحات المنصة مع استثناء حقول الإدخال.
+                  </p>
+                </div>
+              </div>
+
+              {/* 3. منع النسخ والقص */}
+              <div className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex flex-col justify-between gap-3">
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="font-bold text-xs text-slate-900 dark:text-white">حظر نسخ وتحديد المحتوى</span>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSecuritySetting('blockCopyCut')}
+                      className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                        securitySettings.blockCopyCut ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'
+                      }`}
+                    >
+                      <span className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
+                        securitySettings.blockCopyCut ? 'left-6' : 'left-1'
+                      }`} />
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    يعطل اختصارات النسخ Ctrl+C وتحديد نصوص الأسئلة وخيارات الاختبار والمذكرات لحمايتها من السرقة.
+                  </p>
+                </div>
+              </div>
+
+              {/* 4. مكافحة لقطات الشاشة */}
+              <div className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex flex-col justify-between gap-3">
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="font-bold text-xs text-slate-900 dark:text-white">إحباط لقطات الشاشة (PrintScreen)</span>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSecuritySetting('blockPrintScreen')}
+                      className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                        securitySettings.blockPrintScreen ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'
+                      }`}
+                    >
+                      <span className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
+                        securitySettings.blockPrintScreen ? 'left-6' : 'left-1'
+                      }`} />
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    يمسح حافظة الجهاز فوراً عند ضغط زر تصوير الشاشة PrintScreen لمنع تسريب أسئلة قياس على تيليجرام.
+                  </p>
+                </div>
+              </div>
+
+              {/* 5. رصد مغادرة الاختبار */}
+              <div className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex flex-col justify-between gap-3">
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="font-bold text-xs text-slate-900 dark:text-white">كشف مغادرة شاشة الاختبار (Tab-Switch)</span>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSecuritySetting('detectTabSwitch')}
+                      className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                        securitySettings.detectTabSwitch ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'
+                      }`}
+                    >
+                      <span className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
+                        securitySettings.detectTabSwitch ? 'left-6' : 'left-1'
+                      }`} />
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    يرصد خروج الطالب من صفحة الاختبار للبحث في جوجل أو استخدام روبوتات الذكاء الاصطناعي مع إنذار فوري.
+                  </p>
+                </div>
+              </div>
+
+              {/* 6. السحب التلقائي للاختبار عند الغش */}
+              <div className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex flex-col justify-between gap-3">
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="font-bold text-xs text-slate-900 dark:text-white">سحب الاختبار آلياً عند تكرار الغش</span>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSecuritySetting('autoSubmitOnCheat')}
+                      className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                        securitySettings.autoSubmitOnCheat ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'
+                      }`}
+                    >
+                      <span className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
+                        securitySettings.autoSubmitOnCheat ? 'left-6' : 'left-1'
+                      }`} />
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    يقوم بإنهاء وتسليم الاختبار تلقائياً بعد استنفاد الطالب للحد الأقصى من مخالفات مغادرة النافذة.
+                  </p>
+                </div>
+              </div>
+
+            </div>
+
+            {/* إعدادات الصرامة للمخالفات */}
+            <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <span className="block text-xs font-bold text-slate-900 dark:text-white mb-0.5">
+                  الحد الأقصى المسموح به لمغادرة شاشة الاختبار قبل الإلغاء:
+                </span>
+                <span className="text-[11px] text-slate-500">
+                  عدد الإنذارات التي تظهر للطالب قبل سحب ورقة الإجابة التلقائي.
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl">
+                {[1, 2, 3, 5].map((cnt) => (
+                  <button
+                    key={cnt}
+                    type="button"
+                    onClick={() => handleUpdateMaxTabSwitches(cnt)}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer select-none ${
+                      securitySettings.maxExamTabSwitches === cnt
+                        ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    {cnt} {cnt === 1 ? 'محاولة (صارم)' : cnt === 3 ? 'محاولات (قياسي)' : 'محاولات'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* سجل المخالفات الأمنية الفعلي (Live Security Audit Log) */}
+          <div className="p-6 rounded-3xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800/80 shadow-sm">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <Terminal className="w-4 h-4 text-amber-500" />
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  سجل المخالفات الأمنية المرصودة لحظياً ({securityLogs.length})
+                </h3>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSecurityLogs(getSecurityViolations())}
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>تحديث السجل</span>
+                </button>
+
+                {securityLogs.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearLogs}
+                    className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/20 text-xs font-bold transition cursor-pointer"
+                  >
+                    تفريغ السجل
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {securityLogs.length === 0 ? (
+              <div className="p-8 text-center border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
+                <ShieldCheck className="w-12 h-12 text-emerald-500 mx-auto mb-2 opacity-80" />
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  سجل الأمان نظيف تماماً!
+                </p>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  لم يتم رصد أي محاولات اختراق أو فحص لعناصر المنصة أو غش في الاختبارات حتى الآن.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto max-h-96">
+                <table className="w-full text-right text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500">
+                      <th className="pb-2 font-bold">الوقت والتاريخ</th>
+                      <th className="pb-2 font-bold">نوع المخالفة</th>
+                      <th className="pb-2 font-bold">المستخدم</th>
+                      <th className="pb-2 font-bold">تفاصيل المحاولة المرصودة</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                    {securityLogs.map((log) => (
+                      <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/30 transition">
+                        <td className="py-2.5 font-mono text-[11px] text-slate-400">
+                          {new Date(log.timestamp).toLocaleTimeString('ar-SA')} - {new Date(log.timestamp).toLocaleDateString('ar-SA')}
+                        </td>
+                        <td className="py-2.5">
+                          <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                            log.type === 'devtools_attempt'
+                              ? 'bg-rose-500/15 text-rose-500 border border-rose-500/30'
+                              : log.type === 'tab_switch'
+                              ? 'bg-amber-500/15 text-amber-500 border border-amber-500/30'
+                              : log.type === 'storage_tamper'
+                              ? 'bg-purple-500/15 text-purple-400 border border-purple-500/30'
+                              : 'bg-blue-500/15 text-blue-500 border border-blue-500/30'
+                          }`}>
+                            {log.type === 'devtools_attempt' && 'محاولة فتح DevTools 🛠️'}
+                            {log.type === 'tab_switch' && 'مغادرة الاختبار (Tab Switch) 🔄'}
+                            {log.type === 'copy_attempt' && 'محاولة نسخ محتوى 📋'}
+                            {log.type === 'screenshot_attempt' && 'لقطة شاشة PrintScreen 📸'}
+                            {log.type === 'storage_tamper' && 'تلاعب ببيانات الحساب 🚨'}
+                            {log.type === 'right_click' && 'زر أيمن محظور 🖱️'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 font-bold text-slate-900 dark:text-slate-200">
+                          {log.userName}
+                          <span className="block font-mono text-[10px] text-slate-400 font-normal">
+                            #{log.userId.slice(0, 10)}
+                          </span>
+                        </td>
+                        <td className="py-2.5 text-slate-600 dark:text-slate-300 font-medium">
+                          {log.details}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
         </section>

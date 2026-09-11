@@ -33,6 +33,7 @@ import { localScoreStorage, authService, TarqaUser, supabase, isSupabaseConfigur
 import { sendQuizCompletedNotification, TELEGRAM_BOT_URL, TELEGRAM_BOT_USERNAME } from './lib/telegram';
 import { coursesStorage, CLOUD_LECTURES_STORE_ID, CLOUD_LECTURES_STORE_EMAIL } from './lib/subscriptionService';
 import { questionBankStorage, CLOUD_QUESTIONS_STORE_ID, CLOUD_QUESTIONS_STORE_EMAIL } from './lib/questionBankStorage';
+import { initGlobalAntiHack, logSecurityViolation } from './lib/antiHack';
 
 const isOwnerEmail = (email?: string | null) => {
   if (!email) return false;
@@ -50,9 +51,22 @@ export const App: React.FC = () => {
   const [isAuthOpen, setIsAuthOpen] = useState<boolean>(false);
   const [authInitialTab, setAuthInitialTab] = useState<'signin' | 'signup'>('signin');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
+  const [securityToast, setSecurityToast] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<TarqaUser | null>(() => {
     return authService.getCurrentUser();
   });
+
+  // تفعيل درع طرقع الأمني ومكافحة الاختراق والفحص (Global Anti-Hack Shield Core)
+  useEffect(() => {
+    const cleanup = initGlobalAntiHack(
+      () => currentUser,
+      (msg) => {
+        setSecurityToast(msg);
+        setTimeout(() => setSecurityToast(null), 3500);
+      }
+    );
+    return cleanup;
+  }, [currentUser]);
 
   // مزامنة فورية للجلسة الحقيقية من Supabase لضمان الصلاحيات وحماية الزوار وتحديث الرتب لحظياً
   useEffect(() => {
@@ -160,7 +174,13 @@ export const App: React.FC = () => {
 
               if (profile) {
                 const isOwner = isOwnerEmail(localCur.email) || (profile.email && isOwnerEmail(profile.email));
-                const roleFromDb: UserRole = isOwner ? 'super_admin' : ((profile.role as UserRole) || localCur.role);
+                const dbRole = (profile.role as UserRole) || 'student';
+                const roleFromDb: UserRole = isOwner ? 'super_admin' : dbRole;
+
+                if (!isOwner && (localCur.role === 'super_admin' || localCur.role === 'admin') && dbRole === 'student') {
+                  logSecurityViolation('role_tampering', 'تم رصد محاولة تزييف رتبة مدير في المتصفح وإرجاع الحساب إلى رتبة طالب');
+                }
+
                 const updatedUser: TarqaUser = {
                   ...localCur,
                   id: profile.id || localCur.id,
@@ -182,6 +202,14 @@ export const App: React.FC = () => {
               }
             } catch (e) {
               console.warn('Failed to verify local user with Supabase:', e);
+            }
+            
+            // حماية ضد التلاعب المحلي: لا يُسمح بأي رتبة إدارية بدون توثيق بريد المالك أو السيرفر
+            const isOwner = isOwnerEmail(localCur.email);
+            if (!isOwner && (localCur.role === 'super_admin' || localCur.role === 'admin')) {
+              localCur.role = 'student';
+              localStorage.setItem('tarqa_current_user', JSON.stringify(localCur));
+              logSecurityViolation('role_tampering', 'محاولة انتحال صلاحيات إدارية دون توثيق سحابي معتمد');
             }
             setCurrentUser(localCur);
           } else {
@@ -1278,6 +1306,14 @@ export const App: React.FC = () => {
               <X className="w-4 h-4" />
             </button>
           </div>
+        </div>
+      )}
+
+      {/* درع الحماية العائم - تنبيهات فورية لمكافحة الاختراق والعبث */}
+      {securityToast && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[999999] px-5 py-3 rounded-2xl bg-red-950/95 border-2 border-red-500/70 text-red-100 shadow-2xl shadow-red-950/80 backdrop-blur-xl flex items-center gap-3 text-xs sm:text-sm font-bold animate-bounce select-none pointer-events-none">
+          <span className="text-xl">🛡️</span>
+          <span className="font-cairo tracking-wide">{securityToast}</span>
         </div>
       )}
 

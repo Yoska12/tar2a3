@@ -247,7 +247,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2.5 shrink-0">
           <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-xs font-bold">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span>متزامن سحابياً مع كافة الطلاب (Supabase Live)</span>
@@ -259,11 +259,11 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                 await onSyncCloud();
                 setToast({ text: 'تمت المزامنة السحابية بنجاح! التعديلات منشورة الآن لجميع الطلاب ☁️✅', type: 'success' });
               }}
-              className="inline-flex items-center gap-1.5 px-4 py-3 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-bold text-xs transition active:scale-95 shadow-sm"
+              className="inline-flex items-center gap-1 px-2.5 sm:px-4 py-2 sm:py-3 rounded-xl sm:rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-bold text-xs transition active:scale-95 shadow-sm"
               title="مزامنة فورية مع السحابة لكافة الطلاب"
             >
-              <UploadCloud className="w-4 h-4 text-emerald-500" />
-              <span>نشر سحابي مباشر ☁️</span>
+              <UploadCloud className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500" />
+              <span>نشر سحابي ☁️</span>
             </button>
           )}
 
@@ -275,20 +275,20 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                   setToast({ text: 'تمت استعادة المحاضرات الافتراضية بنجاح! 🔄', type: 'info' });
                 }
               }}
-              className="inline-flex items-center gap-1.5 px-4 py-3 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition active:scale-95 border border-slate-200 dark:border-slate-700"
+              className="inline-flex items-center gap-1 px-2.5 sm:px-4 py-2 sm:py-3 rounded-xl sm:rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition active:scale-95 border border-slate-200 dark:border-slate-700"
               title="استعادة البيانات الافتراضية"
             >
-              <RotateCcw className="w-4 h-4 text-slate-500" />
-              <span>استعادة الافتراضي</span>
+              <RotateCcw className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500" />
+              <span>استعادة</span>
             </button>
           )}
 
           <button
             onClick={() => openAddModal()}
-            className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm transition shadow-lg shadow-amber-500/20 active:scale-95"
+            className="inline-flex items-center gap-1 sm:gap-2 px-3 sm:px-5 py-2 sm:py-3 rounded-xl sm:rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs sm:text-sm transition shadow-lg shadow-amber-500/20 active:scale-95"
           >
-            <Plus className="w-4 h-4" />
-            <span>إضافة محاضرة جديدة</span>
+            <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span>إضافة محاضرة</span>
           </button>
         </div>
       </div>
@@ -431,27 +431,27 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                     </div>
 
                     {/* أزرار الإدارة والترتيب */}
-                    <div className="flex items-center gap-1.5 self-end sm:self-center shrink-0">
+                    <div className="flex items-center gap-1 sm:gap-1.5 self-end sm:self-center shrink-0">
                       {/* أزرار الترتيب */}
                       <button
                         onClick={() => onReorderLessons(mod.id, lesson.id, 'up')}
                         disabled={idx === 0}
-                        className="p-2 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 transition"
+                        className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 transition"
                         title="تحريك لأعلى"
                       >
-                        <ArrowUp className="w-3.5 h-3.5" />
+                        <ArrowUp className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
                       </button>
 
                       <button
                         onClick={() => onReorderLessons(mod.id, lesson.id, 'down')}
                         disabled={idx === mod.lessons.length - 1}
-                        className="p-2 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 transition"
+                        className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 transition"
                         title="تحريك لأسفل"
                       >
-                        <ArrowDown className="w-3.5 h-3.5" />
+                        <ArrowDown className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
                       </button>
 
-                      <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 mx-1" />
+                      <div className="h-3.5 sm:h-4 w-px bg-slate-200 dark:bg-slate-800 mx-0.5 sm:mx-1" />
 
                       {/* زر المعاينة المجانية */}
                       {onToggleFreePreview && (
@@ -463,14 +463,14 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                               type: 'info',
                             });
                           }}
-                          className={`p-2 rounded-xl border text-xs font-bold transition ${
+                          className={`p-1.5 sm:p-2 rounded-xl border text-xs font-bold transition ${
                             lesson.isFreePreview
                               ? 'text-amber-500 border-amber-500/30 bg-amber-500/10'
                               : 'text-slate-400 border-slate-200 dark:border-slate-800 hover:text-amber-500'
                           }`}
                           title={lesson.isFreePreview ? 'معاينة مجانية (اضغط للإلغاء)' : 'غير مجاني (اضغط لجعله مجانياً)'}
                         >
-                          <Gift className="w-3.5 h-3.5" />
+                          <Gift className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
                         </button>
                       )}
 
@@ -483,23 +483,23 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                             type: 'info',
                           });
                         }}
-                        className={`p-2 rounded-xl border text-xs font-bold transition ${
+                        className={`p-1.5 sm:p-2 rounded-xl border text-xs font-bold transition ${
                           lesson.isPublished
                             ? 'text-emerald-500 border-emerald-500/30 bg-emerald-500/10'
                             : 'text-rose-400 border-rose-500/30 bg-rose-500/10'
                         }`}
                         title={lesson.isPublished ? 'منشور (اضغط للإخفاء)' : 'مخفي (اضغط للنشر)'}
                       >
-                        {lesson.isPublished ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                        {lesson.isPublished ? <Eye className="w-3 sm:w-3.5 h-3 sm:h-3.5" /> : <EyeOff className="w-3 sm:w-3.5 h-3 sm:h-3.5" />}
                       </button>
 
                       {/* تعديل */}
                       <button
                         onClick={() => openEditModal(lesson)}
-                        className="p-2 rounded-xl text-slate-500 hover:text-amber-500 hover:bg-amber-500/10 border border-slate-200 dark:border-slate-800 transition"
+                        className="p-1.5 sm:p-2 rounded-xl text-slate-500 hover:text-amber-500 hover:bg-amber-500/10 border border-slate-200 dark:border-slate-800 transition"
                         title="تعديل المحاضرة"
                       >
-                        <Edit3 className="w-3.5 h-3.5" />
+                        <Edit3 className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
                       </button>
 
                       {/* حذف */}
@@ -510,10 +510,10 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                             setToast({ text: `تم حذف محاضرة "${lesson.title}" بنجاح! 🗑️`, type: 'info' });
                           }
                         }}
-                        className="p-2 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 border border-slate-200 dark:border-slate-800 transition"
+                        className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 border border-slate-200 dark:border-slate-800 transition"
                         title="حذف المحاضرة نهائياً"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
                       </button>
                     </div>
                   </div>

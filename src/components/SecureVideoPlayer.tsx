@@ -580,47 +580,47 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
         </div>
 
         {/* ب. أزرار التحكم والوقت والسرعة */}
-        <div className="flex items-center justify-between gap-3 text-white pt-1">
+        <div className="flex items-center justify-between gap-1 sm:gap-3 text-white pt-1">
           {/* الجانب الأيمن: تشغيل، تقديم/تأخير، وقت، صوت */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1 sm:gap-2.5">
             {/* زر تشغيل / إيقاف */}
             <button
               onClick={togglePlay}
-              className="p-2 rounded-xl hover:bg-white/15 text-amber-400 transition"
+              className="p-1.5 sm:p-2 rounded-xl hover:bg-white/15 text-amber-400 transition"
               title={isPlaying ? 'إيقاف مؤقت (Space)' : 'تشغيل (Space)'}
             >
-              {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current" />}
+              {isPlaying ? <Pause className="w-4 h-4 sm:w-5 sm:h-5 fill-current" /> : <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />}
             </button>
 
             {/* تأخير 10 ثوانٍ */}
             <button
               onClick={() => skipTime(-10)}
-              className="p-1.5 rounded-xl hover:bg-white/15 text-slate-300 hover:text-white transition"
+              className="p-1 sm:p-1.5 rounded-xl hover:bg-white/15 text-slate-300 hover:text-white transition"
               title="تأخير 10 ثوانٍ"
             >
-              <RotateCcw className="w-4 h-4" />
+              <RotateCcw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
 
             {/* تقديم 10 ثوانٍ */}
             <button
               onClick={() => skipTime(10)}
-              className="p-1.5 rounded-xl hover:bg-white/15 text-slate-300 hover:text-white transition"
+              className="p-1 sm:p-1.5 rounded-xl hover:bg-white/15 text-slate-300 hover:text-white transition"
               title="تقديم 10 ثوانٍ"
             >
-              <RotateCw className="w-4 h-4" />
+              <RotateCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
 
             {/* التحكم بالصوت */}
-            <div className="flex items-center gap-2 group/volume">
+            <div className="flex items-center gap-1 sm:gap-2 group/volume">
               <button
                 onClick={toggleMute}
-                className="p-1.5 rounded-xl hover:bg-white/15 text-slate-300 hover:text-white transition"
+                className="p-1 sm:p-1.5 rounded-xl hover:bg-white/15 text-slate-300 hover:text-white transition"
                 title={isMuted ? 'إلغاء كتم الصوت (M)' : 'كتم الصوت (M)'}
               >
                 {isMuted || volume === 0 ? (
-                  <VolumeX className="w-4 h-4 text-rose-400" />
+                  <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-400" />
                 ) : (
-                  <Volume2 className="w-4 h-4 text-amber-400" />
+                  <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
                 )}
               </button>
               <input
@@ -636,15 +636,15 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
             </div>
 
             {/* عداد الوقت */}
-            <div className="text-xs font-mono font-bold text-slate-300 ml-1">
+            <div className="text-[10px] sm:text-xs font-mono font-bold text-slate-300 ml-0.5 sm:ml-1">
               <span className="text-amber-400">{formatTime(currentTime)}</span>
-              <span className="text-slate-500 mx-1">/</span>
+              <span className="text-slate-500 mx-0.5 sm:mx-1">/</span>
               <span>{formatTime(duration)}</span>
             </div>
           </div>
 
           {/* الجانب الأيسر: سرعة الشرح، عنوان المحاضرة، PiP، ملء الشاشة */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             {/* عنوان المحاضرة المصغر */}
             <span className="hidden md:inline-block text-xs font-bold text-slate-400 truncate max-w-[200px]">
               {title}
@@ -654,7 +654,7 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
             <div className="relative">
               <button
                 onClick={() => setShowSpeedMenu(!showSpeedMenu)}
-                className="px-2.5 py-1 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold font-mono transition flex items-center gap-1 text-amber-400"
+                className="px-1.5 sm:px-2.5 py-0.5 sm:py-1 rounded-lg sm:rounded-xl bg-white/10 hover:bg-white/20 text-[10px] sm:text-xs font-bold font-mono transition flex items-center gap-0.5 text-amber-400"
                 title="سرعة الشرح"
               >
                 <span>{playbackSpeed}x</span>
@@ -682,19 +682,19 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
             {/* زر صورة داخل صورة (PiP) */}
             <button
               onClick={togglePiP}
-              className="p-1.5 rounded-xl hover:bg-white/15 text-slate-300 hover:text-white transition"
+              className="p-1 sm:p-1.5 rounded-xl hover:bg-white/15 text-slate-300 hover:text-white transition"
               title="نافذة عائمة (Picture-in-Picture)"
             >
-              <PictureInPicture className="w-4 h-4" />
+              <PictureInPicture className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
 
             {/* زر ملء الشاشة */}
             <button
               onClick={toggleFullscreen}
-              className="p-1.5 rounded-xl hover:bg-white/15 text-slate-300 hover:text-white transition"
+              className="p-1 sm:p-1.5 rounded-xl hover:bg-white/15 text-slate-300 hover:text-white transition"
               title={isFullscreen ? 'تصغير الشاشة (F)' : 'ملء الشاشة (F)'}
             >
-              {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+              {isFullscreen ? <Minimize className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Maximize className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
             </button>
           </div>
         </div>

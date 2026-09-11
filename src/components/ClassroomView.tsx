@@ -153,40 +153,40 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#070b14] text-slate-900 dark:text-slate-100 flex flex-col font-cairo">
       
-      {/* الشريط العلوي لغرفة المحاضرة - متجاوب تماماً مع الشاشات الصغيرة */}
-      <header className="sticky top-0 z-20 bg-white/95 dark:bg-[#0a0f1d]/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-3 sm:px-6 h-14 flex items-center justify-between gap-2 sm:gap-4">
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+      {/* الشريط العلوي لغرفة المحاضرة - متجاوب ومضغوط المساحات تماماً على الموبايل */}
+      <header className="sticky top-0 z-20 bg-white/95 dark:bg-[#0a0f1d]/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-2 sm:px-6 h-12 sm:h-14 flex items-center justify-between gap-1.5 sm:gap-4">
+        <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
           <button
             onClick={onBackToRoadmap}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-amber-500 font-bold text-xs transition shrink-0 cursor-pointer"
+            className="flex items-center gap-1 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-amber-500 font-bold text-[11px] sm:text-xs transition shrink-0 cursor-pointer"
             title="العودة للمسار"
           >
-            <ArrowRight className="w-4 h-4 shrink-0" />
+            <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
             <span className="hidden xs:inline sm:inline">العودة للمسار</span>
             <span className="xs:hidden sm:hidden">العودة</span>
           </button>
 
           <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block shrink-0" />
 
-          <div className="flex items-center gap-2 text-xs min-w-0">
+          <div className="flex items-center gap-1.5 text-xs min-w-0">
             <span className="text-slate-400 hidden md:inline-block truncate">{currentModule.title}</span>
             <span className="text-slate-400 hidden md:inline-block">•</span>
-            <span className="font-bold text-slate-900 dark:text-white truncate max-w-[130px] xs:max-w-[200px] sm:max-w-md">
+            <span className="font-bold text-slate-900 dark:text-white truncate max-w-[110px] xs:max-w-[190px] sm:max-w-md text-[11px] sm:text-xs">
               {currentLesson.title}
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
             onClick={handleToggleCompleted}
-            className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition shadow-sm shrink-0 cursor-pointer ${
+            className={`flex items-center gap-1 px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition shadow-sm shrink-0 cursor-pointer ${
               isCompleted
                 ? 'bg-emerald-500 text-white'
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-emerald-500/15 hover:text-emerald-500'
             }`}
           >
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
             <span className="hidden xs:inline">{isCompleted ? 'تم إكمال الدرس ✅' : 'تحديد كمكتمل'}</span>
             <span className="xs:hidden">{isCompleted ? 'مكتمل ✅' : 'إكمال'}</span>
           </button>
@@ -194,10 +194,10 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
       </header>
 
       {/* المحتوى الرئيسي: مشغل الفيديو + القائمة الجانبية */}
-      <div className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6">
+      <div className="flex-1 max-w-7xl w-full mx-auto p-2 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-6">
         
         {/* القسم الرئيسي (مشغل الفيديو والمذكرات): 8 أعمدة */}
-        <div className="lg:col-span-8 flex flex-col gap-4 sm:gap-6">
+        <div className="lg:col-span-8 flex flex-col gap-3 sm:gap-6">
           
           {/* مشغل الفيديو: يدعم يوتيوب، فيميو، والمشغل الآمن المشفر للروابط المباشرة */}
           {isYouTube(currentLesson.videoUrl, currentLesson.videoProvider) ? (
@@ -254,19 +254,19 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
             />
           )}
 
-          {/* أزرار التحكم بالسرعة والانتقال - متوافقة ومثالية على الموبايل */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 shadow-sm">
-            <div className="flex items-center justify-between sm:justify-start gap-2">
-              <span className="text-xs font-bold text-slate-500 dark:text-slate-400 shrink-0">
+          {/* أزرار التحكم بالسرعة والانتقال - متقاربة وأنيقة جداً على الموبايل */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-3 p-2.5 sm:p-4 rounded-2xl bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div className="flex items-center justify-between sm:justify-start gap-1.5 sm:gap-2">
+              <span className="text-[11px] sm:text-xs font-bold text-slate-500 dark:text-slate-400 shrink-0">
                 سرعة الشرح:
               </span>
-              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl">
+              <div className="flex items-center gap-0.5 sm:gap-1 bg-slate-100 dark:bg-slate-900 p-0.5 sm:p-1 rounded-xl">
                 {[1, 1.25, 1.5, 2].map((s) => (
                   <button
                     key={s}
                     type="button"
                     onClick={() => handleSpeedChange(s)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer select-none ${
+                    className={`px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer select-none ${
                       playbackSpeed === s
                         ? 'bg-amber-500 text-slate-950 shadow-sm font-black'
                         : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
@@ -278,14 +278,14 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
+            <div className="grid grid-cols-2 sm:flex sm:items-center gap-1.5 sm:gap-2">
               {prevLesson ? (
                 <button
                   type="button"
                   onClick={() => onSelectLesson(prevLesson)}
-                  className="flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold transition text-center cursor-pointer"
+                  className="flex items-center justify-center gap-1 px-2 sm:px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-[11px] sm:text-xs font-bold transition text-center cursor-pointer"
                 >
-                  <ArrowRight className="w-3.5 h-3.5 shrink-0" />
+                  <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
                   <span className="truncate">المحاضرة السابقة</span>
                 </button>
               ) : (
@@ -296,57 +296,57 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                 <button
                   type="button"
                   onClick={() => onSelectLesson(nextLesson)}
-                  className={`flex items-center justify-center gap-1.5 px-3.5 py-2 sm:py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition shadow-sm text-center cursor-pointer ${
+                  className={`flex items-center justify-center gap-1 px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-[11px] sm:text-xs font-black transition shadow-sm text-center cursor-pointer ${
                     !prevLesson ? 'col-span-2 sm:col-span-1' : ''
                   }`}
                 >
                   <span className="truncate">المحاضرة التالية</span>
-                  <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
+                  <ArrowLeft className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
                 </button>
               )}
             </div>
           </div>
 
-          {/* تبويبات ما بعد المحاضرة (المذكرات، الكويز، طريقة طرقع) - شريط قابل للتمرير الأفقي بسلاسة دون اختفاء أي زر */}
-          <div className="bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 rounded-3xl p-4 sm:p-6 shadow-sm overflow-hidden">
-            <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3 mb-6 overflow-x-auto scrollbar-none flex-nowrap -mx-1 px-1">
+          {/* تبويبات ما بعد المحاضرة (المذكرات، الكويز، طريقة طرقع) - مسافات محسوبة ومضغوطة لتظهر كاملة على الموبايل */}
+          <div className="bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 rounded-2xl sm:rounded-3xl p-3 sm:p-6 shadow-sm overflow-hidden">
+            <div className="flex items-center gap-1 sm:gap-2 border-b border-slate-200 dark:border-slate-800 pb-2.5 mb-4 sm:mb-6 overflow-x-auto scrollbar-none flex-nowrap -mx-1 px-1">
               <button
                 type="button"
                 onClick={() => setActiveTab('attachments')}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition shrink-0 whitespace-nowrap cursor-pointer ${
+                className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold transition shrink-0 whitespace-nowrap cursor-pointer ${
                   activeTab === 'attachments'
                     ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
                     : 'text-slate-500 hover:text-slate-900 dark:hover:text-white bg-slate-50 dark:bg-slate-900/50'
                 }`}
               >
-                <FileText className="w-4 h-4 shrink-0" />
-                <span>المذكرات والملازم ({currentLesson.attachments?.length || 0})</span>
+                <FileText className="w-3.5 h-3.5 shrink-0" />
+                <span>المذكرات ({currentLesson.attachments?.length || 0})</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setActiveTab('quiz')}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition shrink-0 whitespace-nowrap cursor-pointer ${
+                className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold transition shrink-0 whitespace-nowrap cursor-pointer ${
                   activeTab === 'quiz'
                     ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
                     : 'text-slate-500 hover:text-slate-900 dark:hover:text-white bg-slate-50 dark:bg-slate-900/50'
                 }`}
               >
-                <HelpCircle className="w-4 h-4 shrink-0" />
-                <span>كويز تثبيت المفهوم</span>
+                <HelpCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>كويز التثبيت</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setActiveTab('tarqa_tips')}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition shrink-0 whitespace-nowrap cursor-pointer ${
+                className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold transition shrink-0 whitespace-nowrap cursor-pointer ${
                   activeTab === 'tarqa_tips'
                     ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
                     : 'text-slate-500 hover:text-slate-900 dark:hover:text-white bg-slate-50 dark:bg-slate-900/50'
                 }`}
               >
-                <Lightbulb className="w-4 h-4 shrink-0 text-amber-500" />
-                <span>طريقة طرقع في الدرس</span>
+                <Lightbulb className="w-3.5 h-3.5 shrink-0 text-amber-500" />
+                <span>طريقة طرقع</span>
               </button>
             </div>
 

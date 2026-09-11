@@ -229,8 +229,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const cleanUsername = raw.replace(/^@/, '');
       const isNumeric = /^\d+$/.test(cleanUsername);
 
+      // توليد معرف رقمي ثابت ومستقر لاسم المستخدم لتفادي إنشاء حسابات مكررة
+      let numericHash = 0;
+      for (let i = 0; i < cleanUsername.length; i++) {
+        numericHash = (numericHash << 5) - numericHash + cleanUsername.charCodeAt(i);
+        numericHash |= 0;
+      }
+      const safeId = isNumeric ? Number(cleanUsername) : Math.abs(numericHash) % 900000000 + 100000000;
+
       const user = await authService.signInWithTelegram({
-        id: isNumeric ? Number(cleanUsername) : Math.floor(100000 + Math.random() * 900000),
+        id: safeId,
         first_name: cleanUsername,
         username: cleanUsername,
       });

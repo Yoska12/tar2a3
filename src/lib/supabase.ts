@@ -150,7 +150,15 @@ export const syncUserToMembersDashboard = async (user: TarqaUser) => {
       };
 
       if (isValidUuid(record.id)) {
-        await supabase.from('profiles').update(profileUpdatePayload).eq('id', record.id);
+        const { error: updErr } = await supabase.from('profiles').update(profileUpdatePayload).eq('id', record.id);
+        if (updErr || !dbProfile) {
+          await supabase.from('profiles').upsert({
+            id: record.id,
+            email: record.email,
+            role: record.role || 'student',
+            ...profileUpdatePayload,
+          });
+        }
       } else if (record.email && !record.email.includes('@telegram.tarqa')) {
         await supabase.from('profiles').update(profileUpdatePayload).eq('email', record.email.toLowerCase());
       } else if (cleanTg) {
@@ -641,11 +649,78 @@ export const authService = {
               .from('profiles')
               .update({
                 telegram_id: tgData.id || existingProfile.telegram_id,
-                telegram_username: rawUsername ? `@${rawUsername}` : existingProfile.telegram_username,
+                telegram_username: rawUsername ? (rawUsername.startsWith('@') ? rawUsername : `@${rawUsername}`) : existingProfile.telegram_username,
+                avatar_url: tgData.photo_url || existingProfile.avatar_url || '',
                 updated_at: new Date().toISOString(),
               })
               .eq('id', existingProfile.id);
           } catch {}
+        } else {
+          // 🚀 المستخدم يسجل عبر تليجرام لأول مرة وليس لديه حساب مسبق على الموقع!
+          // نقوم بإنشاء حسابه السحابي فوراً في auth.users و public.profiles ليظهر في لوحة التحكم (الداشبورد) لجميع المشرفين
+          try {
+            const cleanUser = rawUsername
+              ? rawUsername.toLowerCase().replace(/[^a-z0-9_]/g, '')
+              : `tg_${tgData.id}`;
+            const syntheticEmail = `${cleanUser}@telegram.tarqa`;
+            const syntheticPassword = `Tg_${tgData.id || cleanUser}_Auth!Tarqa2025`;
+
+            let authedUserId: string | null = null;
+
+            // 1. محاولة إنشاء الحساب في Supabase Auth
+            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+              email: syntheticEmail,
+              password: syntheticPassword,
+              options: {
+                data: {
+                  full_name: fullName,
+                  target_score: targetScore,
+                  role: role,
+                  telegram_username: rawUsername ? (rawUsername.startsWith('@') ? rawUsername : `@${rawUsername}`) : null,
+                  telegram_id: tgData.id || null,
+                  avatar_url: tgData.photo_url || '',
+                },
+              },
+            });
+
+            if (signUpData?.user?.id) {
+              authedUserId = signUpData.user.id;
+            } else if (signUpError?.message?.includes('already registered')) {
+              // إذا كان مسجلاً سابقاً في auth.users ولكن ليس له بروفايل في profiles
+              const { data: signInData } = await supabase.auth.signInWithPassword({
+                email: syntheticEmail,
+                password: syntheticPassword,
+              });
+              if (signInData?.user?.id) {
+                authedUserId = signInData.user.id;
+              }
+            }
+
+            if (authedUserId) {
+              userId = authedUserId;
+              email = syntheticEmail;
+            }
+
+            // 2. التأكد من حفظ بيانات الملف الشخصي في جدول public.profiles لظهوره فوراً في الداشبورد
+            if (isValidUuid(userId)) {
+              const newProfileData: any = {
+                id: userId,
+                email: syntheticEmail,
+                full_name: fullName,
+                target_score: targetScore,
+                role: role,
+                telegram_username: rawUsername ? (rawUsername.startsWith('@') ? rawUsername : `@${rawUsername}`) : null,
+                telegram_id: tgData.id || null,
+                avatar_url: tgData.photo_url || '',
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              };
+
+              await supabase.from('profiles').upsert(newProfileData);
+            }
+          } catch (createErr) {
+            console.warn('[signInWithTelegram] Auto create profile error:', createErr);
+          }
         }
       } catch (err: any) {
         if (err?.message?.includes('تم حظر')) throw err;

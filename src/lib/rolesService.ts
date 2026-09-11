@@ -1,6 +1,7 @@
 import { supabase, isSupabaseConfigured, authService, syncUserToMembersDashboard, isValidUuid } from './supabase';
 import { UserRole, UserWithRole, RoleChangeLog } from '../types';
 import { cancelAnnualSubscription, grantAnnualSubscription } from './subscriptionService';
+import { downloadTrackingService } from './downloadTrackingService';
 
 // الحساب الإداري المعتمد لمالك المنصة (Yoska)
 const INITIAL_DEMO_USERS: UserWithRole[] = [
@@ -77,6 +78,10 @@ export const rolesService = {
               bannedAt: d.banned_at || undefined,
               isSubscribed: Boolean(d.is_subscribed),
               subscriptionExpiresAt: d.subscription_expires_at || undefined,
+              hasDownloadedFiles: Boolean(d.has_downloaded_files || (d.downloaded_files_count && d.downloaded_files_count > 0)),
+              downloadedFilesCount: d.downloaded_files_count || (d.has_downloaded_files ? 1 : 0),
+              lastDownloadedAt: d.last_downloaded_at || undefined,
+              downloadedFiles: d.downloaded_files || [],
             };
           });
         }
@@ -224,6 +229,9 @@ export const rolesService = {
       if (rawSubs) localSubs = JSON.parse(rawSubs);
     } catch {}
 
+    // مزامنة سجلات تحميل الملفات من خدمة تتبع التحميلات
+    const allDownloads = downloadTrackingService.getAllDownloads();
+
     for (const u of resultUsers) {
       const em = (u.email || '').toLowerCase().trim();
       const isOwner = em === 'yassooooo27m@gmail.com' || em === 'iyoskalg@gmail.com' || u.id === 'usr-admin-01' || u.role === 'super_admin';
@@ -235,6 +243,19 @@ export const rolesService = {
           u.isSubscribed = true;
           u.subscriptionExpiresAt = sub.expiresAt;
         }
+      }
+
+      // دمج بيانات تحميلات الملفات
+      const dlRecord = allDownloads[u.id] || (u.email ? allDownloads[em] : null);
+      if (dlRecord && dlRecord.downloadCount > 0) {
+        u.hasDownloadedFiles = true;
+        u.downloadedFilesCount = dlRecord.downloadCount;
+        u.lastDownloadedAt = dlRecord.lastDownloadedAt;
+        u.downloadedFiles = dlRecord.files || [];
+      } else if (!u.hasDownloadedFiles) {
+        u.hasDownloadedFiles = false;
+        u.downloadedFilesCount = 0;
+        u.downloadedFiles = [];
       }
     }
 

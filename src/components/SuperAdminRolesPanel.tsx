@@ -28,11 +28,17 @@ import {
   Unlock,
   UserX,
   Copy,
-  Check
+  Check,
+  DownloadCloud,
+  FileX2,
+  FileDown,
+  FolderDown,
+  FileText
 } from 'lucide-react';
-import { UserRole, UserWithRole, RoleChangeLog } from '../types';
+import { UserRole, UserWithRole, RoleChangeLog, StudentDownloadedFile } from '../types';
 import { rolesService } from '../lib/rolesService';
 import { authService, TarqaUser, supabase, isSupabaseConfigured } from '../lib/supabase';
+import { downloadTrackingService } from '../lib/downloadTrackingService';
 
 interface SuperAdminRolesPanelProps {
   currentUser?: TarqaUser | null;
@@ -58,6 +64,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
   const [showLogsModal, setShowLogsModal] = useState<boolean>(false);
   const [showSqlModal, setShowSqlModal] = useState<boolean>(false);
   const [copiedSql, setCopiedSql] = useState<boolean>(false);
+  const [selectedUserDownloads, setSelectedUserDownloads] = useState<UserWithRole | null>(null);
 
   // حالة نافذة تأكيد تغيير الرتبة
   const [pendingChange, setPendingChange] = useState<{
@@ -172,6 +179,8 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
       banned: users.filter((u) => u.isBanned).length,
       subscribed: users.filter((u) => u.isSubscribed).length,
       unsubscribed: users.filter((u) => !u.isSubscribed && u.role !== 'super_admin' && u.email?.toLowerCase() !== 'yassooooo27m@gmail.com').length,
+      downloaded: users.filter((u) => Boolean(u.hasDownloadedFiles)).length,
+      notDownloaded: users.filter((u) => !u.hasDownloadedFiles).length,
     };
   }, [users]);
 
@@ -200,6 +209,10 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
           ? Boolean(user.isSubscribed)
           : selectedRoleFilter === 'unsubscribed'
           ? !user.isSubscribed && user.role !== 'super_admin' && user.email?.toLowerCase() !== 'yassooooo27m@gmail.com'
+          : selectedRoleFilter === 'downloaded'
+          ? Boolean(user.hasDownloadedFiles)
+          : selectedRoleFilter === 'not_downloaded'
+          ? !user.hasDownloadedFiles
           : user.role === selectedRoleFilter;
 
       return matchesSearch && matchesFilter;
@@ -405,6 +418,29 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
     );
   };
 
+  // شارة حالة تحميل ملفات الموقع والمذكرات
+  const renderDownloadBadge = (user: UserWithRole) => {
+    if (user.hasDownloadedFiles) {
+      const count = user.downloadedFilesCount || user.downloadedFiles?.length || 1;
+      return (
+        <button
+          onClick={() => setSelectedUserDownloads(user)}
+          className="group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/35 transition-all shadow-sm cursor-pointer hover:scale-105 active:scale-95"
+          title="انقر لعرض تفاصيل وأسماء المذكرات والملفات التي قام الطالب بتحميلها"
+        >
+          <DownloadCloud className="w-3.5 h-3.5 text-emerald-500 group-hover:scale-110 transition-transform" />
+          <span>حمل ({count} {count === 1 ? 'ملف' : 'ملفات'}) 📥</span>
+        </button>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700">
+        <FileX2 className="w-3.5 h-3.5 text-slate-400" />
+        <span>لم يحمّل بعد ⚪</span>
+      </span>
+    );
+  };
+
   // إلغاء اشتراك مستخدم
   const handleCancelSubscription = async (user: UserWithRole) => {
     if (!isAuthorizedAdmin) {
@@ -602,8 +638,8 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
         </div>
       )}
 
-      {/* بطاقات الإحصائيات الفخمة (7 Stats Cards) مع إمكانية الفلترة الفورية بالنقر عليها */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 sm:gap-4 mb-8">
+      {/* بطاقات الإحصائيات الفخمة (8 Stats Cards) مع إمكانية الفلترة الفورية بالنقر عليها */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 sm:gap-4 mb-8">
         {/* 1. إجمالي الحسابات */}
         <div 
           onClick={() => setSelectedRoleFilter('all')}
@@ -771,6 +807,30 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
             <span>حسابات موقوفة</span>
           </div>
         </div>
+
+        {/* 8. المحمّلون للملفات Downloaded */}
+        <div 
+          onClick={() => setSelectedRoleFilter('downloaded')}
+          className={`p-4 rounded-3xl transition-all duration-300 cursor-pointer backdrop-blur-md border ${
+            selectedRoleFilter === 'downloaded'
+              ? 'bg-emerald-500/15 border-emerald-500/50 shadow-lg shadow-emerald-500/10 scale-[1.02]'
+              : 'bg-white/80 dark:bg-[#0c1324]/80 border-slate-200/80 dark:border-slate-800/80 hover:-translate-y-1 hover:shadow-md'
+          }`}
+        >
+          <div className="flex items-center justify-between text-emerald-500 mb-2.5">
+            <span className="text-xs font-black">تحميل الملفات</span>
+            <div className="w-7 h-7 rounded-xl bg-emerald-500/15 flex items-center justify-center">
+              <DownloadCloud className="w-4 h-4 text-emerald-500" />
+            </div>
+          </div>
+          <div className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400">
+            {stats.downloaded}
+          </div>
+          <div className="text-[10px] text-emerald-500/80 mt-1 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            <span>حملوا مذكرات 📥</span>
+          </div>
+        </div>
       </div>
 
       {/* شريط البحث والفلترة الفخم */}
@@ -799,6 +859,8 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
         <div className="flex items-center gap-1.5 w-full lg:w-auto overflow-x-auto pb-1 lg:pb-0 scrollbar-none">
           {[
             { id: 'all', label: 'الكل', count: stats.total, icon: '👥' },
+            { id: 'downloaded', label: 'حمل ملفات 📥', count: stats.downloaded, icon: '📥' },
+            { id: 'not_downloaded', label: 'لم يحمل ملفات', count: stats.notDownloaded, icon: '⏳' },
             { id: 'subscribed', label: 'المشتركون 🎓', count: stats.subscribed, icon: '💎' },
             { id: 'unsubscribed', label: 'غير المشتركين', count: stats.unsubscribed, icon: '⚪' },
             { id: 'super_admin', label: 'سوبر أدمن', count: stats.superAdmin, icon: '👑' },
@@ -844,6 +906,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                 <th className="py-4.5 px-6">تليجرام</th>
                 <th className="py-4.5 px-6">الرتبة</th>
                 <th className="py-4.5 px-6">حالة الاشتراك 🎓</th>
+                <th className="py-4.5 px-6 text-center">تحميل الملفات 📥</th>
                 <th className="py-4.5 px-6">تاريخ الانضمام</th>
                 <th className="py-4.5 px-6 text-center">الإجراءات والصلاحيات</th>
               </tr>
@@ -851,7 +914,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs sm:text-sm">
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-16 text-center text-slate-400">
+                  <td colSpan={8} className="py-16 text-center text-slate-400">
 
                     <div className="w-16 h-16 mx-auto mb-3 rounded-3xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400 shadow-inner">
                       <Users className="w-8 h-8 opacity-60" />
@@ -972,6 +1035,11 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                       {/* حالة الاشتراك في الدورات */}
                       <td className="py-4 px-6">
                         {renderSubscriptionBadge(user)}
+                      </td>
+
+                      {/* حالة تحميل الملفات والمذكرات */}
+                      <td className="py-4 px-6 text-center">
+                        {renderDownloadBadge(user)}
                       </td>
 
                       {/* تاريخ الانضمام */}
@@ -1233,6 +1301,17 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                           </button>
                         )
                       )}
+                    </div>
+
+                    {/* حالة تحميل الملفات والمذكرات للموبايل */}
+                    <div className="flex items-center justify-between gap-2 p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800/60">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600 dark:text-slate-300">
+                        <DownloadCloud className="w-3.5 h-3.5 text-emerald-500" />
+                        <span>تحميل الملفات:</span>
+                      </div>
+                      <div>
+                        {renderDownloadBadge(user)}
+                      </div>
                     </div>
 
                     <div>
@@ -1760,6 +1839,198 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
           </div>
         </div>
       )}
+
+      {/* نافذة تفاصيل وسجل تحميلات الطالب (Student Downloads Audit Modal) */}
+      {selectedUserDownloads && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="relative w-full max-w-2xl max-h-[90vh] flex flex-col rounded-3xl bg-white dark:bg-[#0c1324] border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-500/30 shadow-inner">
+                  <DownloadCloud className="w-6 h-6 text-emerald-500" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                    <span>سجل تحميلات الطالب</span>
+                    <span className="text-sm font-bold px-2 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                      {selectedUserDownloads.downloadedFilesCount || selectedUserDownloads.downloadedFiles?.length || 0} تحميل
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    تفاصيل وأسماء المذكرات والملفات التي قام الطالب بفتحها أو تحميلها
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedUserDownloads(null)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto space-y-6">
+              {/* User Profile Card */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-200 dark:bg-slate-800 flex items-center justify-center font-black text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 shrink-0">
+                    {selectedUserDownloads.avatarUrl ? (
+                      <img src={selectedUserDownloads.avatarUrl} alt={selectedUserDownloads.fullName} className="w-full h-full object-cover rounded-2xl" />
+                    ) : (
+                      <span className="text-base">{selectedUserDownloads.fullName.charAt(0) || 'ط'}</span>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="font-bold text-sm text-slate-900 dark:text-white truncate">
+                      {selectedUserDownloads.fullName}
+                    </h4>
+                    <p className="text-xs text-slate-400 font-mono truncate">
+                      {selectedUserDownloads.email}
+                    </p>
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      تاريخ الانضمام: {new Date(selectedUserDownloads.createdAt).toLocaleDateString('ar-SA')}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {renderRoleBadge(selectedUserDownloads.role)}
+                  {renderSubscriptionBadge(selectedUserDownloads)}
+                </div>
+              </div>
+
+              {/* Status Banner */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-center">
+                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold block mb-1">هل تم التحميل؟</span>
+                  <span className="text-base font-black text-emerald-600 dark:text-emerald-300">
+                    {selectedUserDownloads.hasDownloadedFiles ? 'نعم، قام بالتحميل ✅' : 'لم يحمّل بعد ⏳'}
+                  </span>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-center">
+                  <span className="text-[11px] text-blue-600 dark:text-blue-400 font-bold block mb-1">إجمالي الملفات</span>
+                  <span className="text-base font-black text-blue-600 dark:text-blue-300">
+                    {selectedUserDownloads.downloadedFilesCount || selectedUserDownloads.downloadedFiles?.length || 0} ملف
+                  </span>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-center col-span-2 sm:col-span-1">
+                  <span className="text-[11px] text-purple-600 dark:text-purple-400 font-bold block mb-1">آخر عملية تحميل</span>
+                  <span className="text-xs font-black text-purple-600 dark:text-purple-300 font-mono">
+                    {selectedUserDownloads.lastDownloadedAt
+                      ? new Date(selectedUserDownloads.lastDownloadedAt).toLocaleDateString('ar-SA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                      : 'لا يوجد بعد'}
+                  </span>
+                </div>
+              </div>
+
+              {/* List of Files */}
+              <div>
+                <h5 className="font-bold text-xs text-slate-500 dark:text-slate-400 mb-3 flex items-center gap-1.5">
+                  <FolderDown className="w-4 h-4 text-emerald-500" />
+                  <span>قائمة المذكرات والملفات التي تم تحميلها:</span>
+                </h5>
+
+                {(!selectedUserDownloads.downloadedFiles || selectedUserDownloads.downloadedFiles.length === 0) ? (
+                  <div className="p-8 text-center rounded-2xl bg-slate-50 dark:bg-slate-900/40 border border-dashed border-slate-200 dark:border-slate-800 text-slate-400">
+                    <FileX2 className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
+                    <p className="text-xs font-bold">لم يسجل الطالب أي عمليات تحميل لملفات أو مذكرات حتى الآن</p>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      عند قيام الطالب بالنقر على تحميل أي ملف من قاعة المحاضرات أو قسم الدورات سيظهر هنا فوراً.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {selectedUserDownloads.downloadedFiles.map((f, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/80 flex items-center justify-between gap-3 hover:border-emerald-500/40 transition"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0">
+                            <FileText className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <h6 className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                              {f.title}
+                            </h6>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              {f.fileSize || 'PDF'} • {f.fileType === 'pdf' ? 'مذكرة كاملة' : f.fileType === 'worksheet' ? 'ورقة عمل' : 'ملخص'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="text-[10px] font-mono text-slate-400 shrink-0 text-left">
+                          {new Date(f.downloadedAt).toLocaleDateString('ar-SA', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Admin Tools Section */}
+              <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <button
+                    onClick={async () => {
+                      if (!selectedUserDownloads) return;
+                      await downloadTrackingService.simulateUserDownload(selectedUserDownloads);
+                      showToast(`تم تسجيل تحميل تجريبي لـ ${selectedUserDownloads.fullName}`, 'success');
+                      await loadData(true);
+                      const updated = await rolesService.getUsers();
+                      const cur = updated.find(u => u.id === selectedUserDownloads.id);
+                      if (cur) setSelectedUserDownloads(cur);
+                    }}
+                    className="flex-1 sm:flex-initial px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    title="تسجيل تحميل تجريبي لاختبار التتبع"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    <span>إضافة تحميل تجريبي (اختبار)</span>
+                  </button>
+
+                  {selectedUserDownloads.hasDownloadedFiles && (
+                    <button
+                      onClick={async () => {
+                        if (!selectedUserDownloads) return;
+                        if (window.confirm(`هل أنت متأكد من مسح وتصفير سجل تحميلات ${selectedUserDownloads.fullName}؟`)) {
+                          await downloadTrackingService.clearUserDownloads(selectedUserDownloads.id, selectedUserDownloads.email);
+                          showToast('تم تصفير ومسح سجل تحميلات الطالب', 'success');
+                          await loadData(true);
+                          const updated = await rolesService.getUsers();
+                          const cur = updated.find(u => u.id === selectedUserDownloads.id);
+                          if (cur) setSelectedUserDownloads(cur);
+                        }
+                      }}
+                      className="px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                      title="مسح السجل"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>تصفير السجل</span>
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => setSelectedUserDownloads(null)}
+                  className="w-full sm:w-auto px-5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition cursor-pointer"
+                >
+                  إغلاق النافذة
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1794,6 +2065,12 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS ban_reason TEXT DEFAULT NUL
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS banned_at TIMESTAMPTZ DEFAULT NULL;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+
+-- أعمدة تتبع تحميل الملفات والمذكرات
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS has_downloaded_files BOOLEAN DEFAULT false;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS downloaded_files_count INTEGER DEFAULT 0;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS last_downloaded_at TIMESTAMPTZ DEFAULT NULL;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS downloaded_files JSONB DEFAULT '[]'::jsonb;
 
 -- إضافة عمود role كـ user_role
 DO $$ BEGIN

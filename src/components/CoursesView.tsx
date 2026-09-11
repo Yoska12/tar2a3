@@ -43,6 +43,7 @@ import {
   canAccessLesson,
   coursesStorage
 } from '../lib/subscriptionService';
+import { downloadTrackingService } from '../lib/downloadTrackingService';
 import { KashierCheckoutModal } from './KashierCheckoutModal';
 import { getKashierSettings, KashierTransaction } from '../lib/kashierService';
 
@@ -254,6 +255,16 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
   const handleFileAction = (file: CourseFileItem, previewMode = false) => {
     const hasAccess = file.isFreePreview || subscriptionInfo.isSubscribed;
     if (hasAccess) {
+      downloadTrackingService.trackDownload(
+        {
+          id: file.id,
+          title: file.title,
+          fileUrl: file.fileUrl,
+          fileType: file.fileType,
+          fileSize: file.fileSize,
+        },
+        currentUser
+      );
       window.open(file.fileUrl, '_blank');
     } else {
       setShowSubscribeModal(true);

@@ -122,6 +122,15 @@ export interface UserLessonProgress {
 // نظام إدارة الرتب والصلاحيات (Super Admin Roles Management System)
 // ==============================================================================
 
+export interface StudentDownloadedFile {
+  id?: string;
+  title: string;
+  fileUrl?: string;
+  fileType?: string;
+  fileSize?: string;
+  downloadedAt: string;
+}
+
 export interface UserWithRole {
   id: string;
   email: string;
@@ -138,6 +147,11 @@ export interface UserWithRole {
   bannedAt?: string;
   isSubscribed?: boolean;
   subscriptionExpiresAt?: string;
+  // نظام تتبع تحميل الملفات والمذكرات
+  hasDownloadedFiles?: boolean;
+  downloadedFilesCount?: number;
+  lastDownloadedAt?: string;
+  downloadedFiles?: StudentDownloadedFile[];
 }
 
 export interface CourseSubscription {

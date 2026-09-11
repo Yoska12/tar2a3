@@ -22,6 +22,7 @@ import {
 import { Lesson, CourseModule, LessonAttachment } from '../types';
 import { TarqaUser } from '../lib/supabase';
 import { SecureVideoPlayer } from './SecureVideoPlayer';
+import { downloadTrackingService } from '../lib/downloadTrackingService';
 
 interface ClassroomViewProps {
   currentModule: CourseModule;
@@ -562,7 +563,19 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                           target="_blank"
                           rel="noreferrer"
                           download
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-sm shrink-0"
+                          onClick={() => {
+                            downloadTrackingService.trackDownload(
+                              {
+                                id: att.id,
+                                title: att.title,
+                                fileUrl: att.fileUrl,
+                                fileType: att.fileType,
+                                fileSize: att.fileSize,
+                              },
+                              currentUser
+                            );
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-sm shrink-0 cursor-pointer active:scale-95"
                         >
                           <Download className="w-3.5 h-3.5" />
                           <span>تحميل</span>

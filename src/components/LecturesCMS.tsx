@@ -77,17 +77,17 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
 
   // حالة ملفات ومذكرات الدورة
-  const [courseFiles, setCourseFiles] = useState<CourseFileItem[]>(() => files || coursesStorage.getFiles());
+  const [courseFiles, setCourseFiles] = useState<CourseFileItem[]>(() => (files !== undefined ? files : coursesStorage.getFiles()));
 
   useEffect(() => {
-    if (files) {
+    if (files !== undefined) {
       setCourseFiles(files);
     }
   }, [files]);
 
   useEffect(() => {
     const handleFilesChanged = (e: any) => {
-      const updated = e.detail || coursesStorage.getFiles();
+      const updated = e.detail !== undefined ? e.detail : coursesStorage.getFiles();
       setCourseFiles([...updated]);
     };
     window.addEventListener('tarqa_courses_files_changed', handleFilesChanged);
@@ -460,11 +460,10 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
           fileType: fileFormData.fileType,
           isFreePreview: fileFormData.isFreePreview,
         };
+        const res = coursesStorage.updateFile(updated);
+        setCourseFiles([...res]);
         if (onUpdateFile) {
           onUpdateFile(updated);
-        } else {
-          const res = coursesStorage.updateFile(updated);
-          setCourseFiles([...res]);
         }
         setToast({ text: 'تم حفظ تعديلات الملف بنجاح! 📄✅', type: 'success' });
       } else {
@@ -480,11 +479,10 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
           downloadCount: 0,
           uploadedAt: new Date().toISOString(),
         };
+        const res = coursesStorage.addFile(newFile);
+        setCourseFiles([...res]);
         if (onAddFile) {
           onAddFile(newFile);
-        } else {
-          const res = coursesStorage.addFile(newFile);
-          setCourseFiles([...res]);
         }
         setToast({ text: 'تمت إضافة ونشر الملف في قسم المذكرات بنجاح! 📄🎉', type: 'success' });
       }
@@ -496,11 +494,16 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
   // حذف ملف عام
   const handleDeleteCourseFile = (fileId: string, title: string) => {
     if (window.confirm(`هل أنت متأكد من حذف ملف "${title}" نهائياً من قسم المذكرات؟`)) {
+      // 1. تحديث فوري وسريع للحالة المحلية لمنع أي بقاء بصري للملف
+      setCourseFiles((prev) => prev.filter((f) => f.id !== fileId));
+
+      // 2. الحذف الفعلي من التخزين والمزامنة السحابية
+      const res = coursesStorage.deleteFile(fileId);
+      setCourseFiles([...res]);
+
+      // 3. إشعار المكون الأب
       if (onDeleteFile) {
         onDeleteFile(fileId);
-      } else {
-        const res = coursesStorage.deleteFile(fileId);
-        setCourseFiles([...res]);
       }
       setToast({ text: `تم حذف ملف "${title}" بنجاح! 🗑️`, type: 'info' });
     }
@@ -508,11 +511,10 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
 
   // تبديل المعاينة المجانية لملف عام
   const handleToggleCourseFilePreview = (fileId: string) => {
+    const res = coursesStorage.toggleFilePreview(fileId);
+    setCourseFiles([...res]);
     if (onToggleFilePreview) {
       onToggleFilePreview(fileId);
-    } else {
-      const res = coursesStorage.toggleFilePreview(fileId);
-      setCourseFiles([...res]);
     }
     setToast({ text: 'تم تحديث حالة المعاينة المجانية للملف 🎁', type: 'info' });
   };

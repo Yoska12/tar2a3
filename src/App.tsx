@@ -364,6 +364,10 @@ export const App: React.FC = () => {
                     }
                     if (parsed && typeof parsed === 'object' && Array.isArray(parsed.files)) {
                       localStorage.setItem('tarqa_custom_files_v1', JSON.stringify(parsed.files));
+                      setCourseFiles([...parsed.files]);
+                      if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('tarqa_courses_files_changed', { detail: parsed.files }));
+                      }
                     }
                     // في حال تضمنت النسخة الاحتياطية أسئلة
                     if (parsed && typeof parsed === 'object' && Array.isArray(parsed.questions)) {
@@ -564,7 +568,7 @@ export const App: React.FC = () => {
   // الاستماع الفوري لتحديثات ملفات ومذكرات الدورة
   useEffect(() => {
     const handleFilesChanged = (e: any) => {
-      const newFiles = e.detail || coursesStorage.getFiles();
+      const newFiles = e.detail !== undefined ? e.detail : coursesStorage.getFiles();
       setCourseFiles([...newFiles]);
     };
     window.addEventListener('tarqa_courses_files_changed', handleFilesChanged);
@@ -574,10 +578,10 @@ export const App: React.FC = () => {
   // مزامنة فورية صامتة عند بدء تشغيل الموقع لجلب أحدث محاضرات تم تعديلها أو إضافتها سحابياً
   useEffect(() => {
     coursesStorage.syncFromCloud().then((cloudData) => {
-      if (cloudData?.modules && cloudData.modules.length > 0) {
+      if (cloudData?.modules && Array.isArray(cloudData.modules) && cloudData.modules.length > 0) {
         setModules([...cloudData.modules]);
       }
-      if (cloudData?.files && cloudData.files.length > 0) {
+      if (cloudData?.files && Array.isArray(cloudData.files)) {
         setCourseFiles([...cloudData.files]);
       }
     });

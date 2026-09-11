@@ -380,8 +380,8 @@ export const coursesStorage = {
   async syncToCloud(modules?: CourseModule[], files?: CourseFileItem[]) {
     if (!isSupabaseConfigured || !supabase) return;
     try {
-      const currentMods = modules || this.getModules();
-      const currentFiles = files || this.getFiles();
+      const currentMods = modules !== undefined ? modules : this.getModules();
+      const currentFiles = files !== undefined ? files : this.getFiles();
       const payload = JSON.stringify({
         version: 2,
         modules: currentMods,
@@ -439,13 +439,13 @@ export const coursesStorage = {
 
       try {
         const parsed = JSON.parse(targetData.ban_reason);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           cloudModules = parsed;
         } else if (parsed && typeof parsed === 'object') {
-          if (Array.isArray(parsed.modules) && parsed.modules.length > 0) {
+          if (Array.isArray(parsed.modules)) {
             cloudModules = parsed.modules;
           }
-          if (Array.isArray(parsed.files) && parsed.files.length > 0) {
+          if (Array.isArray(parsed.files)) {
             cloudFiles = parsed.files;
           }
         }
@@ -461,17 +461,17 @@ export const coursesStorage = {
         }
       }
 
-      if (cloudFiles && cloudFiles.length > 0) {
+      if (cloudFiles !== null && Array.isArray(cloudFiles)) {
         localStorage.setItem('tarqa_custom_files_v1', JSON.stringify(cloudFiles));
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('tarqa_courses_files_changed', { detail: cloudFiles }));
         }
       }
 
-      if (cloudModules) {
+      if (cloudModules || cloudFiles !== null) {
         return {
-          modules: cloudModules,
-          files: cloudFiles || this.getFiles(),
+          modules: cloudModules || this.getModules(),
+          files: cloudFiles !== null ? cloudFiles : this.getFiles(),
         };
       }
     } catch (e) {
@@ -585,8 +585,23 @@ export const coursesStorage = {
 
   updateLesson(updatedLesson: Lesson): CourseModule[] {
     const current = this.getModules();
+    // التأكد من معرف الباب حتى لو لم يكن محدداً بشكل صحيح في كائن الدرس
+    let targetModId = updatedLesson.moduleId;
+    if (!targetModId) {
+      const found = current.find((m) => (m.lessons || []).some((l) => l.id === updatedLesson.id));
+      if (found) {
+        targetModId = found.id;
+        updatedLesson.moduleId = found.id;
+        updatedLesson.moduleTitle = found.title;
+      } else if (current[0]) {
+        targetModId = current[0].id;
+        updatedLesson.moduleId = current[0].id;
+        updatedLesson.moduleTitle = current[0].title;
+      }
+    }
+
     const updated = current.map((mod) => {
-      if (mod.id === updatedLesson.moduleId) {
+      if (mod.id === targetModId) {
         const exists = (mod.lessons || []).some((l) => l.id === updatedLesson.id);
         const lessons = exists
           ? mod.lessons.map((l) => (l.id === updatedLesson.id ? updatedLesson : l))
@@ -673,9 +688,9 @@ export const coursesStorage = {
   getFiles(): CourseFileItem[] {
     try {
       const raw = localStorage.getItem('tarqa_custom_files_v1');
-      if (raw) {
+      if (raw !== null) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed;
         }
       }

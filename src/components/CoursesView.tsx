@@ -171,7 +171,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
       else setModules(coursesStorage.getModules());
     };
     const handleFilesChanged = (e: any) => {
-      if (e.detail) setFiles(e.detail);
+      if (e.detail !== undefined) setFiles(e.detail);
       else setFiles(coursesStorage.getFiles());
     };
 
@@ -395,6 +395,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
   // حذف ملف
   const handleDeleteFile = (fileId: string) => {
     if (window.confirm('هل أنت متأكد من حذف هذا الملف من قسم الملفات؟')) {
+      setFiles((prev) => prev.filter((f) => f.id !== fileId));
       const updatedFiles = coursesStorage.deleteFile(fileId);
       setFiles([...updatedFiles]);
     }

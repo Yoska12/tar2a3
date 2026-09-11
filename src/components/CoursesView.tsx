@@ -520,40 +520,40 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
         
         {/* أزرار التبديل الفورية بين الأقسام */}
         <div className="flex flex-wrap items-center justify-between gap-4 bg-white/60 dark:bg-[#0c1324]/60 p-2 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 backdrop-blur-md">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-none max-w-full py-1 -mx-1 px-1">
             <button
               onClick={() => setActiveTab('all')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap ${
                 activeTab === 'all'
                   ? 'bg-amber-500 text-slate-950 shadow-sm'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
-              <Layers className="w-4 h-4" />
+              <Layers className="w-4 h-4 shrink-0" />
               <span>عرض الكل</span>
             </button>
 
             <button
               onClick={() => setActiveTab('lectures')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap ${
                 activeTab === 'lectures'
                   ? 'bg-amber-500 text-slate-950 shadow-sm'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
-              <Video className="w-4 h-4" />
+              <Video className="w-4 h-4 shrink-0" />
               <span>باب المحاضرات ({totalLessons})</span>
             </button>
 
             <button
               onClick={() => setActiveTab('files')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap ${
                 activeTab === 'files'
                   ? 'bg-amber-500 text-slate-950 shadow-sm'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
-              <FolderDown className="w-4 h-4" />
+              <FolderDown className="w-4 h-4 shrink-0" />
               <span>قسم الملف والمذكرات ({files.length})</span>
             </button>
           </div>

@@ -26,6 +26,8 @@ interface SecureVideoPlayerProps {
   onEnded?: () => void;
   poster?: string;
   autoPlay?: boolean;
+  playbackSpeed?: number;
+  onSpeedChange?: (speed: number) => void;
 }
 
 export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
@@ -35,9 +37,12 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
   onEnded,
   poster,
   autoPlay = false,
+  playbackSpeed: playbackSpeedProp,
+  onSpeedChange,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const watermarkRef = useRef<HTMLDivElement>(null);
 
   // الرابط الفعلي القابل للتشغيل (يحل IndexedDB إلى ObjectURL حي أو رابط موثوق)
@@ -167,6 +172,24 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
     }
   }, [securityViolation]);
 
+  // مزامنة سرعة التشغيل القادمة من الخارج (الأزرار الخارجية)
+  useEffect(() => {
+    if (playbackSpeedProp !== undefined) {
+      setPlaybackSpeed(playbackSpeedProp);
+      if (videoRef.current) {
+        videoRef.current.playbackRate = playbackSpeedProp;
+      }
+      if (iframeRef.current?.contentWindow) {
+        try {
+          iframeRef.current.contentWindow.postMessage(
+            JSON.stringify({ event: 'command', func: 'setPlaybackRate', args: [playbackSpeedProp] }),
+            '*'
+          );
+        } catch (e) {}
+      }
+    }
+  }, [playbackSpeedProp]);
+
   // القفز 10 ثوانٍ للأمام أو الخلف
   const skipTime = (seconds: number) => {
     if (!videoRef.current) return;
@@ -179,6 +202,15 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
     if (videoRef.current) {
       videoRef.current.playbackRate = speed;
     }
+    if (iframeRef.current?.contentWindow) {
+      try {
+        iframeRef.current.contentWindow.postMessage(
+          JSON.stringify({ event: 'command', func: 'setPlaybackRate', args: [speed] }),
+          '*'
+        );
+      } catch (e) {}
+    }
+    onSpeedChange?.(speed);
     setShowSpeedMenu(false);
   };
 
@@ -281,7 +313,7 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
   if (isYouTube) {
     const match = resolvedSrc.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/|watch\?.+&v=))([\w-]{11})/);
     const videoId = match ? match[1] : '';
-    const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId || ''}?autoplay=0&rel=0&modestbranding=1&playsinline=1`;
+    const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId || ''}?autoplay=0&rel=0&modestbranding=1&playsinline=1&enablejsapi=1`;
 
     return (
       <div
@@ -289,6 +321,7 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
         className="relative w-full aspect-video rounded-3xl overflow-hidden bg-black select-none group shadow-2xl border border-slate-800/80 font-cairo"
       >
         <iframe
+          ref={iframeRef}
           src={embedUrl}
           title={title}
           className="w-full h-full border-0"
@@ -315,6 +348,7 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
         className="relative w-full aspect-video rounded-3xl overflow-hidden bg-black select-none group shadow-2xl border border-slate-800/80 font-cairo"
       >
         <iframe
+          ref={iframeRef}
           src={embedUrl}
           title={title}
           className="w-full h-full border-0"
@@ -596,7 +630,7 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
                 step={0.05}
                 value={isMuted ? 0 : volume}
                 onChange={handleVolumeChange}
-                className="w-16 h-1 bg-white/30 rounded-full appearance-none accent-amber-500 cursor-pointer"
+                className="hidden sm:block w-16 h-1 bg-white/30 rounded-full appearance-none accent-amber-500 cursor-pointer"
                 aria-label="مستوى الصوت"
               />
             </div>

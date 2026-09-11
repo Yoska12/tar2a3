@@ -72,7 +72,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
     moduleId: modules[0]?.id || '',
     title: '',
     description: '',
-    videoProvider: 'uploaded_video',
+    videoProvider: 'youtube',
     videoUrl: '',
     durationMinutes: 15,
     isFreePreview: false,
@@ -144,7 +144,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
       moduleId: lesson.moduleId,
       title: lesson.title,
       description: lesson.description,
-      videoProvider: lesson.videoProvider,
+      videoProvider: lesson.videoProvider || 'youtube',
       videoUrl: lesson.videoUrl,
       durationMinutes: lesson.durationMinutes,
       isFreePreview: lesson.isFreePreview,
@@ -169,7 +169,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
       return;
     }
 
-    const defaultVideoUrl = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
+    const defaultVideoUrl = 'https://vjs.zencdn.net/v/oceans.mp4';
     const finalVideoUrl = formData.videoUrl.trim() || defaultVideoUrl;
 
     if (editingLesson) {
@@ -610,45 +610,18 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
                     <Video className="w-4 h-4 text-amber-500" />
-                    <span>فيديو المحاضرة (مشفر ومحمي) 🔒</span>
+                    <span>فيديو المحاضرة والشرح 🎥</span>
                   </span>
                   <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full flex items-center gap-1">
                     <Shield className="w-3 h-3" />
-                    <span>مانع للتسريب بالـ User ID</span>
+                    <span>حماية وعلامة مائية مانعة للتسريب</span>
                   </span>
                 </div>
 
-                {/* زر رفع ملف الفيديو */}
-                <input
-                  ref={videoInputRef}
-                  type="file"
-                  accept="video/mp4,video/webm,video/quicktime,video/mkv,.mp4,.webm,.mov"
-                  onChange={handleVideoFileSelect}
-                  className="hidden"
-                />
-
-                <button
-                  type="button"
-                  onClick={() => videoInputRef.current?.click()}
-                  disabled={isUploadingVideo}
-                  className="w-full py-3 px-4 rounded-xl border border-dashed border-amber-500/40 hover:border-amber-500 bg-white dark:bg-slate-800/80 text-xs font-bold text-slate-700 dark:text-slate-200 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                >
-                  {isUploadingVideo ? (
-                    <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>جارٍ رفع ملف الفيديو ({videoUploadProgress}%)...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <UploadCloud className="w-4 h-4 text-amber-500" />
-                      <span>اضغط لرفع فيديو من جهازك (MP4 / WebM)</span>
-                    </>
-                  )}
-                </button>
-
-                {videoUploadError && (
-                  <p className="text-[11px] font-bold text-rose-500">{videoUploadError}</p>
-                )}
+                {/* نصيحة ذهبية لمنصات التعليم وضمان تشغيل الموبايل */}
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] leading-relaxed text-amber-900 dark:text-amber-200">
+                  <span className="font-bold">🌟 التوصية المثلى لجميع الهواتف:</span> يُنصح بشدة برفع الفيديو على <strong>YouTube واختيار (غير مدرج - Unlisted)</strong> ثم وضع الرابط هنا. يمنح ذلك تشغيلاً سريعاً 100% بدون تقطيع على كل هواتف الآيفون والأندرويد وبجودات متعددة تلقائياً.
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
@@ -660,26 +633,64 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                       onChange={(e) => setFormData({ ...formData, videoProvider: e.target.value as VideoProvider })}
                       className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                     >
-                      <option value="uploaded_video">فيديو مرفوع (مشفر) 🔒</option>
+                      <option value="youtube">YouTube (موصى به لجميع الهواتف) ⭐</option>
                       <option value="direct_url">رابط مباشر (MP4)</option>
-                      <option value="youtube">YouTube</option>
                       <option value="vimeo">Vimeo</option>
+                      <option value="uploaded_video">فيديو مرفوع من الجهاز (معاينة محلية) 🔒</option>
                       <option value="bunny">Bunny.net</option>
                     </select>
                   </div>
 
                   <div className="sm:col-span-2">
                     <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
-                      رابط الفيديو المباشر أو الفيديو المرفوع:
+                      رابط فيديو المحاضرة (YouTube أو MP4):
                     </label>
                     <input
                       type="text"
-                      placeholder="https://... أو سيتم تعبئته تلقائياً عند الرفع"
+                      placeholder="https://youtu.be/... أو https://www.youtube.com/watch?v=..."
                       value={formData.videoUrl}
                       onChange={(e) => setFormData({ ...formData, videoUrl: e.target.value })}
                       className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 text-left dir-ltr"
                     />
                   </div>
+                </div>
+
+                {/* خيار رفع الفيديو كخيار بديل مع التوضيح */}
+                <div className="pt-2 border-t border-amber-500/20">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">أو رفع ملف فيديو من جهازك (للمعاينة المباشرة):</span>
+                    <span className="text-[10px] text-slate-400">MP4, WebM</span>
+                  </div>
+                  <input
+                    ref={videoInputRef}
+                    type="file"
+                    accept="video/mp4,video/webm,video/quicktime,video/mkv,.mp4,.webm,.mov"
+                    onChange={handleVideoFileSelect}
+                    className="hidden"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => videoInputRef.current?.click()}
+                    disabled={isUploadingVideo}
+                    className="w-full py-2.5 px-4 rounded-xl border border-dashed border-amber-500/40 hover:border-amber-500 bg-white dark:bg-slate-800/80 text-xs font-bold text-slate-700 dark:text-slate-200 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {isUploadingVideo ? (
+                      <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>جارٍ معالجة ملف الفيديو ({videoUploadProgress}%)...</span>
+                      </div>
+                    ) : (
+                      <>
+                        <UploadCloud className="w-4 h-4 text-amber-500" />
+                        <span>اضغط لرفع فيديو من جهاز الكمبيوتر</span>
+                      </>
+                    )}
+                  </button>
+
+                  {videoUploadError && (
+                    <p className="text-[11px] font-bold text-rose-500 mt-1">{videoUploadError}</p>
+                  )}
                 </div>
               </div>
 

@@ -106,28 +106,44 @@ export const getVideoFromIndexedDB = async (key: string): Promise<Blob | null> =
 // ذاكرة تخزين مؤقت لعناوين الـ ObjectURLs لتجنب تكرار إنشائها
 const resolvedUrlCache = new Map<string, string>();
 
+export interface ResolvedVideoInfo {
+  url: string;
+  isLocalMissing: boolean;
+}
+
 /**
- * حل عنوان الفيديو: إذا كان مخزناً في IndexedDB يستخرج الـ Blob وينشئ له ObjectURL حي دائماً
+ * حل تفاصيل عنوان الفيديو: يتحقق من وجود الملف في IndexedDB أو يعيد رابطاً يعمل على جميع الأجهزة
  */
-export const resolveVideoUrl = async (url: string): Promise<string> => {
-  if (!url) return '';
+export const resolveVideoDetails = async (url: string): Promise<ResolvedVideoInfo> => {
+  if (!url) return { url: '', isLocalMissing: false };
   
   if (url.startsWith('indexeddb://')) {
     const key = url.replace('indexeddb://', '');
     if (resolvedUrlCache.has(key)) {
-      return resolvedUrlCache.get(key)!;
+      return { url: resolvedUrlCache.get(key)!, isLocalMissing: false };
     }
     const blob = await getVideoFromIndexedDB(key);
     if (blob) {
       const objUrl = URL.createObjectURL(blob);
       resolvedUrlCache.set(key, objUrl);
-      return objUrl;
+      return { url: objUrl, isLocalMissing: false };
     }
-    // احتياطي
-    return 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
+    // احتياطي سريع وموثوق يعمل 100% على كافة الهواتف
+    return {
+      url: 'https://vjs.zencdn.net/v/oceans.mp4',
+      isLocalMissing: true,
+    };
   }
 
-  return url;
+  return { url, isLocalMissing: false };
+};
+
+/**
+ * حل عنوان الفيديو: إذا كان مخزناً في IndexedDB يستخرج الـ Blob وينشئ له ObjectURL حي دائماً
+ */
+export const resolveVideoUrl = async (url: string): Promise<string> => {
+  const details = await resolveVideoDetails(url);
+  return details.url;
 };
 
 /**

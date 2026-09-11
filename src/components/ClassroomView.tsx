@@ -62,7 +62,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
     if (!url) return '';
     const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/|watch\?.+&v=))([\w-]{11})/);
     const videoId = match ? match[1] : '';
-    return `https://www.youtube-nocookie.com/embed/${videoId || 'dQw4w9WgXcQ'}?autoplay=0&rel=0&modestbranding=1`;
+    return `https://www.youtube-nocookie.com/embed/${videoId || 'dQw4w9WgXcQ'}?autoplay=0&rel=0&modestbranding=1&playsinline=1`;
   };
 
   const getVimeoEmbedUrl = (url: string) => {

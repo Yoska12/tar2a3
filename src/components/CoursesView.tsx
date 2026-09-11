@@ -87,7 +87,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
     title: '',
     description: '',
     videoUrl: '',
-    videoProvider: 'uploaded_video' as VideoProvider,
+    videoProvider: 'youtube' as VideoProvider,
     durationMinutes: 15,
     isFreePreview: false,
     pdfTitle: '',
@@ -248,7 +248,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
       });
     }
 
-    const defaultVideoUrl = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
+    const defaultVideoUrl = 'https://vjs.zencdn.net/v/oceans.mp4';
 
     if (editingLesson) {
       const updatedLesson: Lesson = {
@@ -256,7 +256,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
         title: lessonFormData.title.trim(),
         description: lessonFormData.description.trim(),
         videoUrl: lessonFormData.videoUrl.trim() || defaultVideoUrl,
-        videoProvider: lessonFormData.videoProvider || 'uploaded_video',
+        videoProvider: lessonFormData.videoProvider || (lessonFormData.videoUrl.includes('youtu') ? 'youtube' : 'direct_url'),
         durationMinutes: Number(lessonFormData.durationMinutes) || 15,
         isFreePreview: lessonFormData.isFreePreview,
         attachments: attachments.length > 0 ? attachments : editingLesson.attachments,
@@ -271,7 +271,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
         title: lessonFormData.title.trim(),
         description: lessonFormData.description.trim(),
         videoUrl: lessonFormData.videoUrl.trim() || defaultVideoUrl,
-        videoProvider: lessonFormData.videoProvider || 'uploaded_video',
+        videoProvider: lessonFormData.videoProvider || (lessonFormData.videoUrl.includes('youtu') ? 'youtube' : 'direct_url'),
         durationMinutes: Number(lessonFormData.durationMinutes) || 15,
         orderIndex: (currentModule.lessons?.length || 0) + 1,
         isFreePreview: lessonFormData.isFreePreview,
@@ -1179,8 +1179,38 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                   </span>
                 </div>
 
+                {/* نصيحة ذهبية لمنصات التعليم وضمان تشغيل الموبايل */}
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] leading-relaxed text-amber-900 dark:text-amber-200">
+                  <span className="font-bold">🌟 التوصية المثلى لجميع الهواتف:</span> يُنصح بشدة برفع الفيديو على <strong>YouTube واختيار (غير مدرج - Unlisted)</strong> ثم وضع الرابط هنا. يمنح ذلك تشغيلاً سريعاً 100% بدون تقطيع على كل هواتف الآيفون والأندرويد وبجودات متعددة تلقائياً.
+                </div>
+
+                {/* رابط يوتيوب أو رابط مباشر */}
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    رابط فيديو المحاضرة (YouTube أو رابط MP4 مباشر):
+                  </label>
+                  <input
+                    type="text"
+                    value={lessonFormData.videoUrl}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setLessonFormData({
+                        ...lessonFormData,
+                        videoUrl: val,
+                        videoProvider: val.includes('youtube.com') || val.includes('youtu.be') ? 'youtube' : 'direct_url',
+                      });
+                    }}
+                    placeholder="https://youtu.be/... أو https://www.youtube.com/watch?v=..."
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 font-mono text-left"
+                    dir="ltr"
+                  />
+                </div>
+
                 {/* منطقة رفع الفيديو من الجهاز */}
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 pt-2 border-t border-amber-500/20">
+                  <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                    أو رفع ملف فيديو من جهازك (للمعاينة المباشرة على هذا الكمبيوتر):
+                  </span>
                   <input
                     ref={videoFileInputRef}
                     type="file"
@@ -1193,29 +1223,20 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                     type="button"
                     onClick={() => videoFileInputRef.current?.click()}
                     disabled={isUploadingVideo}
-                    className="w-full py-4 px-4 rounded-2xl border-2 border-dashed border-amber-500/40 hover:border-amber-500 bg-amber-500/5 hover:bg-amber-500/10 text-slate-700 dark:text-slate-200 transition flex flex-col items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    className="w-full py-3 px-4 rounded-xl border border-dashed border-amber-500/40 hover:border-amber-500 bg-amber-500/5 hover:bg-amber-500/10 text-slate-700 dark:text-slate-200 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                   >
                     {isUploadingVideo ? (
-                      <div className="flex flex-col items-center gap-2">
-                        <Loader2 className="w-6 h-6 text-amber-500 animate-spin" />
-                        <span className="text-xs font-bold text-amber-600 dark:text-amber-400">
-                          جارٍ رفع الفيديو ({videoUploadProgress}%)...
+                      <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span className="text-xs font-bold">
+                          جارٍ معالجة الفيديو ({videoUploadProgress}%)...
                         </span>
-                        <div className="w-48 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-amber-500 transition-all duration-300"
-                            style={{ width: `${videoUploadProgress}%` }}
-                          />
-                        </div>
                       </div>
                     ) : (
                       <>
-                        <UploadCloud className="w-6 h-6 text-amber-500" />
-                        <span className="text-xs font-black text-slate-900 dark:text-white">
-                          اضغط لاختيار فيديو من جهازك ورفعه على الموقع (MP4, WebM)
-                        </span>
-                        <span className="text-[10px] text-slate-400">
-                          الحد الأقصى 500 ميجابايت • يتم تشفيره وعرضه في المشغل الآمن
+                        <UploadCloud className="w-4 h-4 text-amber-500" />
+                        <span className="text-xs font-bold text-slate-900 dark:text-white">
+                          رفع ملف فيديو من هذا الجهاز
                         </span>
                       </>
                     )}
@@ -1241,28 +1262,6 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                       )}
                     </div>
                   )}
-                </div>
-
-                {/* أو إدخال رابط مباشر */}
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
-                    أو رابط ملف الفيديو المباشر (MP4 / WebM / Stream URL):
-                  </label>
-                  <input
-                    type="text"
-                    value={lessonFormData.videoUrl}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setLessonFormData({
-                        ...lessonFormData,
-                        videoUrl: val,
-                        videoProvider: val.includes('youtube.com') || val.includes('youtu.be') ? 'youtube' : 'uploaded_video',
-                      });
-                    }}
-                    placeholder="https://example.com/video.mp4 أو رابط التخزين أو الفيديو المرفوع"
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 font-mono text-left"
-                    dir="ltr"
-                  />
                 </div>
               </div>
 

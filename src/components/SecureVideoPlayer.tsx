@@ -17,7 +17,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { TarqaUser } from '../lib/supabase';
-import { resolveVideoUrl } from '../lib/videoUploadService';
+import { resolveVideoUrl, resolveVideoDetails } from '../lib/videoUploadService';
 
 interface SecureVideoPlayerProps {
   src: string;
@@ -40,8 +40,9 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const watermarkRef = useRef<HTMLDivElement>(null);
 
-  // الرابط الفعلي القابل للتشغيل (يحل IndexedDB إلى ObjectURL حي)
+  // الرابط الفعلي القابل للتشغيل (يحل IndexedDB إلى ObjectURL حي أو رابط موثوق)
   const [resolvedSrc, setResolvedSrc] = useState<string>(src);
+  const [isLocalMissing, setIsLocalMissing] = useState(false);
 
   // حالة المشغل
   const [hasError, setHasError] = useState(false);
@@ -49,13 +50,17 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
   useEffect(() => {
     let isMounted = true;
     setHasError(false);
+    setIsLocalMissing(false);
     if (!src) {
       setResolvedSrc('');
       return;
     }
     if (src.startsWith('indexeddb://')) {
-      resolveVideoUrl(src).then((realUrl) => {
-        if (isMounted) setResolvedSrc(realUrl);
+      resolveVideoDetails(src).then((details) => {
+        if (isMounted) {
+          setResolvedSrc(details.url);
+          setIsLocalMissing(details.isLocalMissing);
+        }
       });
     } else {
       setResolvedSrc(src);
@@ -269,6 +274,61 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [togglePlay]);
 
+  // التحقق التلقائي إذا كان الرابط يوتيوب أو فيميو
+  const isYouTube = resolvedSrc.includes('youtube.com') || resolvedSrc.includes('youtu.be');
+  const isVimeo = resolvedSrc.includes('vimeo.com');
+
+  if (isYouTube) {
+    const match = resolvedSrc.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/|watch\?.+&v=))([\w-]{11})/);
+    const videoId = match ? match[1] : '';
+    const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId || ''}?autoplay=0&rel=0&modestbranding=1&playsinline=1`;
+
+    return (
+      <div
+        ref={containerRef}
+        className="relative w-full aspect-video rounded-3xl overflow-hidden bg-black select-none group shadow-2xl border border-slate-800/80 font-cairo"
+      >
+        <iframe
+          src={embedUrl}
+          title={title}
+          className="w-full h-full border-0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+        />
+        {/* العلامة المائية المحمية فوق اليوتيوب */}
+        <div className="absolute top-4 left-4 pointer-events-none z-10 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-amber-500/30 text-white text-[10px] font-mono select-none">
+          <span className="text-amber-400 font-bold">طالب طرقع: </span>
+          <span>#{userId.slice(0, 10)}</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (isVimeo) {
+    const match = resolvedSrc.match(/vimeo\.com\/(?:video\/)?([0-9]+)/);
+    const videoId = match ? match[1] : '';
+    const embedUrl = `https://player.vimeo.com/video/${videoId || ''}?badge=0&autopause=0&player_id=0`;
+
+    return (
+      <div
+        ref={containerRef}
+        className="relative w-full aspect-video rounded-3xl overflow-hidden bg-black select-none group shadow-2xl border border-slate-800/80 font-cairo"
+      >
+        <iframe
+          src={embedUrl}
+          title={title}
+          className="w-full h-full border-0"
+          allow="autoplay; fullscreen; picture-in-picture"
+          allowFullScreen
+        />
+        <div className="absolute top-4 left-4 pointer-events-none z-10 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-amber-500/30 text-white text-[10px] font-mono select-none">
+          <span className="text-amber-400 font-bold">طالب طرقع: </span>
+          <span>#{userId.slice(0, 10)}</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       ref={containerRef}
@@ -277,13 +337,14 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
       onContextMenu={(e) => e.preventDefault()} // منع القائمة المنسدلة للزر الأيمن
       className="relative w-full aspect-video rounded-3xl overflow-hidden bg-black select-none group shadow-2xl border border-slate-800/80 font-cairo"
     >
-      {/* 1. عنصر الفيديو الفعلي (مع تعطيل خيارات التنزيل الافتراضية) */}
+      {/* 1. عنصر الفيديو الفعلي (مع دعم تشغيل الموبايل وتعطيل خيارات التنزيل الافتراضية) */}
       <video
         ref={videoRef}
         src={resolvedSrc}
         poster={poster}
         autoPlay={autoPlay}
-        playsInline
+        playsInline={true}
+        preload="metadata"
         controlsList="nodownload nofullscreen noplaybackrate"
         disablePictureInPicture={false}
         onTimeUpdate={handleTimeUpdate}
@@ -306,27 +367,61 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
         className="w-full h-full object-contain cursor-pointer"
       />
 
+      {/* شريط تنبيه إذا كان الفيديو محفوظاً في جهاز المشرف المحلي */}
+      {isLocalMissing && !hasError && (
+        <div className="absolute top-3 inset-x-3 z-30 px-3 py-2 rounded-xl bg-amber-950/85 backdrop-blur-md border border-amber-500/40 text-amber-200 text-[11px] font-medium flex items-center justify-between gap-2 shadow-lg">
+          <div className="flex items-center gap-2">
+            <span className="text-sm">⚠️</span>
+            <span>هذا الفيديو محفوظ محلياً على جهاز المشرف. يُعرض فيديو اختباري مؤقت. ضع رابط يوتيوب ليعمل للطلاب على هواتفهم.</span>
+          </div>
+          <button
+            onClick={() => setIsLocalMissing(false)}
+            className="text-amber-400 hover:text-white px-2 py-0.5 rounded text-[10px] font-bold"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* تنبيه في حال تعذر تشغيل الفيديو */}
       {hasError && (
         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center p-6 text-center bg-slate-950/95 text-white">
           <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mb-3 text-2xl">
             ⚠️
           </div>
-          <h3 className="font-bold text-base text-white mb-1">تعذر تشغيل ملف الفيديو</h3>
-          <p className="text-xs text-slate-400 max-w-sm mb-4 leading-relaxed">
-            قد يكون رابط الفيديو غير متاح، أو منتهي الصلاحية، أو بصيغة غير مدعومة. يُفضل وضع رابط يوتيوب في لوحة التحكم للتشغيل الفوري المستقر.
+          <h3 className="font-bold text-base text-white mb-1">تعذر تشغيل ملف الفيديو على هذا الجهاز</h3>
+          <p className="text-xs text-slate-300 max-w-sm mb-4 leading-relaxed">
+            قد يكون الفيديو محفوظاً محلياً على كمبيوتر المشرف، أو بصيغة غير مدعومة من هذا الهاتف (.MOV)، أو انقطع الاتصال.
           </p>
-          <button
-            onClick={() => {
-              setHasError(false);
-              if (videoRef.current) {
-                videoRef.current.load();
-              }
-            }}
-            className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-lg shadow-amber-500/20 active:scale-95"
-          >
-            إعادة المحاولة 🔄
-          </button>
+          <div className="flex flex-wrap items-center justify-center gap-2.5">
+            <button
+              onClick={() => {
+                setHasError(false);
+                if (videoRef.current) {
+                  videoRef.current.load();
+                  videoRef.current.play().catch(() => {});
+                }
+              }}
+              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-lg shadow-amber-500/20 active:scale-95"
+            >
+              إعادة المحاولة 🔄
+            </button>
+            <button
+              onClick={() => {
+                setHasError(false);
+                setResolvedSrc('https://vjs.zencdn.net/v/oceans.mp4');
+                setTimeout(() => {
+                  if (videoRef.current) {
+                    videoRef.current.load();
+                    videoRef.current.play().catch(() => {});
+                  }
+                }, 100);
+              }}
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs transition active:scale-95"
+            >
+              تشغيل فيديو اختباري للتأكد ▶️
+            </button>
+          </div>
         </div>
       )}
 

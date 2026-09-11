@@ -45,10 +45,12 @@ export const KashierCheckoutModal: React.FC<KashierCheckoutModalProps> = ({
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const settings = getKashierSettings();
-  const amount = customAmount ?? settings.amount;
-  const currency = customCurrency ?? settings.currency;
+  const [selectedCurrency, setSelectedCurrency] = useState<'EGP' | 'SAR'>(customCurrency || settings.currency || 'SAR');
 
-  // تهيئة جلسة الدفع فور فتح النافذة
+  const amount = customAmount ?? (selectedCurrency === 'SAR' ? 75 : 1020);
+  const currency = selectedCurrency;
+
+  // تهيئة جلسة الدفع فور فتح النافذة أو تغير العملة
   useEffect(() => {
     if (!isOpen) {
       setSessionUrl(null);
@@ -66,7 +68,7 @@ export const KashierCheckoutModal: React.FC<KashierCheckoutModalProps> = ({
         const res = await createKashierPaymentSession(currentUser, {
           amount,
           currency,
-          description: 'اشتراك باقة طرقع السنوية الشاملة للقدرات',
+          description: `اشتراك باقة طرقع السنوية الشاملة (${amount} ${currency === 'SAR' ? 'ريال' : 'جنيه'})`,
         });
 
         if (!isMounted) return;
@@ -91,7 +93,7 @@ export const KashierCheckoutModal: React.FC<KashierCheckoutModalProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, currentUser, amount, currency]);
+  }, [isOpen, currentUser, amount, currency, selectedCurrency]);
 
   // الاستماع لرسائل postMessage من كاشير وفق التوثيق الرسمي
   useEffect(() => {
@@ -151,8 +153,8 @@ export const KashierCheckoutModal: React.FC<KashierCheckoutModalProps> = ({
       status: 'SUCCESS',
       sessionUrl: sessionUrl || undefined,
       details: isSimulated
-        ? 'تمت العملية بنجاح عبر المحاكي التجريبي (Sandbox)'
-        : 'تمت العملية وتأكيد الدفع عبر بوابة كاشير الرسمية',
+        ? `تمت العملية بنجاح عبر المحاكي التجريبي (${amount} ${currency})`
+        : `تمت العملية وتأكيد الدفع عبر كاشير (${amount} ${currency})`,
     });
 
     setTimeout(() => {
@@ -184,7 +186,7 @@ export const KashierCheckoutModal: React.FC<KashierCheckoutModalProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                باقة طرقع السنوية الشاملة • {amount} {currency === 'SAR' ? 'ر.س' : 'ج.م'}
+                باقة طرقع السنوية الشاملة • <strong className="text-amber-500 font-mono text-xs">{amount} {currency === 'SAR' ? 'ر.س' : 'ج.م'}</strong>
               </p>
             </div>
           </div>
@@ -196,6 +198,39 @@ export const KashierCheckoutModal: React.FC<KashierCheckoutModalProps> = ({
           >
             <X className="w-5 h-5" />
           </button>
+        </div>
+
+        {/* شريط التبديل السريع بين العملتين (75 ريال سعودي أو 1020 جنيه مصري) */}
+        <div className="px-5 py-2.5 bg-slate-50 dark:bg-slate-900/70 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+            اختر عملة وطريقة الدفع المناسبة لك:
+          </span>
+          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-200 dark:bg-slate-800">
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => setSelectedCurrency('SAR')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                selectedCurrency === 'SAR'
+                  ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <span>🇸🇦 75 ريال (مدى / بطاقات)</span>
+            </button>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => setSelectedCurrency('EGP')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                selectedCurrency === 'EGP'
+                  ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <span>🇪🇬 1020 جنيه (فودافون كاش / إنستاباي / ميزة)</span>
+            </button>
+          </div>
         </div>
 
         {/* جسم النافذة */}

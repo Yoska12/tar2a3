@@ -48,7 +48,7 @@ export const defaultKashierSettings: KashierSettings = {
   apiKey: (import.meta as any).env?.VITE_KASHIER_API_KEY || '',
   secretKey: (import.meta as any).env?.VITE_KASHIER_SECRET_KEY || '',
   currency: 'EGP',
-  amount: 75.00,
+  amount: 1020.00, // 1020 جنيه مصري أو 75 ريال سعودي
   brandColor: '#f59e0b', // اللون البرتقالي المميز لمنصة طرقع
   allowedMethods: 'card,wallet',
   simulateMode: true, // تفعيل المحاكاة افتراضياً للتجربة الفورية حتى يدخل المالك مفاتيحه
@@ -61,7 +61,12 @@ export const getKashierSettings = (): KashierSettings => {
   try {
     const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (!raw) return { ...defaultKashierSettings };
-    return { ...defaultKashierSettings, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+    // تصحيح تلقائي إذا كانت العملة EGP والقيمة السابقة 75
+    if (parsed.currency === 'EGP' && parsed.amount === 75) {
+      parsed.amount = 1020;
+    }
+    return { ...defaultKashierSettings, ...parsed };
   } catch {
     return { ...defaultKashierSettings };
   }
@@ -148,8 +153,18 @@ export const createKashierPaymentSession = async (
   }
 ): Promise<CreateSessionResult> => {
   const settings = getKashierSettings();
-  const amount = options?.amount ?? settings.amount;
   const currency = options?.currency ?? settings.currency;
+  
+  // تحديد السعر الدقيق بناء على العملة: 1020 جنيه مصري أو 75 ريال سعودي
+  let amount = options?.amount;
+  if (amount === undefined) {
+    if (currency === 'SAR') {
+      amount = settings.currency === 'SAR' ? settings.amount : 75;
+    } else {
+      amount = settings.currency === 'EGP' ? settings.amount : 1020;
+    }
+  }
+
   const description = options?.description ?? 'اشتراك باقة طرقع السنوية الشاملة للقدرات';
 
   // توليد رقم طلب فريد وفق اشتراطات كاشير

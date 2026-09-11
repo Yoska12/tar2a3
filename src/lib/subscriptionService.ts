@@ -3,6 +3,7 @@ import { TarqaUser, supabase, isSupabaseConfigured } from './supabase';
 import { mockFoundationModules, mockCourseFiles } from '../data/foundationModules';
 
 export const ANNUAL_SUBSCRIPTION_PRICE_SAR = 75;
+export const ANNUAL_SUBSCRIPTION_PRICE_EGP = 1020;
 
 export const isOwnerEmail = (email?: string | null): boolean => {
   if (!email) return false;

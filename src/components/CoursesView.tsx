@@ -35,6 +35,7 @@ import { TarqaUser } from '../lib/supabase';
 import { uploadLessonVideo, formatVideoSize } from '../lib/videoUploadService';
 import {
   ANNUAL_SUBSCRIPTION_PRICE_SAR,
+  ANNUAL_SUBSCRIPTION_PRICE_EGP,
   canEditCourses,
   isUserSubscribed,
   getSubscriptionDetails,
@@ -480,11 +481,17 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
               </div>
 
               {/* السعر الكبير */}
-              <div className="flex items-baseline gap-2 mb-4">
-                <span className="text-4xl sm:text-5xl font-black text-slate-900 dark:text-white font-mono">
-                  {ANNUAL_SUBSCRIPTION_PRICE_SAR}
-                </span>
-                <span className="text-sm font-bold text-slate-500">ريال سعودي / سنوياً</span>
+              <div className="flex flex-col mb-4">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-4xl sm:text-5xl font-black text-slate-900 dark:text-white font-mono">
+                    {ANNUAL_SUBSCRIPTION_PRICE_SAR}
+                  </span>
+                  <span className="text-sm font-bold text-slate-500">ريال سعودي / سنوياً</span>
+                </div>
+                <div className="flex items-center gap-1.5 mt-1 text-xs font-bold text-amber-600 dark:text-amber-400 font-mono">
+                  <span>أو ما يعادله في مصر:</span>
+                  <span className="text-sm font-black underline">{ANNUAL_SUBSCRIPTION_PRICE_EGP} جنيه مصري</span>
+                </div>
               </div>
 
               {/* قائمة المميزات */}
@@ -531,7 +538,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                   className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-sm shadow-md hover:shadow-glow transition-all flex items-center justify-center gap-2 active:scale-98 cursor-pointer"
                 >
                   <Sparkles className="w-4 h-4 fill-current" />
-                  <span>اشترك الآن بـ {ANNUAL_SUBSCRIPTION_PRICE_SAR} ريال فقط</span>
+                  <span>اشترك الآن ({ANNUAL_SUBSCRIPTION_PRICE_SAR} ريال / {ANNUAL_SUBSCRIPTION_PRICE_EGP} جنيه)</span>
                 </button>
               )}
 
@@ -1112,9 +1119,14 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
 
               <div className="py-4 px-6 rounded-2xl bg-amber-500/10 border border-amber-500/20 my-4 flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-600 dark:text-slate-300">رسوم الاشتراك السنوي:</span>
-                <span className="text-2xl font-black text-amber-600 dark:text-amber-400 font-mono">
-                  {ANNUAL_SUBSCRIPTION_PRICE_SAR} ر.س / سنوياً
-                </span>
+                <div className="text-left font-mono">
+                  <div className="text-2xl font-black text-amber-600 dark:text-amber-400">
+                    {ANNUAL_SUBSCRIPTION_PRICE_SAR} ر.س
+                  </div>
+                  <div className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                    أو {ANNUAL_SUBSCRIPTION_PRICE_EGP} جنيه مصري / سنوياً
+                  </div>
+                </div>
               </div>
 
               {subscribeSuccessMessage ? (

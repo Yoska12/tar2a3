@@ -1532,30 +1532,56 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    عملة الدفع (Currency)
+                    عملة الدفع الافتراضية (Default Currency)
                   </label>
                   <select
                     value={kashierSettings.currency}
-                    onChange={(e) => setKashierSettings({ ...kashierSettings, currency: e.target.value as 'EGP' | 'SAR' })}
+                    onChange={(e) => {
+                      const newCur = e.target.value as 'EGP' | 'SAR';
+                      setKashierSettings({
+                        ...kashierSettings,
+                        currency: newCur,
+                        amount: newCur === 'SAR' ? 75 : 1020,
+                      });
+                    }}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs font-bold text-slate-900 dark:text-white"
                   >
-                    <option value="EGP">EGP (جنيه مصري)</option>
-                    <option value="SAR">SAR (ريال سعودي)</option>
+                    <option value="SAR">🇸🇦 SAR (75 ريال سعودي)</option>
+                    <option value="EGP">🇪🇬 EGP (1020 جنيه مصري)</option>
                   </select>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setKashierSettings({ ...kashierSettings, currency: 'SAR', amount: 75 })}
+                      className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold hover:text-amber-500 cursor-pointer"
+                    >
+                      تعيين 75 ريال 🇸🇦
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setKashierSettings({ ...kashierSettings, currency: 'EGP', amount: 1020 })}
+                      className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold hover:text-amber-500 cursor-pointer"
+                    >
+                      تعيين 1020 جنيه 🇪🇬
+                    </button>
+                  </div>
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    سعر الباقة السنوية الافتراضي
+                    سعر الباقة السنوية المعتمد
                   </label>
                   <input
                     type="number"
                     min="1"
                     step="0.5"
                     value={kashierSettings.amount}
-                    onChange={(e) => setKashierSettings({ ...kashierSettings, amount: parseFloat(e.target.value) || 75 })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs font-bold text-slate-900 dark:text-white"
+                    onChange={(e) => setKashierSettings({ ...kashierSettings, amount: parseFloat(e.target.value) || (kashierSettings.currency === 'SAR' ? 75 : 1020) })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs font-bold text-slate-900 dark:text-white font-mono"
                   />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    المبلغ الافتراضي: <strong>75 ريال سعودي</strong> للطلاب بالسعودية أو <strong>1020 جنيه مصري</strong> للطلاب بمصر.
+                  </p>
                 </div>
               </div>
 

@@ -15,6 +15,7 @@ import {
   Volume2,
   Settings,
   Maximize,
+  Minimize,
   Lightbulb,
   Award
 } from 'lucide-react';
@@ -44,6 +45,8 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
   const [activeTab, setActiveTab] = useState<'attachments' | 'quiz' | 'tarqa_tips'>('attachments');
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [isCompleted, setIsCompleted] = useState<boolean>(currentLesson.isCompleted || false);
+  const [isPlayerFullscreen, setIsPlayerFullscreen] = useState<boolean>(false);
+  const playerContainerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const youtubeIframeRef = useRef<HTMLIFrameElement>(null);
   const vimeoIframeRef = useRef<HTMLIFrameElement>(null);
@@ -137,6 +140,125 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
     });
   }, [currentLesson.id, playbackSpeed]);
 
+  // ملء وتصغير الشاشة لمنطقة مشغل الفيديو مع دعم كامل للأندرويد وiOS Safari والبديل المرئي CSS
+  const togglePlayerFullscreen = () => {
+    const doc = document as any;
+    const isNativeFs = !!(
+      doc.fullscreenElement ||
+      doc.webkitFullscreenElement ||
+      doc.mozFullScreenElement ||
+      doc.msFullscreenElement
+    );
+
+    if (isNativeFs || isPlayerFullscreen) {
+      setIsPlayerFullscreen(false);
+      try {
+        if (doc.exitFullscreen) {
+          doc.exitFullscreen().catch(() => {});
+        } else if (doc.webkitExitFullscreen) {
+          doc.webkitExitFullscreen();
+        } else if (doc.mozCancelFullScreen) {
+          doc.mozCancelFullScreen();
+        } else if (doc.msExitFullscreen) {
+          doc.msExitFullscreen();
+        }
+      } catch (e) {}
+      return;
+    }
+
+    const container = playerContainerRef.current as any;
+    const internalVideo = container?.querySelector('video') as any;
+
+    // محاولة تشغيل Native Fullscreen على الحاوية
+    if (container) {
+      if (typeof container.requestFullscreen === 'function') {
+        container
+          .requestFullscreen()
+          .then(() => setIsPlayerFullscreen(true))
+          .catch(() => {
+            // إذا رفض المتصفح (مثلاً داخل متصفح تيليجرام أو أذونات مقيدة) أو iOS:
+            if (internalVideo && typeof internalVideo.webkitEnterFullscreen === 'function') {
+              try {
+                internalVideo.webkitEnterFullscreen();
+                setIsPlayerFullscreen(true);
+                return;
+              } catch (e) {}
+            }
+            setIsPlayerFullscreen(true);
+          });
+        return;
+      } else if (typeof container.webkitRequestFullscreen === 'function') {
+        try {
+          container.webkitRequestFullscreen();
+          setIsPlayerFullscreen(true);
+          return;
+        } catch (e) {}
+      } else if (typeof container.mozRequestFullScreen === 'function') {
+        try {
+          container.mozRequestFullScreen();
+          setIsPlayerFullscreen(true);
+          return;
+        } catch (e) {}
+      } else if (typeof container.msRequestFullscreen === 'function') {
+        try {
+          container.msRequestFullscreen();
+          setIsPlayerFullscreen(true);
+          return;
+        } catch (e) {}
+      }
+    }
+
+    // دعم خاص لـ iPhone Safari على عنصر الفيديو
+    if (internalVideo && typeof internalVideo.webkitEnterFullscreen === 'function') {
+      try {
+        internalVideo.webkitEnterFullscreen();
+        setIsPlayerFullscreen(true);
+        return;
+      } catch (e) {}
+    }
+
+    // بديل CSS المرئي الأنيق الذي يعمل 100% على كافة الشاشات والمتصفحات
+    setIsPlayerFullscreen(true);
+  };
+
+  // مراقبة أحداث الخروج من ملء الشاشة ومفتاح Esc
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const doc = document as any;
+      const isNativeFs = !!(
+        doc.fullscreenElement ||
+        doc.webkitFullscreenElement ||
+        doc.mozFullScreenElement ||
+        doc.msFullscreenElement
+      );
+      if (!isNativeFs && isPlayerFullscreen) {
+        setIsPlayerFullscreen(false);
+      } else if (isNativeFs) {
+        setIsPlayerFullscreen(true);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isPlayerFullscreen) {
+        setIsPlayerFullscreen(false);
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isPlayerFullscreen]);
+
   const handleToggleCompleted = () => {
     const nextState = !isCompleted;
     setIsCompleted(nextState);
@@ -199,83 +321,138 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
         {/* القسم الرئيسي (مشغل الفيديو والمذكرات): 8 أعمدة */}
         <div className="lg:col-span-8 flex flex-col gap-3 sm:gap-6">
           
-          {/* مشغل الفيديو: يدعم يوتيوب، فيميو، والمشغل الآمن المشفر للروابط المباشرة */}
-          {isYouTube(currentLesson.videoUrl, currentLesson.videoProvider) ? (
-            <div className="relative aspect-video rounded-2xl sm:rounded-3xl overflow-hidden bg-black shadow-2xl border border-slate-200 dark:border-slate-800">
-              <iframe
-                ref={youtubeIframeRef}
-                src={getYouTubeEmbedUrl(currentLesson.videoUrl)}
-                title={currentLesson.title}
-                className="w-full h-full border-0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
-                onLoad={() => {
-                  try {
-                    youtubeIframeRef.current?.contentWindow?.postMessage(
-                      JSON.stringify({
-                        event: 'command',
-                        func: 'setPlaybackRate',
-                        args: [playbackSpeed]
-                      }),
-                      '*'
-                    );
-                  } catch (e) {}
-                }}
-              />
-              {/* علامة مائية عائمة لمعرّف المستخدم */}
-              <div className="absolute top-4 left-4 pointer-events-none z-10 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-amber-500/30 text-white text-[10px] font-mono select-none">
-                <span className="text-amber-400 font-bold">طالب طرقع: </span>
-                <span>#{currentUser?.id?.slice(0, 10) || 'GUEST'}</span>
-              </div>
-            </div>
-          ) : isVimeo(currentLesson.videoUrl, currentLesson.videoProvider) ? (
-            <div className="relative aspect-video rounded-2xl sm:rounded-3xl overflow-hidden bg-black shadow-2xl border border-slate-200 dark:border-slate-800">
-              <iframe
-                ref={vimeoIframeRef}
-                src={getVimeoEmbedUrl(currentLesson.videoUrl)}
-                title={currentLesson.title}
-                className="w-full h-full border-0"
-                allow="autoplay; fullscreen; picture-in-picture"
-                allowFullScreen
-              />
-              <div className="absolute top-4 left-4 pointer-events-none z-10 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-amber-500/30 text-white text-[10px] font-mono select-none">
-                <span className="text-amber-400 font-bold">طالب طرقع: </span>
-                <span>#{currentUser?.id?.slice(0, 10) || 'GUEST'}</span>
-              </div>
-            </div>
-          ) : (
-            <SecureVideoPlayer
-              src={currentLesson.videoUrl}
-              title={currentLesson.title}
-              currentUser={currentUser}
-              onEnded={() => onCompleteLesson(currentLesson.id)}
-              playbackSpeed={playbackSpeed}
-              onSpeedChange={handleSpeedChange}
-            />
-          )}
+          {/* مشغل الفيديو: يدعم يوتيوب، فيميو، والمشغل الآمن المشفر للروابط المباشرة مع وضع ملء الشاشة الشامل */}
+          <div
+            ref={playerContainerRef}
+            className={`transition-all duration-200 ${
+              isPlayerFullscreen
+                ? 'fixed inset-0 z-[99999] w-screen h-screen bg-black flex flex-col justify-center items-center p-0 m-0'
+                : 'relative w-full'
+            }`}
+          >
+            {/* زر عائم لتصغير الشاشة عند تفعيل ملء الشاشة */}
+            {isPlayerFullscreen && (
+              <button
+                type="button"
+                onClick={togglePlayerFullscreen}
+                className="absolute top-4 right-4 z-50 px-3.5 py-1.5 rounded-xl bg-black/85 hover:bg-black text-white border border-amber-500/60 text-xs font-bold flex items-center gap-1.5 shadow-2xl backdrop-blur-md cursor-pointer transition active:scale-95"
+              >
+                <Minimize className="w-4 h-4 text-amber-400" />
+                <span>تصغير الشاشة ✕</span>
+              </button>
+            )}
 
-          {/* أزرار التحكم بالسرعة والانتقال - متقاربة وأنيقة جداً على الموبايل */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-3 p-2.5 sm:p-4 rounded-2xl bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 shadow-sm">
-            <div className="flex items-center justify-between sm:justify-start gap-1.5 sm:gap-2">
-              <span className="text-[11px] sm:text-xs font-bold text-slate-500 dark:text-slate-400 shrink-0">
-                سرعة الشرح:
-              </span>
-              <div className="flex items-center gap-0.5 sm:gap-1 bg-slate-100 dark:bg-slate-900 p-0.5 sm:p-1 rounded-xl">
-                {[1, 1.25, 1.5, 2].map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => handleSpeedChange(s)}
-                    className={`px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer select-none ${
-                      playbackSpeed === s
-                        ? 'bg-amber-500 text-slate-950 shadow-sm font-black'
-                        : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                  >
-                    {s}x
-                  </button>
-                ))}
+            {isYouTube(currentLesson.videoUrl, currentLesson.videoProvider) ? (
+              <div className={`relative aspect-video overflow-hidden bg-black shadow-2xl ${
+                isPlayerFullscreen
+                  ? 'w-full h-full max-h-screen rounded-none border-0'
+                  : 'w-full rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800'
+              }`}>
+                <iframe
+                  ref={youtubeIframeRef}
+                  src={getYouTubeEmbedUrl(currentLesson.videoUrl)}
+                  title={currentLesson.title}
+                  className="w-full h-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+                  allowFullScreen
+                  onLoad={() => {
+                    try {
+                      youtubeIframeRef.current?.contentWindow?.postMessage(
+                        JSON.stringify({
+                          event: 'command',
+                          func: 'setPlaybackRate',
+                          args: [playbackSpeed]
+                        }),
+                        '*'
+                      );
+                    } catch (e) {}
+                  }}
+                />
+                {/* علامة مائية عائمة لمعرّف المستخدم */}
+                <div className="absolute top-4 left-4 pointer-events-none z-10 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-amber-500/30 text-white text-[10px] font-mono select-none">
+                  <span className="text-amber-400 font-bold">طالب طرقع: </span>
+                  <span>#{currentUser?.id?.slice(0, 10) || 'GUEST'}</span>
+                </div>
               </div>
+            ) : isVimeo(currentLesson.videoUrl, currentLesson.videoProvider) ? (
+              <div className={`relative aspect-video overflow-hidden bg-black shadow-2xl ${
+                isPlayerFullscreen
+                  ? 'w-full h-full max-h-screen rounded-none border-0'
+                  : 'w-full rounded-2xl sm:rounded-3xl border border-slate-200 dark:border-slate-800'
+              }`}>
+                <iframe
+                  ref={vimeoIframeRef}
+                  src={getVimeoEmbedUrl(currentLesson.videoUrl)}
+                  title={currentLesson.title}
+                  className="w-full h-full border-0"
+                  allow="autoplay; fullscreen; picture-in-picture"
+                  allowFullScreen
+                />
+                <div className="absolute top-4 left-4 pointer-events-none z-10 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-amber-500/30 text-white text-[10px] font-mono select-none">
+                  <span className="text-amber-400 font-bold">طالب طرقع: </span>
+                  <span>#{currentUser?.id?.slice(0, 10) || 'GUEST'}</span>
+                </div>
+              </div>
+            ) : (
+              <SecureVideoPlayer
+                src={currentLesson.videoUrl}
+                title={currentLesson.title}
+                currentUser={currentUser}
+                onEnded={() => onCompleteLesson(currentLesson.id)}
+                playbackSpeed={playbackSpeed}
+                onSpeedChange={handleSpeedChange}
+              />
+            )}
+          </div>
+
+          {/* أزرار التحكم بالسرعة وملء الشاشة والانتقال - متقاربة وأنيقة جداً على الموبايل */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-3 p-2.5 sm:p-4 rounded-2xl bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div className="flex items-center justify-between sm:justify-start gap-1.5 sm:gap-2 flex-wrap">
+              <div className="flex items-center gap-1 sm:gap-1.5">
+                <span className="text-[11px] sm:text-xs font-bold text-slate-500 dark:text-slate-400 shrink-0">
+                  سرعة الشرح:
+                </span>
+                <div className="flex items-center gap-0.5 sm:gap-1 bg-slate-100 dark:bg-slate-900 p-0.5 sm:p-1 rounded-xl">
+                  {[1, 1.25, 1.5, 2].map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => handleSpeedChange(s)}
+                      className={`px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-lg text-[11px] sm:text-xs font-bold transition cursor-pointer select-none ${
+                        playbackSpeed === s
+                          ? 'bg-amber-500 text-slate-950 shadow-sm font-black'
+                          : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      {s}x
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* زر ملء الشاشة الخارجي المباشر */}
+              <button
+                type="button"
+                onClick={togglePlayerFullscreen}
+                className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-bold transition cursor-pointer active:scale-95 select-none ${
+                  isPlayerFullscreen
+                    ? 'bg-amber-500 text-slate-950 shadow-sm font-black'
+                    : 'bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800'
+                }`}
+                title={isPlayerFullscreen ? 'تصغير الشاشة' : 'ملء الشاشة'}
+              >
+                {isPlayerFullscreen ? (
+                  <>
+                    <Minimize className="w-3.5 h-3.5 text-slate-950" />
+                    <span>تصغير</span>
+                  </>
+                ) : (
+                  <>
+                    <Maximize className="w-3.5 h-3.5 text-amber-500" />
+                    <span>ملء الشاشة</span>
+                  </>
+                )}
+              </button>
             </div>
 
             <div className="grid grid-cols-2 sm:flex sm:items-center gap-1.5 sm:gap-2">

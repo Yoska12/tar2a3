@@ -84,16 +84,83 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
     return () => clearInterval(timer);
   }, [settings.timeLimitSeconds, currentQuestion]);
 
-  // تبديل ملء الشاشة
+  // تبديل ملء الشاشة مع دعم لكافة المتصفحات والهواتف والـ WebViews
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen().catch(() => {});
+    const doc = document as any;
+    const isFs = !!(
+      doc.fullscreenElement ||
+      doc.webkitFullscreenElement ||
+      doc.mozFullScreenElement ||
+      doc.msFullscreenElement ||
+      isFullscreen
+    );
+
+    if (isFs) {
+      try {
+        if (doc.exitFullscreen) {
+          doc.exitFullscreen().catch(() => {});
+        } else if (doc.webkitExitFullscreen) {
+          doc.webkitExitFullscreen();
+        } else if (doc.mozCancelFullScreen) {
+          doc.mozCancelFullScreen();
+        } else if (doc.msExitFullscreen) {
+          doc.msExitFullscreen();
+        }
+      } catch (e) {}
       setIsFullscreen(false);
+    } else {
+      const elem = document.documentElement as any;
+      if (elem.requestFullscreen) {
+        elem.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => setIsFullscreen(true));
+      } else if (elem.webkitRequestFullscreen) {
+        try { elem.webkitRequestFullscreen(); setIsFullscreen(true); } catch (e) { setIsFullscreen(true); }
+      } else if (elem.mozRequestFullScreen) {
+        try { elem.mozRequestFullScreen(); setIsFullscreen(true); } catch (e) { setIsFullscreen(true); }
+      } else if (elem.msRequestFullscreen) {
+        try { elem.msRequestFullscreen(); setIsFullscreen(true); } catch (e) { setIsFullscreen(true); }
+      } else {
+        setIsFullscreen(true);
+      }
     }
   };
+
+  // مراقبة تغييرات ملء الشاشة ومفتاح Esc
+  useEffect(() => {
+    const handleFsChange = () => {
+      const doc = document as any;
+      const isNativeFs = !!(
+        doc.fullscreenElement ||
+        doc.webkitFullscreenElement ||
+        doc.mozFullScreenElement ||
+        doc.msFullscreenElement
+      );
+      if (!isNativeFs && isFullscreen) {
+        setIsFullscreen(false);
+      } else if (isNativeFs) {
+        setIsFullscreen(true);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFsChange);
+    document.addEventListener('webkitfullscreenchange', handleFsChange);
+    document.addEventListener('mozfullscreenchange', handleFsChange);
+    document.addEventListener('MSFullscreenChange', handleFsChange);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFsChange);
+      document.removeEventListener('webkitfullscreenchange', handleFsChange);
+      document.removeEventListener('mozfullscreenchange', handleFsChange);
+      document.removeEventListener('MSFullscreenChange', handleFsChange);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isFullscreen]);
 
   // اختيار إجابة
   const handleSelectOption = (optionId: OptionId) => {
@@ -241,7 +308,9 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
   const currentAnswer = userAnswers[currentQuestion?.id];
 
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-[#070b14] text-slate-900 dark:text-slate-100 flex flex-col transition-colors duration-300">
+    <div className={`min-h-screen bg-slate-100 dark:bg-[#070b14] text-slate-900 dark:text-slate-100 flex flex-col transition-colors duration-300 ${
+      isFullscreen ? 'fixed inset-0 z-[99999] overflow-y-auto w-screen h-screen' : ''
+    }`}>
       
       {/* ========================================================================= */}
       {/* 1. الشريط العلوي (Alaqsam & Qiyas Modern Exam Header) */}
@@ -303,10 +372,10 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
             {/* زر ملء الشاشة */}
             <button
               onClick={toggleFullscreen}
-              className="p-2 rounded-xl text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition hidden sm:flex"
-              title="ملء الشاشة"
+              className="p-2 rounded-xl text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition flex items-center justify-center cursor-pointer"
+              title={isFullscreen ? 'تصغير الشاشة' : 'ملء الشاشة'}
             >
-              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              {isFullscreen ? <Minimize2 className="w-4 h-4 text-amber-500" /> : <Maximize2 className="w-4 h-4" />}
             </button>
 
             {/* زر تسليم وإنهاء الاختبار */}

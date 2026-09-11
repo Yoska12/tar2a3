@@ -232,15 +232,144 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
     videoRef.current.muted = nextMuted;
   };
 
-  // ملء الشاشة
+  // ملء الشاشة (يدعم جميع أجهزة الموبايل وSafari وiOS والبدائل الآمنة)
   const toggleFullscreen = () => {
-    if (!containerRef.current) return;
-    if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
-    } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+    const doc = document as any;
+    const isNativeFs = !!(
+      doc.fullscreenElement ||
+      doc.webkitFullscreenElement ||
+      doc.mozFullScreenElement ||
+      doc.msFullscreenElement
+    );
+
+    // إذا كان حالياً ملء شاشة (سواء عادي أو CSS fallback)
+    if (isNativeFs || isFullscreen) {
+      setIsFullscreen(false);
+      try {
+        if (doc.exitFullscreen) {
+          doc.exitFullscreen().catch(() => {});
+        } else if (doc.webkitExitFullscreen) {
+          doc.webkitExitFullscreen();
+        } else if (doc.mozCancelFullScreen) {
+          doc.mozCancelFullScreen();
+        } else if (doc.msExitFullscreen) {
+          doc.msExitFullscreen();
+        }
+      } catch (e) {}
+      return;
     }
+
+    // تفعيل ملء الشاشة
+    const container = containerRef.current as any;
+    const video = videoRef.current as any;
+
+    const fallbackFullscreen = () => {
+      // تجربة iPhone Safari على عنصر الفيديو
+      if (video && typeof video.webkitEnterFullscreen === 'function') {
+        try {
+          video.webkitEnterFullscreen();
+          setIsFullscreen(true);
+          return;
+        } catch (e) {}
+      }
+      // البديل المرئي CSS الكامل لجميع الأجهزة والـ WebViews
+      setIsFullscreen(true);
+    };
+
+    // 1. المحاولة أولاً للحاوية كاملة (لحفظ شريط التحكم والعلامة المائية)
+    if (container) {
+      if (typeof container.requestFullscreen === 'function') {
+        container
+          .requestFullscreen()
+          .then(() => setIsFullscreen(true))
+          .catch(() => {
+            fallbackFullscreen();
+          });
+        return;
+      } else if (typeof container.webkitRequestFullscreen === 'function') {
+        try {
+          container.webkitRequestFullscreen();
+          setIsFullscreen(true);
+          return;
+        } catch (e) {
+          fallbackFullscreen();
+          return;
+        }
+      } else if (typeof container.mozRequestFullScreen === 'function') {
+        try {
+          container.mozRequestFullScreen();
+          setIsFullscreen(true);
+          return;
+        } catch (e) {
+          fallbackFullscreen();
+          return;
+        }
+      } else if (typeof container.msRequestFullscreen === 'function') {
+        try {
+          container.msRequestFullscreen();
+          setIsFullscreen(true);
+          return;
+        } catch (e) {
+          fallbackFullscreen();
+          return;
+        }
+      }
+    }
+
+    fallbackFullscreen();
   };
+
+  // مراقبة تغييرات ملء الشاشة وإغلاقها تلقائياً عند ضغط زر الرجوع أو Esc
+  useEffect(() => {
+    const handleFsChange = () => {
+      const doc = document as any;
+      const isNativeFs = !!(
+        doc.fullscreenElement ||
+        doc.webkitFullscreenElement ||
+        doc.mozFullScreenElement ||
+        doc.msFullscreenElement
+      );
+      if (!isNativeFs && isFullscreen) {
+        setIsFullscreen(false);
+      } else if (isNativeFs) {
+        setIsFullscreen(true);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+
+    const video = videoRef.current as any;
+    const onWebkitBegin = () => setIsFullscreen(true);
+    const onWebkitEnd = () => setIsFullscreen(false);
+
+    document.addEventListener('fullscreenchange', handleFsChange);
+    document.addEventListener('webkitfullscreenchange', handleFsChange);
+    document.addEventListener('mozfullscreenchange', handleFsChange);
+    document.addEventListener('MSFullscreenChange', handleFsChange);
+    window.addEventListener('keydown', handleKeyDown);
+
+    if (video) {
+      video.addEventListener('webkitbeginfullscreen', onWebkitBegin);
+      video.addEventListener('webkitendfullscreen', onWebkitEnd);
+    }
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFsChange);
+      document.removeEventListener('webkitfullscreenchange', handleFsChange);
+      document.removeEventListener('mozfullscreenchange', handleFsChange);
+      document.removeEventListener('MSFullscreenChange', handleFsChange);
+      window.removeEventListener('keydown', handleKeyDown);
+
+      if (video) {
+        video.removeEventListener('webkitbeginfullscreen', onWebkitBegin);
+        video.removeEventListener('webkitendfullscreen', onWebkitEnd);
+      }
+    };
+  }, [isFullscreen]);
 
   // صورة داخل صورة (PiP)
   const togglePiP = async () => {
@@ -318,14 +447,28 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
     return (
       <div
         ref={containerRef}
-        className="relative w-full aspect-video rounded-3xl overflow-hidden bg-black select-none group shadow-2xl border border-slate-800/80 font-cairo"
+        className={`relative w-full aspect-video rounded-3xl overflow-hidden bg-black select-none group shadow-2xl border border-slate-800/80 font-cairo transition-all duration-200 ${
+          isFullscreen
+            ? 'fixed inset-0 z-[99999] w-screen h-screen max-w-none max-h-none rounded-none aspect-auto'
+            : ''
+        }`}
       >
+        {isFullscreen && (
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className="absolute top-4 right-4 z-30 px-3.5 py-1.5 rounded-xl bg-black/85 hover:bg-black text-white border border-amber-500/60 text-xs font-bold flex items-center gap-1.5 shadow-2xl backdrop-blur-md cursor-pointer transition active:scale-95"
+          >
+            <Minimize className="w-4 h-4 text-amber-400" />
+            <span>تصغير الشاشة ✕</span>
+          </button>
+        )}
         <iframe
           ref={iframeRef}
           src={embedUrl}
           title={title}
           className="w-full h-full border-0"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
           allowFullScreen
         />
         {/* العلامة المائية المحمية فوق اليوتيوب */}
@@ -345,8 +488,22 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
     return (
       <div
         ref={containerRef}
-        className="relative w-full aspect-video rounded-3xl overflow-hidden bg-black select-none group shadow-2xl border border-slate-800/80 font-cairo"
+        className={`relative w-full aspect-video rounded-3xl overflow-hidden bg-black select-none group shadow-2xl border border-slate-800/80 font-cairo transition-all duration-200 ${
+          isFullscreen
+            ? 'fixed inset-0 z-[99999] w-screen h-screen max-w-none max-h-none rounded-none aspect-auto'
+            : ''
+        }`}
       >
+        {isFullscreen && (
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className="absolute top-4 right-4 z-30 px-3.5 py-1.5 rounded-xl bg-black/85 hover:bg-black text-white border border-amber-500/60 text-xs font-bold flex items-center gap-1.5 shadow-2xl backdrop-blur-md cursor-pointer transition active:scale-95"
+          >
+            <Minimize className="w-4 h-4 text-amber-400" />
+            <span>تصغير الشاشة ✕</span>
+          </button>
+        )}
         <iframe
           ref={iframeRef}
           src={embedUrl}
@@ -369,8 +526,23 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
       onMouseMove={handleMouseMove}
       onMouseLeave={() => isPlaying && setShowControls(false)}
       onContextMenu={(e) => e.preventDefault()} // منع القائمة المنسدلة للزر الأيمن
-      className="relative w-full aspect-video rounded-3xl overflow-hidden bg-black select-none group shadow-2xl border border-slate-800/80 font-cairo"
+      className={`relative w-full aspect-video rounded-3xl overflow-hidden bg-black select-none group shadow-2xl border border-slate-800/80 font-cairo transition-all duration-200 ${
+        isFullscreen
+          ? 'fixed inset-0 z-[99999] w-screen h-screen max-w-none max-h-none rounded-none aspect-auto'
+          : ''
+      }`}
     >
+      {/* زر تصغير عائم في وضع ملء الشاشة لتسهيل الخروج على الهواتف */}
+      {isFullscreen && (
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          className="absolute top-4 right-4 z-40 px-3.5 py-1.5 rounded-xl bg-black/85 hover:bg-black text-white border border-amber-500/60 text-xs font-bold flex items-center gap-1.5 shadow-2xl backdrop-blur-md cursor-pointer transition active:scale-95"
+        >
+          <Minimize className="w-4 h-4 text-amber-400" />
+          <span>تصغير الشاشة ✕</span>
+        </button>
+      )}
       {/* 1. عنصر الفيديو الفعلي (مع دعم تشغيل الموبايل وتعطيل خيارات التنزيل الافتراضية) */}
       <video
         ref={videoRef}

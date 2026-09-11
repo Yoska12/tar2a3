@@ -310,7 +310,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
   };
 
   // تحميل أو فتح ملف
-  const handleFileAction = (file: CourseFileItem, previewMode = false) => {
+  const handleFileAction = async (file: CourseFileItem, previewMode = false) => {
     const hasAccess = file.isFreePreview || subscriptionInfo.isSubscribed;
     if (hasAccess) {
       downloadTrackingService.trackDownload(
@@ -323,10 +323,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
         },
         currentUser
       );
-      const safeUrl = sanitizeUrl(file.fileUrl);
-      if (safeUrl !== '#') {
-        window.open(safeUrl, '_blank', 'noopener,noreferrer');
-      }
+      await fileStorageService.downloadOrPreviewFile(file.fileUrl, file.title, previewMode);
     } else {
       setShowSubscribeModal(true);
     }
@@ -755,7 +752,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
             </div>
 
             {/* بطاقة الملف الرئيسي البارزة (Hero File Card) */}
-            {mainFile && (
+            {/* بطاقة الملف الرئيسي البارزة (Hero File Card) أو بطاقة الحالة الفارغة */}
+            {mainFile ? (
               <div className="rounded-3xl bg-gradient-to-br from-blue-500/10 via-amber-500/5 to-purple-500/10 border-2 border-blue-500/30 p-6 sm:p-8 backdrop-blur-xl shadow-lg relative overflow-hidden">
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
                   <div className="lg:col-span-8 space-y-3">
@@ -846,6 +844,38 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                     )}
                   </div>
                 </div>
+              </div>
+            ) : (
+              <div className="p-8 sm:p-12 rounded-3xl bg-white dark:bg-[#0c1324] border border-slate-200 dark:border-slate-800 text-center space-y-4 shadow-sm">
+                <div className="w-14 h-14 rounded-2xl bg-blue-500/10 text-blue-500 flex items-center justify-center mx-auto text-2xl">
+                  📄
+                </div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white">
+                  لا توجد مذكرات أو ملفات مضافة حالياً
+                </h3>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  يمكن للمعلمين والمشرفين تفعيل وضع التعديل أعلاه لإضافة ونشر مذكرات التأسيس وأوراق العمل للطلاب.
+                </p>
+                {isEditor && (
+                  <button
+                    onClick={() => {
+                      setEditingFile(null);
+                      setFileFormData({
+                        title: '',
+                        description: '',
+                        fileUrl: '',
+                        fileSize: '10 MB',
+                        pagesCount: '100 صفحة',
+                        fileType: 'pdf',
+                        isFreePreview: false,
+                      });
+                      setFileModalOpen(true);
+                    }}
+                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md transition cursor-pointer"
+                  >
+                    + إضافة أول مذكرة الآن
+                  </button>
+                )}
               </div>
             )}
 

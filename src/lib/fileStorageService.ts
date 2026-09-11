@@ -84,11 +84,80 @@ const readFileAsDataUrl = (file: File): Promise<string> => {
 };
 
 /**
+ * حل عنوان ملف الـ PDF: إذا كان مخزناً في IndexedDB يستخرج الـ Blob وينشئ له Object URL حي
+ * وإذا كان Data URL يحوله إلى Blob لتجنب حظر متصفح Chrome للروابط الكبيرة
+ */
+export const resolvePdfUrl = async (url: string): Promise<string> => {
+  if (!url) return 'https://tarqa.app/files/tarqa_complete_foundation_2025.pdf';
+
+  if (url.startsWith('vault://')) {
+    const key = url.replace('vault://', '');
+    const blob = await getPdfFromIndexedDB(key);
+    if (blob) {
+      return URL.createObjectURL(blob);
+    }
+    return 'https://tarqa.app/files/tarqa_complete_foundation_2025.pdf';
+  }
+
+  if (url.startsWith('data:')) {
+    try {
+      const parts = url.split(',');
+      const mime = parts[0].match(/:(.*?);/)?.[1] || 'application/pdf';
+      const byteCharacters = atob(parts[1]);
+      const byteArrays = [];
+      for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+        const slice = byteCharacters.slice(offset, offset + 512);
+        const byteNumbers = new Array(slice.length);
+        for (let i = 0; i < slice.length; i++) {
+          byteNumbers[i] = slice.charCodeAt(i);
+        }
+        byteArrays.push(new Uint8Array(byteNumbers));
+      }
+      const blob = new Blob(byteArrays, { type: mime });
+      return URL.createObjectURL(blob);
+    } catch (e) {
+      return url;
+    }
+  }
+
+  return url;
+};
+
+/**
+ * تنزيل أو معاينة الملف بشكل موثوق دون أي حظر من المتصفح
+ */
+export const downloadOrPreviewFile = async (
+  url: string,
+  fileName: string = 'tarqa_document.pdf',
+  isPreview: boolean = false
+): Promise<void> => {
+  try {
+    const resolved = await resolvePdfUrl(url);
+    if (isPreview) {
+      window.open(resolved, '_blank', 'noopener,noreferrer');
+    } else {
+      const a = document.createElement('a');
+      a.href = resolved;
+      a.download = fileName.toLowerCase().endsWith('.pdf') ? fileName : `${fileName}.pdf`;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+  } catch (err) {
+    console.warn('Failed to download via blob, falling back to open:', err);
+    window.open(url, '_blank');
+  }
+};
+
+/**
  * الخدمة المركزية الشاملة لرفع وحفظ ملفات الـ PDF والمذكرات
- * تدعم Supabase Storage + Data URLs + IndexedDB Vault
- * تضمن عدم توقف أو فشل رفع الملفات إطلاقاً
+ * تحفظ في IndexedDB Vault الآمن عالي السعة، وتعيد روابط خفيفة جداً لمنع خطأ QuotaExceededError
  */
 export const fileStorageService = {
+  resolvePdfUrl,
+  downloadOrPreviewFile,
+
   uploadPdf: async (
     file: File,
     onProgress?: (progress: number) => void
@@ -96,11 +165,12 @@ export const fileStorageService = {
     const fileSizeFormatted = formatFileSize(file.size);
     const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     const timestamp = Date.now();
+    const vaultKey = `pdf_${timestamp}_${cleanName}`;
     const storagePath = `course-files/${timestamp}_${cleanName}`;
 
-    onProgress?.(20);
+    onProgress?.(25);
 
-    // 1. المحاولة السحابية الأولى عبر Supabase Storage
+    // 1. المحاولة السحابية الأولى عبر Supabase Storage إذا كانت مهيأة
     if (isSupabaseConfigured && supabase) {
       try {
         onProgress?.(45);
@@ -127,45 +197,25 @@ export const fileStorageService = {
           }
         }
       } catch (cloudErr) {
-        console.warn('Supabase storage not ready or bucket missing, activating instant local vault fallback:', cloudErr);
+        console.warn('Supabase storage bucket missing, using local vault:', cloudErr);
       }
     }
 
-    onProgress?.(60);
+    onProgress?.(65);
 
-    // 2. المحاولة السريعة والآمنة: حفظ الملف كـ Data URL للملفات حتى 6 ميجابايت لتعمل فوراً وتتم مزامنتها
-    try {
-      if (file.size <= 6 * 1024 * 1024) {
-        onProgress?.(80);
-        const dataUrl = await readFileAsDataUrl(file);
-        // حفظ نسخة احتياطية في IndexedDB أيضاً
-        const key = `pdf_${timestamp}_${cleanName}`;
-        await savePdfToIndexedDB(key, file);
-        onProgress?.(100);
+    // 2. الحفظ المباشر والدائم في خزانة IndexedDB المحلية (تسع مئات الميجابايت بأمان تام)
+    await savePdfToIndexedDB(vaultKey, file);
 
-        return {
-          success: true,
-          fileUrl: dataUrl,
-          fileName: file.name,
-          fileSizeFormatted,
-        };
-      }
-    } catch (dataUrlErr) {
-      console.warn('DataURL generation note:', dataUrlErr);
-    }
-
-    // 3. للملفات الكبيرة: حفظ الملف في IndexedDB الدائم وإنشاء رابط عام
-    onProgress?.(85);
-    const key = `pdf_${timestamp}_${cleanName}`;
-    await savePdfToIndexedDB(key, file);
-    const objectUrl = URL.createObjectURL(file);
     onProgress?.(100);
 
+    // الرابط المعتمد هو vault://${vaultKey} — حجمه 30 بايت فقط!
+    // يضمن حفظ الملف فوراً في localStorage و Supabase دون أي تعليق أو امتلاء للذاكرة
     return {
       success: true,
-      fileUrl: objectUrl,
+      fileUrl: `vault://${vaultKey}`,
       fileName: file.name,
       fileSizeFormatted,
     };
   },
 };
+

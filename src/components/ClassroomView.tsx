@@ -24,6 +24,7 @@ import { TarqaUser } from '../lib/supabase';
 import { SecureVideoPlayer } from './SecureVideoPlayer';
 import { downloadTrackingService } from '../lib/downloadTrackingService';
 import { sanitizeUrl } from '../lib/securityUtils';
+import { fileStorageService } from '../lib/fileStorageService';
 
 interface ClassroomViewProps {
   currentModule: CourseModule;
@@ -559,11 +560,8 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                           </div>
                         </div>
 
-                        <a
-                          href={sanitizeUrl(att.fileUrl)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          download
+                        <button
+                          type="button"
                           onClick={() => {
                             downloadTrackingService.trackDownload(
                               {
@@ -575,12 +573,13 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                               },
                               currentUser
                             );
+                            fileStorageService.downloadOrPreviewFile(att.fileUrl, att.title, false);
                           }}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-sm shrink-0 cursor-pointer active:scale-95"
                         >
                           <Download className="w-3.5 h-3.5" />
                           <span>تحميل</span>
-                        </a>
+                        </button>
                       </div>
                     ))}
                   </div>

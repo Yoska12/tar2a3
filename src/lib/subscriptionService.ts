@@ -461,17 +461,17 @@ export const coursesStorage = {
         }
       }
 
-      if (cloudFiles !== null && Array.isArray(cloudFiles)) {
+      if (cloudFiles && Array.isArray(cloudFiles) && cloudFiles.length > 0) {
         localStorage.setItem('tarqa_custom_files_v1', JSON.stringify(cloudFiles));
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('tarqa_courses_files_changed', { detail: cloudFiles }));
         }
       }
 
-      if (cloudModules || cloudFiles !== null) {
+      if (cloudModules || (cloudFiles && cloudFiles.length > 0)) {
         return {
           modules: cloudModules || this.getModules(),
-          files: cloudFiles !== null ? cloudFiles : this.getFiles(),
+          files: (cloudFiles && cloudFiles.length > 0) ? cloudFiles : this.getFiles(),
         };
       }
     } catch (e) {
@@ -690,7 +690,7 @@ export const coursesStorage = {
       const raw = localStorage.getItem('tarqa_custom_files_v1');
       if (raw !== null) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
+        if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed;
         }
       }
@@ -700,7 +700,14 @@ export const coursesStorage = {
 
   saveFiles(files: CourseFileItem[]) {
     try {
-      localStorage.setItem('tarqa_custom_files_v1', JSON.stringify(files));
+      // تنظيف أي Data URLs ضخمة قبل التخزين في localStorage منعاً لحدوث QuotaExceededError
+      const safeFiles = files.map((f) => {
+        if (f.fileUrl && f.fileUrl.startsWith('data:') && f.fileUrl.length > 5000) {
+          return { ...f, fileUrl: `vault://pdf_migrated_${f.id}` };
+        }
+        return f;
+      });
+      localStorage.setItem('tarqa_custom_files_v1', JSON.stringify(safeFiles));
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('tarqa_courses_files_changed', { detail: files }));
       }
@@ -714,7 +721,9 @@ export const coursesStorage = {
 
   addFile(newFile: CourseFileItem): CourseFileItem[] {
     const current = this.getFiles();
-    const updated = [newFile, ...current];
+    // منع تكرار نفس الملف في حال استدعاء الدالة في المكون الفرعي والأب معاً
+    const filtered = current.filter((f) => f.id !== newFile.id);
+    const updated = [newFile, ...filtered];
     this.saveFiles(updated);
     return updated;
   },

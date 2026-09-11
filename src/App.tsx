@@ -26,6 +26,8 @@ import { CoursesView } from './components/CoursesView';
 import { LecturesCMS } from './components/LecturesCMS';
 import { SuperAdminRolesPanel } from './components/SuperAdminRolesPanel';
 import { MobileBottomNav } from './components/MobileBottomNav';
+import { LegalPoliciesModal, PolicyTab } from './components/LegalPoliciesModal';
+import { CookieConsentBanner } from './components/CookieConsentBanner';
 import { mockFoundationModules } from './data/foundationModules';
 import { mockCategories, mockQuestions } from './data/mockQuestions';
 import { QuizSettings, QuizResult, Category, Question, CourseModule, Lesson, UserRole, CourseFileItem } from './types';
@@ -56,6 +58,24 @@ export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<TarqaUser | null>(() => {
     return authService.getCurrentUser();
   });
+
+  // نافذة السياسات القانونية (شروط الاستخدام، الخصوصية، الكوكيز، الاسترجاع)
+  const [policiesModalOpen, setPoliciesModalOpen] = useState<boolean>(false);
+  const [policiesInitialTab, setPoliciesInitialTab] = useState<PolicyTab>('terms');
+
+  const handleOpenPolicies = (tab: PolicyTab = 'terms') => {
+    setPoliciesInitialTab(tab);
+    setPoliciesModalOpen(true);
+  };
+
+  useEffect(() => {
+    const handleGlobalOpenPolicies = (e: any) => {
+      const tab = (e.detail as PolicyTab) || 'terms';
+      handleOpenPolicies(tab);
+    };
+    window.addEventListener('tarqa_open_policies', handleGlobalOpenPolicies);
+    return () => window.removeEventListener('tarqa_open_policies', handleGlobalOpenPolicies);
+  }, []);
 
   // تفعيل درع طرقع الأمني ومكافحة الاختراق والفحص (Global Anti-Hack Shield Core)
   useEffect(() => {
@@ -735,6 +755,7 @@ export const App: React.FC = () => {
         isOpen={isAuthOpen}
         initialTab={authInitialTab}
         onClose={() => setIsAuthOpen(false)}
+        onOpenPolicies={handleOpenPolicies}
         onUserLoggedIn={(user) => {
           setCurrentUser(user);
           setIsAuthOpen(false);
@@ -1286,19 +1307,80 @@ export const App: React.FC = () => {
         </main>
       )}
 
-      {/* التذييل */}
-      <footer className="border-t border-slate-200/80 dark:border-slate-800/80 py-6 text-center text-xs text-slate-500">
-        <p>منصة طرقع للكمي © {new Date().getFullYear()} • تجميعات وتدريبات تفاعلية لاختبار القدرات العامة</p>
-        <div className="mt-2 flex items-center justify-center gap-3 text-[11px]">
-          <a
-            href={TELEGRAM_BOT_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[#24A1DE] hover:underline font-semibold flex items-center gap-1"
-          >
-            <span>بوت التدريب والإشعارات الرسمي: @{TELEGRAM_BOT_USERNAME}</span>
-            <span>↗</span>
-          </a>
+      {/* التذييل المؤسسي لمنصة طرقع */}
+      <footer className="border-t border-slate-200/80 dark:border-slate-800/80 bg-slate-50/50 dark:bg-[#070b14]/50 py-8 px-4 text-center text-xs text-slate-500 space-y-4">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="text-center sm:text-start space-y-1">
+            <div className="flex items-center justify-center sm:justify-start gap-2">
+              <span className="font-black text-sm text-slate-900 dark:text-white">منصة طرقع للقدرات</span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold">
+                تأسيس وتجميعات {new Date().getFullYear()}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              تجميعات وتدريبات تفاعلية ومحاضرات تأسيس متخصصة لاختبار القدرات العامة (القسم الكمي).
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] font-bold text-slate-600 dark:text-slate-400 flex-wrap justify-center">
+            <button
+              type="button"
+              onClick={() => handleOpenPolicies('terms')}
+              className="hover:text-amber-500 transition cursor-pointer"
+            >
+              شروط الاستخدام
+            </button>
+            <span>•</span>
+            <button
+              type="button"
+              onClick={() => handleOpenPolicies('privacy')}
+              className="hover:text-amber-500 transition cursor-pointer"
+            >
+              سياسة الخصوصية
+            </button>
+            <span>•</span>
+            <button
+              type="button"
+              onClick={() => handleOpenPolicies('cookies')}
+              className="hover:text-amber-500 transition cursor-pointer"
+            >
+              ملفات الكوكيز 🍪
+            </button>
+            <span>•</span>
+            <button
+              type="button"
+              onClick={() => handleOpenPolicies('refund')}
+              className="hover:text-amber-500 transition cursor-pointer"
+            >
+              سياسة الاسترجاع
+            </button>
+          </div>
+        </div>
+
+        {/* شريط الأمان وحقوق النشر */}
+        <div className="max-w-4xl mx-auto pt-4 border-t border-slate-200/60 dark:border-slate-800/60 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-slate-400">
+          <div className="flex items-center gap-3 justify-center">
+            <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>دفع مشفر وآمن (Kashier PCI-DSS)</span>
+            </span>
+            <span>•</span>
+            <span>تشفير 256-Bit SSL</span>
+          </div>
+
+          <div className="flex items-center gap-3 justify-center">
+            <a
+              href={TELEGRAM_BOT_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#24A1DE] hover:underline font-semibold flex items-center gap-1"
+            >
+              <span>بوت التيليجرام: @{TELEGRAM_BOT_USERNAME}</span>
+              <span>↗</span>
+            </a>
+            <span>•</span>
+            <span>جميع الحقوق محفوظة © {new Date().getFullYear()}</span>
+          </div>
         </div>
       </footer>
 
@@ -1347,6 +1429,16 @@ export const App: React.FC = () => {
           <span className="font-cairo tracking-wide">{securityToast}</span>
         </div>
       )}
+
+      {/* نافذة السياسات وشروط الاستخدام والخصوصية */}
+      <LegalPoliciesModal
+        isOpen={policiesModalOpen}
+        onClose={() => setPoliciesModalOpen(false)}
+        initialTab={policiesInitialTab}
+      />
+
+      {/* شريط الموافقة على ملفات تعريف الارتباط (Cookies Banner) */}
+      <CookieConsentBanner onOpenPolicies={handleOpenPolicies} />
 
     </div>
   );

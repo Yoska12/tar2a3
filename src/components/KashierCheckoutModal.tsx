@@ -26,6 +26,7 @@ interface KashierCheckoutModalProps {
   onPaymentSuccess: (transaction: KashierTransaction) => void;
   customAmount?: number;
   customCurrency?: 'EGP' | 'SAR';
+  onOpenPolicies?: (tab: 'terms' | 'privacy' | 'cookies' | 'refund') => void;
 }
 
 export const KashierCheckoutModal: React.FC<KashierCheckoutModalProps> = ({
@@ -35,6 +36,7 @@ export const KashierCheckoutModal: React.FC<KashierCheckoutModalProps> = ({
   onPaymentSuccess,
   customAmount,
   customCurrency,
+  onOpenPolicies,
 }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [sessionUrl, setSessionUrl] = useState<string | null>(null);
@@ -396,21 +398,48 @@ export const KashierCheckoutModal: React.FC<KashierCheckoutModalProps> = ({
                 </div>
               )}
 
-              {/* شريط التذييل */}
-              <div className="flex items-center justify-between pt-1 px-1 text-[11px] text-slate-400">
+              {/* شريط التذييل والسياسات */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 px-1 text-[11px] text-slate-400">
                 <span className="flex items-center gap-1">
-                  <span>مدعوم بواسطة</span>
-                  <strong className="text-slate-600 dark:text-slate-300">Kashier Payments</strong>
+                  <span>بوابة دفع معتمدة</span>
+                  <strong className="text-slate-600 dark:text-slate-300">Kashier PCI-DSS</strong>
                 </span>
+
+                <div className="flex items-center gap-2 text-[10px]">
+                  <button
+                    type="button"
+                    onClick={() => onOpenPolicies?.('terms')}
+                    className="hover:text-amber-500 hover:underline cursor-pointer text-slate-500 dark:text-slate-400"
+                  >
+                    شروط الاستخدام
+                  </button>
+                  <span>•</span>
+                  <button
+                    type="button"
+                    onClick={() => onOpenPolicies?.('privacy')}
+                    className="hover:text-amber-500 hover:underline cursor-pointer text-slate-500 dark:text-slate-400"
+                  >
+                    الخصوصية
+                  </button>
+                  <span>•</span>
+                  <button
+                    type="button"
+                    onClick={() => onOpenPolicies?.('refund')}
+                    className="hover:text-amber-500 hover:underline cursor-pointer text-slate-500 dark:text-slate-400"
+                  >
+                    سياسة الاسترجاع
+                  </button>
+                </div>
+
                 {!isSimulated && (
                   <a
                     href={sessionUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-amber-500 hover:underline flex items-center gap-1 font-bold"
+                    className="text-amber-500 hover:underline flex items-center gap-1 font-bold text-[10px]"
                   >
-                    <span>فتح في نافذة خارجية</span>
-                    <ExternalLink className="w-3 h-3" />
+                    <span>نافذة خارجية</span>
+                    <ExternalLink className="w-2.5 h-2.5" />
                   </a>
                 )}
               </div>

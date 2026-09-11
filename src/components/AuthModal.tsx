@@ -28,6 +28,7 @@ interface AuthModalProps {
   onClose: () => void;
   onUserLoggedIn?: (user: TarqaUser) => void;
   initialTab?: 'signin' | 'signup';
+  onOpenPolicies?: (tab: 'terms' | 'privacy' | 'cookies' | 'refund') => void;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
@@ -35,6 +36,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onClose,
   onUserLoggedIn,
   initialTab = 'signin',
+  onOpenPolicies,
 }) => {
   const [activeTab, setActiveTab] = useState<'signin' | 'signup'>(initialTab);
   const [showPassword, setShowPassword] = useState(false);
@@ -555,6 +557,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </button>
           </form>
         )}
+
+        {/* إشعار الموافقة على شروط الاستخدام والخصوصية */}
+        <p className="text-[10px] text-center text-slate-400 mt-3 leading-relaxed">
+          بالمتابعة فإنك توافق على{' '}
+          <button
+            type="button"
+            onClick={() => onOpenPolicies?.('terms')}
+            className="text-amber-500 hover:underline font-bold cursor-pointer"
+          >
+            شروط الاستخدام
+          </button>{' '}
+          و{' '}
+          <button
+            type="button"
+            onClick={() => onOpenPolicies?.('privacy')}
+            className="text-amber-500 hover:underline font-bold cursor-pointer"
+          >
+            سياسة الخصوصية
+          </button>
+        </p>
 
         {/* حالة الاتصال الذكية */}
         <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-[11px]">

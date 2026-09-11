@@ -63,6 +63,7 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
   // توليد وعرض الـ PDF المشفر باسم وبيانات الطالب عند فتح النافذة
   useEffect(() => {
     let activeUrl: string | null = null;
+    let isCancelled = false;
 
     if (isOpen && file) {
       setActiveTab('viewer');
@@ -81,50 +82,49 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
           currentUser
         )
         .then((url: string) => {
-          activeUrl = url;
-          setPdfBlobUrl(url);
-          setIsLoadingPdf(false);
+          if (!isCancelled) {
+            activeUrl = url;
+            setPdfBlobUrl(url);
+            setIsLoadingPdf(false);
+          }
         })
         .catch((err: any) => {
-          console.error('Error generating PDF preview:', err);
-          setPdfLoadError('تعذر عرض الملف مباشرة. يمكنك تنزيل النسخة المشفرة لجهازك بالزر أدناه.');
-          setIsLoadingPdf(false);
+          if (!isCancelled) {
+            console.error('Error generating PDF preview:', err);
+            setPdfLoadError('تعذر عرض الملف مباشرة داخل الإطار. يمكنك فتح الملف أو تنزيله لجهازك بالزر أدناه.');
+            setIsLoadingPdf(false);
+          }
         });
     }
 
     return () => {
+      isCancelled = true;
       if (activeUrl) {
-        URL.revokeObjectURL(activeUrl);
+        setTimeout(() => URL.revokeObjectURL(activeUrl!), 120000);
       }
       setPdfBlobUrl(null);
     };
-  }, [isOpen, file, currentUser]);
+  }, [isOpen, file?.id, file?.fileUrl, currentUser?.id, currentUser?.email]);
 
   if (!isOpen || !file) return null;
 
-  const hasAccess = file.isFreePreview || isSubscribed;
+  const hasAccess = Boolean(file.isFreePreview || isSubscribed);
 
   const handleDownload = async () => {
-    if (!hasAccess) {
-      onSubscribeClick?.();
-      return;
-    }
-
     setIsDownloading(true);
     try {
       if (onDownloadClick) {
         onDownloadClick(file);
-      } else {
-        await fileStorageService.downloadWatermarkedFile(
-          {
-            title: file.title,
-            fileUrl: file.fileUrl,
-            description: file.description,
-            pagesCount: file.pagesCount,
-          },
-          currentUser
-        );
       }
+      await fileStorageService.downloadWatermarkedFile(
+        {
+          title: file.title,
+          fileUrl: file.fileUrl,
+          description: file.description,
+          pagesCount: file.pagesCount,
+        },
+        currentUser
+      );
       setDownloadSuccess(true);
       setTimeout(() => setDownloadSuccess(false), 4000);
     } catch (e) {
@@ -289,11 +289,50 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
                   </button>
                 </div>
               ) : pdfBlobUrl ? (
-                <iframe
-                  src={`${pdfBlobUrl}#toolbar=1&navpanes=0&view=FitH`}
-                  className="w-full h-full rounded-2xl border-0 bg-white dark:bg-slate-900"
-                  title={file.title}
-                />
+                <div className="w-full h-full relative flex flex-col">
+                  {/* شريط أدوات سريع أعلى شاشة القراءة */}
+                  <div className="px-3 sm:px-4 py-2 bg-slate-800/95 text-slate-300 text-xs flex items-center justify-between border-b border-slate-700 shrink-0">
+                    <span className="flex items-center gap-2 font-bold text-slate-200 min-w-0">
+                      <FileText className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span className="truncate">{file.title}</span>
+                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <a
+                        href={pdfBlobUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-amber-400 font-bold flex items-center gap-1 transition text-[11px] sm:text-xs"
+                        title="فتح في تبويب خارجي مستقل"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>شاشة كاملة ↗</span>
+                      </a>
+                      <button
+                        onClick={handleDownload}
+                        disabled={isDownloading}
+                        className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black flex items-center gap-1 transition text-[11px] sm:text-xs disabled:opacity-50"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>تحميل 📥</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* عارض الـ PDF المتجاوب مع مختلف الأنظمة */}
+                  <div className="flex-1 w-full relative bg-slate-900 overflow-hidden">
+                    <object
+                      data={pdfBlobUrl}
+                      type="application/pdf"
+                      className="w-full h-full rounded-b-2xl"
+                    >
+                      <iframe
+                        src={pdfBlobUrl}
+                        className="w-full h-full border-0 rounded-b-2xl bg-white dark:bg-slate-900"
+                        title={file.title}
+                      />
+                    </object>
+                  </div>
+                </div>
               ) : null}
             </div>
           ) : (
@@ -385,9 +424,7 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
           <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
             <span className="line-clamp-1">
-              {hasAccess
-                ? `التحميل متاح فوراً لجهازك مع تشفير صفحات الملف باسمك (${studentName})`
-                : 'اشترك الآن (75 ر.س/سنة) لتحميل النسخ المشفرة لجميع الملفات والمحاضرات'}
+              التحميل متاح فوراً لجهازك مع تشفير صفحات الملف باسمك ({studentName})
             </span>
           </div>
 
@@ -399,41 +436,28 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
               إغلاق
             </button>
 
-            {hasAccess ? (
-              <button
-                onClick={handleDownload}
-                disabled={isDownloading}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs sm:text-sm font-black transition shadow-md hover:shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer flex-1 sm:flex-initial active:scale-95 disabled:opacity-60"
-              >
-                {isDownloading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>جاري تشفير وتنزيل الملف...</span>
-                  </>
-                ) : downloadSuccess ? (
-                  <>
-                    <CheckCircle2 className="w-4 h-4 text-emerald-950" />
-                    <span>تم التحميل على جهازك بنجاح! 📥</span>
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-4 h-4" />
-                    <span>تحميل الملف كاملاً على جهازك (PDF مشفر) 📥</span>
-                  </>
-                )}
-              </button>
-            ) : (
-              <button
-                onClick={() => {
-                  onClose();
-                  onSubscribeClick?.();
-                }}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 text-xs sm:text-sm font-black transition shadow-md hover:shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer flex-1 sm:flex-initial active:scale-95"
-              >
-                <Lock className="w-4 h-4" />
-                <span>تفعيل الاشتراك لتحميل الملف (75 ر.س/سنة) 🚀</span>
-              </button>
-            )}
+            <button
+              onClick={handleDownload}
+              disabled={isDownloading}
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs sm:text-sm font-black transition shadow-md hover:shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer flex-1 sm:flex-initial active:scale-95 disabled:opacity-60"
+            >
+              {isDownloading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>جاري تشفير وتنزيل الملف...</span>
+                </>
+              ) : downloadSuccess ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-950" />
+                  <span>تم التحميل على جهازك بنجاح! 📥</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4" />
+                  <span>تحميل الملف كاملاً على جهازك (PDF مشفر) 📥</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>

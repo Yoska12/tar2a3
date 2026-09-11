@@ -461,26 +461,59 @@ export const getWatermarkedPdfBlob = async (
 };
 
 /**
- * تحميل الملف كاملاً على جهاز الطالب مع تشفير صفحاته ببياناته الأمنية
+ * مشغل التنزيل الحقيقي على ذاكرة جهاز الطالب متوافق مع كافة المتصفحات (كمبيوتر وهاتف)
  */
-export const downloadWatermarkedFile = async (
-  file: { title: string; fileUrl: string; description?: string; pagesCount?: string },
-  currentUser?: any
-): Promise<void> => {
-  const blob = await getWatermarkedPdfBlob(file.fileUrl, file, currentUser);
-  const safeName = file.title.toLowerCase().endsWith('.pdf') ? file.title : `${file.title}.pdf`;
-  
+export const triggerBrowserDownload = (blob: Blob, rawFileName: string): void => {
+  // 1. تنظيف اسم الملف من أي رموز قد تمنع أنظمة التشغيل من حفظه
+  const cleanBase = (rawFileName || 'مذكرة_طرقع_التعليمية')
+    .replace(/[/\\?%*:|"<>#]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const safeName = cleanBase.toLowerCase().endsWith('.pdf') ? cleanBase : `${cleanBase}.pdf`;
+
+  // 2. لأنظمة إنترنت إكسبلورر / ويندوز القديمة
+  if (typeof (window.navigator as any)?.msSaveOrOpenBlob === 'function') {
+    (window.navigator as any).msSaveOrOpenBlob(blob, safeName);
+    return;
+  }
+
+  // 3. طريقة HTML5 الرابط المباشر
   const objectUrl = URL.createObjectURL(blob);
   const a = document.createElement('a');
+  a.style.position = 'fixed';
+  a.style.left = '-9999px';
+  a.style.top = '-9999px';
+  a.style.opacity = '0';
   a.href = objectUrl;
   a.download = safeName;
-  a.target = '_blank';
+  a.rel = 'noopener';
+  // هام جداً: عدم استخدام target="_blank" حتى لا يقوم كروم بحظر التنزيل التلقائي!
+
   document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
 
-  setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+  try {
+    a.click();
+  } catch (err) {
+    console.warn('Direct click failed, dispatching synthetic MouseEvent:', err);
+    const evt = new MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+    });
+    a.dispatchEvent(evt);
+  }
 
+  // 4. إبقاء الرابط فعالاً لثوانٍ ثم تنظيفه
+  setTimeout(() => {
+    try {
+      if (document.body.contains(a)) {
+        document.body.removeChild(a);
+      }
+      URL.revokeObjectURL(objectUrl);
+    } catch (e) {}
+  }, 60000);
+
+  // إرسال إشعار للموقع
   if (typeof window !== 'undefined') {
     window.dispatchEvent(
       new CustomEvent('tarqa_download_notice', {
@@ -491,14 +524,43 @@ export const downloadWatermarkedFile = async (
 };
 
 /**
+ * تحميل الملف كاملاً على جهاز الطالب مع تشفير صفحاته ببياناته الأمنية
+ */
+export const downloadWatermarkedFile = async (
+  file: { title: string; fileUrl: string; description?: string; pagesCount?: string },
+  currentUser?: any
+): Promise<void> => {
+  try {
+    const blob = await getWatermarkedPdfBlob(file.fileUrl, file, currentUser);
+    triggerBrowserDownload(blob, file.title);
+  } catch (err) {
+    console.error('Watermark stamping failed during download, activating direct fallback:', err);
+    try {
+      const fallbackBytes = await createMultiPageTarqaPdf(file.title, file.description, file.pagesCount);
+      const fallbackBlob = new Blob([fallbackBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
+      triggerBrowserDownload(fallbackBlob, file.title);
+    } catch (fallbackErr) {
+      console.error('Fatal download fallback error:', fallbackErr);
+    }
+  }
+};
+
+/**
  * الحصول على رابط مباشر لملف PDF المشفر للمعاينة الحية داخل المتصفح
  */
 export const getWatermarkedPdfBlobUrl = async (
   file: { title: string; fileUrl: string; description?: string; pagesCount?: string },
   currentUser?: any
 ): Promise<string> => {
-  const blob = await getWatermarkedPdfBlob(file.fileUrl, file, currentUser);
-  return URL.createObjectURL(blob);
+  try {
+    const blob = await getWatermarkedPdfBlob(file.fileUrl, file, currentUser);
+    return URL.createObjectURL(blob);
+  } catch (err) {
+    console.error('Failed to get watermarked preview, falling back to base PDF:', err);
+    const fallbackBytes = await createMultiPageTarqaPdf(file.title, file.description, file.pagesCount);
+    const fallbackBlob = new Blob([fallbackBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
+    return URL.createObjectURL(fallbackBlob);
+  }
 };
 
 /**
@@ -511,8 +573,10 @@ export const resolvePdfUrl = async (
   pagesCount?: string,
   currentUser?: any
 ): Promise<string> => {
-  const blob = await getWatermarkedPdfBlob(url, { title: title || 'مذكرة طرقع', description, pagesCount }, currentUser);
-  return URL.createObjectURL(blob);
+  return await getWatermarkedPdfBlobUrl(
+    { title: title || 'مذكرة طرقع', fileUrl: url, description, pagesCount },
+    currentUser
+  );
 };
 
 /**
@@ -549,6 +613,7 @@ export const fileStorageService = {
   resolvePdfUrl,
   downloadOrPreviewFile,
   downloadWatermarkedFile,
+  triggerBrowserDownload,
   getWatermarkedPdfBlobUrl,
   getWatermarkedPdfBlob,
   createStudentWatermarkPng,

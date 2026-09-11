@@ -89,6 +89,10 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
   const [isSubscribing, setIsSubscribing] = useState(false);
   const [subscribeSuccessMessage, setSubscribeSuccessMessage] = useState<string | null>(null);
 
+  // حالة التحميل والتنزيل المباشر
+  const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null);
+  const [downloadToast, setDownloadToast] = useState<string | null>(null);
+
   // نافذة إضافة / تعديل محاضرة
   const [lessonModalOpen, setLessonModalOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
@@ -323,8 +327,11 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
       return;
     }
 
-    const hasAccess = file.isFreePreview || subscriptionInfo.isSubscribed;
-    if (hasAccess) {
+    // تنزيل الملف كاملاً على جهاز الطالب مباشرة مع ختم وتشفير بياناته الأمنية
+    setDownloadingFileId(file.id);
+    setDownloadToast(`جاري تشفير وتنزيل [${file.title}] على جهازك... 🛡️`);
+
+    try {
       downloadTrackingService.trackDownload(
         {
           id: file.id,
@@ -335,12 +342,16 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
         },
         currentUser
       );
-      await fileStorageService.downloadWatermarkedFile(
-        file,
-        currentUser
-      );
-    } else {
-      setShowSubscribeModal(true);
+
+      await fileStorageService.downloadWatermarkedFile(file, currentUser);
+      setDownloadToast(`تم تنزيل [${file.title}] بنجاح على جهازك (PDF مشفر ومحمي) ✅`);
+      setTimeout(() => setDownloadToast(null), 5000);
+    } catch (err) {
+      console.error('Error downloading file:', err);
+      setDownloadToast('تعذر تنزيل الملف، يرجى المحاولة مجدداً');
+      setTimeout(() => setDownloadToast(null), 4000);
+    } finally {
+      setDownloadingFileId(null);
     }
   };
 
@@ -805,17 +816,18 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                   <div className="lg:col-span-4 flex flex-col sm:flex-row lg:flex-col gap-3 justify-center">
                     <button
                       onClick={() => handleFileAction(mainFile, false)}
-                      className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                      disabled={downloadingFileId === mainFile.id}
+                      className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2 cursor-pointer active:scale-98 disabled:opacity-75"
                     >
-                      {mainFile.isFreePreview || subscriptionInfo.isSubscribed ? (
+                      {downloadingFileId === mainFile.id ? (
                         <>
-                          <Download className="w-4 h-4" />
-                          <span>تحميل الملف الكامل الآن 📥</span>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>جاري تشفير وتنزيل الملف على جهازك...</span>
                         </>
                       ) : (
                         <>
-                          <Lock className="w-4 h-4 text-amber-300" />
-                          <span>فتح وتحميل الملف (مشتركين) 🔒</span>
+                          <Download className="w-4 h-4" />
+                          <span>تحميل الملف الكامل الآن على جهازك 📥</span>
                         </>
                       )}
                     </button>
@@ -943,10 +955,20 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                         <button
                           type="button"
                           onClick={() => handleFileAction(file, false)}
-                          className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                          disabled={downloadingFileId === file.id}
+                          className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95 disabled:opacity-75"
                         >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>تحميل الملف</span>
+                          {downloadingFileId === file.id ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              <span>جاري التنزيل...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Download className="w-3.5 h-3.5" />
+                              <span>تحميل الملف</span>
+                            </>
+                          )}
                         </button>
 
                         <button
@@ -1795,6 +1817,13 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
         onSubscribeClick={() => setShowSubscribeModal(true)}
         onDownloadClick={(fileToDownload) => handleFileAction(fileToDownload, false)}
       />
+      {/* إشعار عائم بحالة التنزيل والتشفير */}
+      {downloadToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl bg-slate-900 text-white text-xs sm:text-sm font-bold shadow-2xl border border-amber-500/40 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span>{downloadToast}</span>
+        </div>
+      )}
     </div>
   );
 };

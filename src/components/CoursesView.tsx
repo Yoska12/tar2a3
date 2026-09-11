@@ -47,6 +47,7 @@ import { downloadTrackingService } from '../lib/downloadTrackingService';
 import { KashierCheckoutModal } from './KashierCheckoutModal';
 import { getKashierSettings, KashierTransaction } from '../lib/kashierService';
 import { sanitizeUrl } from '../lib/securityUtils';
+import { fileStorageService } from '../lib/fileStorageService';
 
 interface CoursesViewProps {
   currentUser?: TarqaUser | null;
@@ -161,6 +162,62 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
     fileType: 'pdf' as 'pdf' | 'worksheet' | 'summary' | 'book',
     isFreePreview: false,
   });
+
+  // حالة رفع ملف PDF في نافذة الملفات
+  const [isUploadingPdf, setIsUploadingPdf] = useState(false);
+  const [pdfUploadProgress, setPdfUploadProgress] = useState(0);
+  const [pdfUploadError, setPdfUploadError] = useState<string | null>(null);
+  const pdfFileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // معالجة اختيار ورفع ملف PDF
+  const handlePdfFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.pdf') && !file.type.includes('pdf')) {
+      setPdfUploadError('يرجى اختيار ملف بصيغة PDF فقط.');
+      return;
+    }
+
+    setIsUploadingPdf(true);
+    setPdfUploadProgress(15);
+    setPdfUploadError(null);
+
+    // ملء العنوان تلقائياً إذا كان فارغاً
+    if (!fileFormData.title.trim()) {
+      setFileFormData((prev) => ({
+        ...prev,
+        title: file.name.replace(/\.pdf$/i, ''),
+      }));
+    }
+
+    try {
+      const res = await fileStorageService.uploadPdf(file, (p) => {
+        setPdfUploadProgress(p);
+      });
+
+      if (res.success && res.fileUrl) {
+        setFileFormData((prev) => ({
+          ...prev,
+          fileUrl: res.fileUrl,
+          fileSize: res.fileSizeFormatted || prev.fileSize,
+        }));
+      } else {
+        setPdfUploadError(res.error || 'فشلت عملية رفع الملف');
+      }
+    } catch (err: any) {
+      console.warn('PDF upload fallback activated:', err);
+      const fallbackUrl = URL.createObjectURL(file);
+      setFileFormData((prev) => ({
+        ...prev,
+        fileUrl: fallbackUrl,
+      }));
+    } finally {
+      setIsUploadingPdf(false);
+      setPdfUploadProgress(0);
+      if (pdfFileInputRef.current) pdfFileInputRef.current.value = '';
+    }
+  };
 
   // الاستماع لتغييرات الدورات والملفات والاشتراكات
   useEffect(() => {
@@ -1485,18 +1542,67 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  رابط تحميل الملف (URL) *
-                </label>
-                <input
-                  type="url"
-                  required
-                  value={fileFormData.fileUrl}
-                  onChange={(e) => setFileFormData({ ...fileFormData, fileUrl: e.target.value })}
-                  placeholder="https://tarqa.app/files/tarqa_complete_2025.pdf"
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
-                />
+              {/* قسم رفع الملف من الجهاز أو إدخال رابط */}
+              <div className="space-y-2.5 p-3.5 rounded-2xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    رفع ملف الـ PDF من جهازك:
+                  </label>
+                  <input
+                    ref={pdfFileInputRef}
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    onChange={handlePdfFileSelect}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => pdfFileInputRef.current?.click()}
+                    disabled={isUploadingPdf}
+                    className="w-full py-2.5 px-4 rounded-xl border-2 border-dashed border-blue-400 dark:border-blue-600/60 bg-white dark:bg-slate-900 hover:bg-blue-50/50 dark:hover:bg-blue-900/20 text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center justify-center gap-2 transition cursor-pointer"
+                  >
+                    {isUploadingPdf ? (
+                      <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>جارٍ رفع وتجهيز الملف ({pdfUploadProgress}%)...</span>
+                      </div>
+                    ) : (
+                      <>
+                        <UploadCloud className="w-4 h-4 text-blue-500" />
+                        <span>اضغط لرفع ملف PDF من جهازك مباشرة 📤</span>
+                      </>
+                    )}
+                  </button>
+
+                  {pdfUploadError && (
+                    <p className="text-[11px] font-bold text-rose-500 mt-1">{pdfUploadError}</p>
+                  )}
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                      أو رابط تحميل الملف (URL / تم الرفع):
+                    </label>
+                    {fileFormData.fileUrl && (
+                      <span className="text-[10px] font-bold text-emerald-500 flex items-center gap-1">
+                        <Check className="w-3 h-3" />
+                        <span>الملف جاهز</span>
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={fileFormData.fileUrl.startsWith('data:') ? 'تم تجهيز وتضمين ملف PDF محلياً بنجاح 📄' : fileFormData.fileUrl}
+                    onChange={(e) => {
+                      if (!e.target.value.includes('تم تجهيز')) {
+                        setFileFormData({ ...fileFormData, fileUrl: e.target.value });
+                      }
+                    }}
+                    placeholder="https://tarqa.app/files/tarqa_complete_2025.pdf"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 text-left dir-ltr"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

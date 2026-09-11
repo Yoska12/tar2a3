@@ -3,6 +3,7 @@ import { UploadCloud, FileText, Trash2, CheckCircle2, AlertCircle, File, Downloa
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { LessonAttachment, AttachmentType } from '../types';
 import { sanitizeUrl } from '../lib/securityUtils';
+import { fileStorageService } from '../lib/fileStorageService';
 
 interface FileUploadZoneProps {
   lessonId: string;
@@ -56,42 +57,17 @@ export const FileUploadZone: React.FC<FileUploadZoneProps> = ({
     setUploadProgress(20);
 
     try {
-      let fileUrl = '';
-      const cleanFileName = `${lessonId}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-
-      // 1. إذا كان Supabase مرتبطاً فعلياً
-      if (isSupabaseConfigured) {
-        setUploadProgress(50);
-        const { data, error } = await supabase.storage
-          .from('lecture-files')
-          .upload(`attachments/${cleanFileName}`, file, {
-            cacheControl: '3600',
-            upsert: false,
-          });
-
-        if (error) throw error;
-
-        // الحصول على الرابط العام
-        const { data: publicUrlData } = supabase.storage
-          .from('lecture-files')
-          .getPublicUrl(data.path);
-
-        fileUrl = publicUrlData.publicUrl;
-      } else {
-        // 2. وضع المعاينة المحلي (Local Demo Mode)
-        setUploadProgress(70);
-        await new Promise((res) => setTimeout(res, 600));
-        fileUrl = `https://tarqa.app/storage/lecture-files/${cleanFileName}`;
+      const res = await fileStorageService.uploadPdf(file, (p) => setUploadProgress(p));
+      if (!res.success || !res.fileUrl) {
+        throw new Error(res.error || 'فشل رفع الملف');
       }
-
-      setUploadProgress(100);
 
       const newAttachment: LessonAttachment = {
         id: 'att-' + Date.now(),
         lessonId,
         title: file.name,
-        fileUrl,
-        fileSize: formatFileSize(file.size),
+        fileUrl: res.fileUrl,
+        fileSize: res.fileSizeFormatted || formatFileSize(file.size),
         fileType,
         downloadCount: 0,
       };

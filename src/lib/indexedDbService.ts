@@ -1,6 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { TarqaUser } from './supabase';
-import { CourseModule, Lesson } from '../types';
 
 export interface AppStateData {
   currentView: 'home' | 'courses' | 'quiz' | 'result' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles';
@@ -59,134 +58,227 @@ interface TarqaDBSchema extends DBSchema {
 const DB_NAME = 'tarqa_indexeddb_vault';
 const DB_VERSION = 1;
 
-let dbPromise: Promise<IDBPDatabase<TarqaDBSchema>> | null = null;
+let isIdbDisabled = false;
+let dbPromise: Promise<IDBPDatabase<TarqaDBSchema> | null> | null = null;
 
 /**
- * فتح وتهيئة قاعدة بيانات IndexedDB
+ * فتح وتهيئة قاعدة بيانات IndexedDB مع دعم المعالجة الذاتية والتراجع التلقائي للتخزين المحلي
  */
-export const getTarqaDB = async (): Promise<IDBPDatabase<TarqaDBSchema>> => {
+export const getTarqaDB = async (): Promise<IDBPDatabase<TarqaDBSchema> | null> => {
+  if (isIdbDisabled) return null;
   if (typeof window === 'undefined' || !window.indexedDB) {
-    throw new Error('IndexedDB غير مدعوم في هذه البيئة');
+    isIdbDisabled = true;
+    return null;
   }
 
-  if (!dbPromise) {
-    dbPromise = openDB<TarqaDBSchema>(DB_NAME, DB_VERSION, {
-      upgrade(db, oldVersion, newVersion, transaction) {
-        // 1. متجر بيانات المستخدمين المسجلين
-        if (!db.objectStoreNames.contains('users')) {
-          const userStore = db.createObjectStore('users', { keyPath: 'id' });
-          userStore.createIndex('by-email', 'email', { unique: false });
-        }
-
-        // 2. متجر الجلسة النشطة الحالية
-        if (!db.objectStoreNames.contains('current_session')) {
-          db.createObjectStore('current_session');
-        }
-
-        // 3. متجر حالة التطبيق والمسار الحالي (لمنع الرجوع للرئيسية عند الريفرش)
-        if (!db.objectStoreNames.contains('app_state')) {
-          db.createObjectStore('app_state');
-        }
-
-        // 4. متجر نتائج ومحاولات الاختبارات
-        if (!db.objectStoreNames.contains('quiz_attempts')) {
-          const attemptStore = db.createObjectStore('quiz_attempts', { keyPath: 'id' });
-          attemptStore.createIndex('by-user', 'userId', { unique: false });
-          attemptStore.createIndex('by-timestamp', 'timestamp', { unique: false });
-        }
-
-        // 5. متجر تقدم المحاضرات والدروس
-        if (!db.objectStoreNames.contains('lesson_progress')) {
-          db.createObjectStore('lesson_progress', { keyPath: 'lessonId' });
-        }
-      },
-    });
+  if (dbPromise) {
+    try {
+      const db = await dbPromise;
+      if (db) return db;
+    } catch {
+      dbPromise = null;
+    }
   }
 
+  const openDatabase = async (allowHealing = true): Promise<IDBPDatabase<TarqaDBSchema> | null> => {
+    try {
+      const db = await openDB<TarqaDBSchema>(DB_NAME, DB_VERSION, {
+        upgrade(db) {
+          // 1. متجر بيانات المستخدمين المسجلين
+          if (!db.objectStoreNames.contains('users')) {
+            const userStore = db.createObjectStore('users', { keyPath: 'id' });
+            userStore.createIndex('by-email', 'email', { unique: false });
+          }
+
+          // 2. متجر الجلسة النشطة الحالية
+          if (!db.objectStoreNames.contains('current_session')) {
+            db.createObjectStore('current_session');
+          }
+
+          // 3. متجر حالة التطبيق والمسار الحالي (لمنع الرجوع للرئيسية عند الريفرش)
+          if (!db.objectStoreNames.contains('app_state')) {
+            db.createObjectStore('app_state');
+          }
+
+          // 4. متجر نتائج ومحاولات الاختبارات
+          if (!db.objectStoreNames.contains('quiz_attempts')) {
+            const attemptStore = db.createObjectStore('quiz_attempts', { keyPath: 'id' });
+            attemptStore.createIndex('by-user', 'userId', { unique: false });
+            attemptStore.createIndex('by-timestamp', 'timestamp', { unique: false });
+          }
+
+          // 5. متجر تقدم المحاضرات والدروس
+          if (!db.objectStoreNames.contains('lesson_progress')) {
+            db.createObjectStore('lesson_progress', { keyPath: 'lessonId' });
+          }
+        },
+        blocked() {
+          console.info('[IndexedDB] Upgrade blocked by active tab.');
+        },
+        blocking(_currentVersion, _blockedVersion, event) {
+          try {
+            (event?.target as any)?.result?.close?.();
+          } catch {}
+        },
+        terminated() {
+          dbPromise = null;
+        },
+      });
+
+      return db;
+    } catch (err: any) {
+      console.info('[IndexedDB] Storage engine notification:', err?.name || err?.message || 'internal');
+
+      // إذا واجه المتصفح خطأ قفل أو تلف بالقرص (UnknownError)، نحاول تنظيف المتجر وإعادة فتحه مرة واحدة
+      if (allowHealing && typeof window !== 'undefined' && window.indexedDB?.deleteDatabase) {
+        try {
+          await new Promise<void>((resolve) => {
+            try {
+              const req = window.indexedDB.deleteDatabase(DB_NAME);
+              req.onsuccess = () => resolve();
+              req.onerror = () => resolve();
+              req.onblocked = () => resolve();
+              setTimeout(resolve, 600);
+            } catch {
+              resolve();
+            }
+          });
+          return await openDatabase(false);
+        } catch {}
+      }
+
+      // إذا كان المتصفح يمنع IndexedDB (وضع التصفح الخاص الصارم أو منع ملفات التخزين)، التبديل للتخزين المحلي بنعومة
+      isIdbDisabled = true;
+      dbPromise = null;
+      console.info('[IndexedDB] Running in resilient LocalStorage mode.');
+      return null;
+    }
+  };
+
+  dbPromise = openDatabase(true);
   return dbPromise;
 };
 
 // =========================================================================
-// 1. إدارة جلسة المستخدم الحالي في IndexedDB
+// 1. إدارة جلسة المستخدم الحالي في IndexedDB و LocalStorage
 // =========================================================================
 
 /**
- * حفظ جلسة المستخدم الحالي في IndexedDB
+ * حفظ جلسة المستخدم الحالي
  */
 export const saveCurrentUserToIDB = async (user: TarqaUser): Promise<void> => {
   try {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('tarqa_current_user', JSON.stringify(user));
+    }
+
     const db = await getTarqaDB();
+    if (!db) return;
+
     await db.put('current_session', {
       user,
       lastActive: Date.now(),
     }, 'active_user');
 
-    // حفظ المستخدم أيضاً في متجر المستخدمين
-    await db.put('users', {
-      ...user,
-      updatedAt: Date.now(),
-    });
-  } catch (e) {
-    console.warn('[IndexedDB] Failed to save current user:', e);
-  }
+    if (user?.id) {
+      await db.put('users', {
+        ...user,
+        updatedAt: Date.now(),
+      });
+    }
+  } catch {}
 };
 
 /**
- * جلب جلسة المستخدم الحالي من IndexedDB
+ * جلب جلسة المستخدم الحالي
  */
 export const getCurrentUserFromIDB = async (): Promise<TarqaUser | null> => {
   try {
     const db = await getTarqaDB();
-    const session = await db.get('current_session', 'active_user');
-    return session?.user || null;
-  } catch (e) {
-    console.warn('[IndexedDB] Failed to get current user:', e);
-    return null;
+    if (db) {
+      const session = await db.get('current_session', 'active_user');
+      if (session?.user) return session.user;
+    }
+  } catch {}
+
+  // استرجاع احتياطي من التخزين المحلي
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('tarqa_current_user');
+      if (raw) return JSON.parse(raw);
+    } catch {}
   }
+  return null;
 };
 
 /**
- * مسح جلسة المستخدم الحالي من IndexedDB عند تسجيل الخروج
+ * مسح جلسة المستخدم الحالي عند تسجيل الخروج
  */
 export const clearCurrentUserFromIDB = async (): Promise<void> => {
   try {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('tarqa_current_user');
+    }
     const db = await getTarqaDB();
-    await db.delete('current_session', 'active_user');
-  } catch (e) {
-    console.warn('[IndexedDB] Failed to clear current user session:', e);
-  }
+    if (db) {
+      await db.delete('current_session', 'active_user');
+    }
+  } catch {}
 };
 
 // =========================================================================
-// 2. إدارة المستخدمين المسجلين في IndexedDB
+// 2. إدارة المستخدمين المسجلين
 // =========================================================================
 
 /**
- * حفظ مستخدم مسجل في متجر users بـ IndexedDB
+ * حفظ مستخدم مسجل
  */
 export const saveRegisteredUserToIDB = async (user: TarqaUser & { password?: string }): Promise<void> => {
   try {
+    // مزامنة التخزين المحلي
+    if (typeof window !== 'undefined' && user?.id) {
+      try {
+        const raw = localStorage.getItem('tarqa_registered_users');
+        const list: any[] = raw ? JSON.parse(raw) : [];
+        const idx = list.findIndex((u: any) => u.id === user.id || (u.email && u.email.toLowerCase() === user.email.toLowerCase()));
+        if (idx >= 0) {
+          list[idx] = { ...list[idx], ...user };
+        } else {
+          list.push(user);
+        }
+        localStorage.setItem('tarqa_registered_users', JSON.stringify(list));
+      } catch {}
+    }
+
     const db = await getTarqaDB();
+    if (!db || !user?.id) return;
+
     await db.put('users', {
       ...user,
       updatedAt: Date.now(),
     });
-  } catch (e) {
-    console.warn('[IndexedDB] Failed to save registered user:', e);
-  }
+  } catch {}
 };
 
 /**
- * استرجاع كافة المستخدمين المسجلين من IndexedDB
+ * استرجاع كافة المستخدمين المسجلين
  */
 export const getAllRegisteredUsersFromIDB = async (): Promise<TarqaUser[]> => {
   try {
     const db = await getTarqaDB();
-    return await db.getAll('users');
-  } catch (e) {
-    console.warn('[IndexedDB] Failed to get registered users:', e);
-    return [];
+    if (db) {
+      return await db.getAll('users');
+    }
+  } catch {}
+
+  // استرجاع احتياطي من التخزين المحلي
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('tarqa_registered_users');
+      if (raw) return JSON.parse(raw);
+    } catch {}
   }
+  return [];
 };
 
 // =========================================================================
@@ -196,7 +288,7 @@ export const getAllRegisteredUsersFromIDB = async (): Promise<TarqaUser[]> => {
 const APP_STATE_KEY = 'navigation_state';
 
 /**
- * حفظ حالة المسار والشاشة النشطة حالياً في IndexedDB والتخزين المحلي
+ * حفظ حالة المسار والشاشة النشطة حالياً
  */
 export const persistViewState = async (state: Partial<AppStateData>): Promise<void> => {
   try {
@@ -216,8 +308,10 @@ export const persistViewState = async (state: Partial<AppStateData>): Promise<vo
       }
     }
 
-    // 2. الحفظ الدائم في IndexedDB
+    // 2. الحفظ في IndexedDB إن توفر
     const db = await getTarqaDB();
+    if (!db) return;
+
     const existing = (await db.get('app_state', APP_STATE_KEY)) || {};
     const merged: AppStateData = {
       currentView: state.currentView || existing.currentView || 'home',
@@ -227,26 +321,24 @@ export const persistViewState = async (state: Partial<AppStateData>): Promise<vo
       updatedAt: Date.now(),
     };
     await db.put('app_state', merged, APP_STATE_KEY);
-  } catch (e) {
-    console.warn('[IndexedDB] Failed to persist view state:', e);
-  }
+  } catch {}
 };
 
 /**
- * استعادة حالة الشاشة المحفوظة من IndexedDB أو التخزين المحلي
+ * استعادة حالة الشاشة المحفوظة
  */
 export const getPersistedViewState = async (): Promise<AppStateData | null> => {
   try {
     const db = await getTarqaDB();
-    const state = await db.get('app_state', APP_STATE_KEY);
-    if (state && state.currentView) {
-      return state;
+    if (db) {
+      const state = await db.get('app_state', APP_STATE_KEY);
+      if (state && state.currentView) {
+        return state;
+      }
     }
-  } catch (e) {
-    console.warn('[IndexedDB] Error reading persisted view state from IDB:', e);
-  }
+  } catch {}
 
-  // Fallback إلى localStorage إذا لم تتوفر بعد في IndexedDB
+  // Fallback إلى localStorage إذا لم تتوفر في IndexedDB
   if (typeof window !== 'undefined') {
     const view = localStorage.getItem('tarqa_current_view') as any;
     const tab = localStorage.getItem('tarqa_active_tab') as any;
@@ -265,11 +357,11 @@ export const getPersistedViewState = async (): Promise<AppStateData | null> => {
 };
 
 // =========================================================================
-// 4. حفظ محاولات الاختبارات وتقدم الدروس في IndexedDB
+// 4. حفظ محاولات الاختبارات وتقدم الدروس
 // =========================================================================
 
 /**
- * حفظ محاولة اختبار كاملة في IndexedDB
+ * حفظ محاولة اختبار
  */
 export const saveQuizAttemptToIDB = async (attempt: Omit<StoredQuizAttempt, 'id' | 'timestamp'> & { id?: string }): Promise<string> => {
   const attemptId = attempt.id || `attempt_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
@@ -279,47 +371,79 @@ export const saveQuizAttemptToIDB = async (attempt: Omit<StoredQuizAttempt, 'id'
     timestamp: Date.now(),
   };
 
+  // مزامنة التخزين المحلي
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('tarqa_attempts');
+      const list: any[] = raw ? JSON.parse(raw) : [];
+      list.unshift(record);
+      if (list.length > 50) list.pop();
+      localStorage.setItem('tarqa_attempts', JSON.stringify(list));
+    } catch {}
+  }
+
   try {
     const db = await getTarqaDB();
-    await db.put('quiz_attempts', record);
-  } catch (e) {
-    console.warn('[IndexedDB] Failed to save quiz attempt:', e);
-  }
+    if (db) {
+      await db.put('quiz_attempts', record);
+    }
+  } catch {}
 
   return attemptId;
 };
 
 /**
- * جلب جميع محاولات الاختبار للمستخدم من IndexedDB
+ * جلب جميع محاولات الاختبار للمستخدم
  */
 export const getQuizAttemptsFromIDB = async (userId?: string): Promise<StoredQuizAttempt[]> => {
   try {
     const db = await getTarqaDB();
-    if (userId) {
-      return await db.getAllFromIndex('quiz_attempts', 'by-user', userId);
+    if (db) {
+      if (userId) {
+        return await db.getAllFromIndex('quiz_attempts', 'by-user', userId);
+      }
+      const all = await db.getAll('quiz_attempts');
+      return all.sort((a, b) => b.timestamp - a.timestamp);
     }
-    const all = await db.getAll('quiz_attempts');
-    return all.sort((a, b) => b.timestamp - a.timestamp);
-  } catch (e) {
-    console.warn('[IndexedDB] Failed to get quiz attempts:', e);
-    return [];
+  } catch {}
+
+  // استرجاع احتياطي من التخزين المحلي
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('tarqa_attempts');
+      if (raw) {
+        const attempts: StoredQuizAttempt[] = JSON.parse(raw);
+        if (userId) {
+          return attempts.filter((a) => a.userId === userId);
+        }
+        return attempts.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      }
+    } catch {}
   }
+
+  return [];
 };
 
 /**
- * حفظ حالة إكمال درس في IndexedDB
+ * حفظ حالة إكمال درس
  */
 export const saveLessonProgressToIDB = async (lessonId: string, isCompleted: boolean): Promise<void> => {
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(`tarqa_lesson_${lessonId}`, isCompleted ? 'completed' : 'in_progress');
+    } catch {}
+  }
+
   try {
     const db = await getTarqaDB();
-    await db.put('lesson_progress', {
-      lessonId,
-      isCompleted,
-      completedAt: Date.now(),
-    });
-  } catch (e) {
-    console.warn('[IndexedDB] Failed to save lesson progress:', e);
-  }
+    if (db) {
+      await db.put('lesson_progress', {
+        lessonId,
+        isCompleted,
+        completedAt: Date.now(),
+      });
+    }
+  } catch {}
 };
 
 // =========================================================================
@@ -334,6 +458,10 @@ export const autoSyncLocalStorageToIndexedDB = async (): Promise<void> => {
 
   try {
     const db = await getTarqaDB();
+    if (!db) {
+      // IndexedDB storage unavailable in this environment; localStorage is active and fully functional
+      return;
+    }
 
     // 1. مزامنة المستخدم الحالي
     const rawCurUser = localStorage.getItem('tarqa_current_user');
@@ -389,7 +517,7 @@ export const autoSyncLocalStorageToIndexedDB = async (): Promise<void> => {
         }
       } catch {}
     }
-  } catch (e) {
-    console.warn('[IndexedDB] Auto-sync encountered an issue:', e);
+  } catch (e: any) {
+    console.info('[IndexedDB] Auto-sync bypassed gracefully:', e?.message || e);
   }
 };

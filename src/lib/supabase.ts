@@ -1,21 +1,27 @@
 import { createClient } from '@supabase/supabase-js';
 import { UserRole } from '../types';
 import { sendWelcomeTelegramMessage } from './telegram';
+import { isOwnerEmail } from './securityUtils';
 
-// قراءة بيانات الاتصال بـ Supabase من متغيرات بيئة Vite
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://djkwgwdlygxqcateivbc.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_kC-Ok9GoiYyg3ffh0rpyXg_mS8fY8Gm';
+export { isOwnerEmail } from './securityUtils';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('Supabase URL or Anon Key is missing in configuration.');
-}
+// قراءة بيانات الاتصال بـ Supabase حصراً من متغيرات بيئة .env
+const rawSupabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+const rawSupabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
 export const isSupabaseConfigured = Boolean(
-  supabaseUrl && 
-  supabaseAnonKey && 
-  !supabaseUrl.includes('placeholder') &&
-  supabaseUrl.startsWith('https://')
+  rawSupabaseUrl && 
+  rawSupabaseAnonKey && 
+  !rawSupabaseUrl.includes('placeholder') &&
+  rawSupabaseUrl.startsWith('https://')
 );
+
+if (!isSupabaseConfigured) {
+  console.warn('[Supabase Config] Supabase URL or Anon Key is missing or invalid in .env. Running in offline/demo mode.');
+}
+
+const supabaseUrl = rawSupabaseUrl || 'https://placeholder.supabase.co';
+const supabaseAnonKey = rawSupabaseAnonKey || 'placeholder-anon-key';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 export { createClient };
@@ -45,8 +51,7 @@ export interface TarqaUser {
 export const syncUserToMembersDashboard = async (user: TarqaUser) => {
   if (!user || (!user.id && !user.email)) return;
 
-  const normalizedEmail = (user.email || '').trim().toLowerCase();
-  const isOwner = normalizedEmail === 'yassooooo27m@gmail.com' || normalizedEmail === 'iyoskalg@gmail.com';
+  const isOwner = isOwnerEmail(user.email);
   const role: UserRole = isOwner ? 'super_admin' : (user.role || 'student');
   const fullName = isOwner 
     ? (user.fullName && user.fullName !== 'طالب طرقع' ? user.fullName : 'Yoska') 
@@ -210,6 +215,19 @@ export const syncUserToMembersDashboard = async (user: TarqaUser) => {
   }
 };
 
+// آلية حماية Rate Limiting محلية لمنع الإساءة وإنشاء الحسابات الوهمية المتكررة
+const signupAttempts: number[] = [];
+const checkSignupRateLimit = () => {
+  const now = Date.now();
+  while (signupAttempts.length && signupAttempts[0] < now - 60000) {
+    signupAttempts.shift();
+  }
+  if (signupAttempts.length >= 3) {
+    throw new Error('تم رصد عدة طلبات تسجيل متتالية! يرجى الانتظار دقيقة قبل إرسال طلب جديد لحماية أمان النظام.');
+  }
+  signupAttempts.push(now);
+};
+
 // خدمة المصادقة الذكية: تدعم الاتصال الحي بـ Supabase + وضع المعاينة المحلي الفوري
 export const authService = {
   isConfigured: () => isSupabaseConfigured,
@@ -230,10 +248,11 @@ export const authService = {
       }
       if (!parsed.role) parsed.role = 'student';
 
-      const emailLower = parsed.email.trim().toLowerCase();
-      const isOwner = emailLower === 'yassooooo27m@gmail.com' || emailLower === 'iyoskalg@gmail.com';
+      const emailLower = (parsed.email || '').trim().toLowerCase();
+      const isOwner = isOwnerEmail(parsed.email);
       if (isOwner) {
         parsed.role = 'super_admin';
+        parsed.isSubscribed = true;
       } else {
         // فحص ما إذا كانت هناك رتبة سوبر أدمن أو رتبة إدارية ممنوحة له في سجل الأدوار
         try {
@@ -250,10 +269,28 @@ export const authService = {
             });
             if (found?.role && (found.role === 'super_admin' || (found.role !== 'student' && parsed.role === 'student'))) {
               parsed.role = found.role;
-              localStorage.setItem('tarqa_current_user', JSON.stringify(parsed));
+            }
+            if (found && (found.isSubscribed === true || found.isSubscribed === false)) {
+              parsed.isSubscribed = found.isSubscribed;
+              if (found.subscriptionExpiresAt) parsed.subscriptionExpiresAt = found.subscriptionExpiresAt;
             }
           }
         } catch {}
+
+        // فحص سجل الاشتراكات المحلي إذا لم يكن الحساب مشتركاً
+        if (!parsed.isSubscribed) {
+          try {
+            const subsRaw = localStorage.getItem('tarqa_subscriptions');
+            if (subsRaw) {
+              const subs = JSON.parse(subsRaw);
+              const sub = subs[parsed.id] || subs[emailLower];
+              if (sub && (sub.active === true || sub.isActive === true)) {
+                parsed.isSubscribed = true;
+                parsed.subscriptionExpiresAt = sub.expiresAt || sub.expiresDate || parsed.subscriptionExpiresAt;
+              }
+            }
+          } catch {}
+        }
       }
 
       return parsed;
@@ -323,8 +360,8 @@ export const authService = {
           (data.user.user_metadata?.role as UserRole) || 
           'student';
 
-        const emailLower = params.email.toLowerCase();
-        const isOwner = emailLower === 'yassooooo27m@gmail.com' || emailLower === 'iyoskalg@gmail.com';
+        const emailLower = (params.email || '').trim().toLowerCase();
+        const isOwner = isOwnerEmail(params.email);
         if (isOwner) {
           role = 'super_admin';
         }
@@ -332,9 +369,9 @@ export const authService = {
         // استعلام ملف المستخدم من Supabase للتحقق من الرتبة وحالة الحظر (بالمعرف والبريد)
         let isBanned = false;
         let banReason: string | undefined = undefined;
+        let profile: any = null;
 
         try {
-          let profile = null;
           const { data: pById } = await supabase
             .from('profiles')
             .select('*')
@@ -376,6 +413,9 @@ export const authService = {
           throw new Error(`تم حظر هذا الحساب من قبل إدارة المنصة.${banReason ? ` سبب الحظر: ${banReason}` : ''}`);
         }
 
+        const isSubscribedFromProfile = isOwner ? true : Boolean(profile?.is_subscribed);
+        const subscriptionExpiresAt = isOwner ? undefined : (profile?.subscription_expires_at || undefined);
+
         const user: TarqaUser = {
           id: data.user.id,
           email: data.user.email || params.email,
@@ -385,6 +425,8 @@ export const authService = {
           telegramUsername: data.user.user_metadata?.telegram_username,
           avatarUrl: data.user.user_metadata?.avatar_url,
           isBanned: false,
+          isSubscribed: isSubscribedFromProfile,
+          subscriptionExpiresAt,
         };
 
         localStorage.setItem('tarqa_current_user', JSON.stringify(user));
@@ -399,8 +441,8 @@ export const authService = {
 
     // 2. وضع المعاينة المحلي (Local Demo Mode) - يعمل 100% دون انقطاع
     const users: any[] = JSON.parse(localStorage.getItem('tarqa_registered_users') || '[]');
-    const emailLower = params.email.toLowerCase();
-    const isOwner = emailLower === 'yassooooo27m@gmail.com' || emailLower === 'iyoskalg@gmail.com';
+    const isOwner = isOwnerEmail(params.email);
+    const emailLower = (params.email || '').toLowerCase();
     const foundUser = users.find((u) => u.email.toLowerCase() === emailLower);
 
     if (foundUser) {
@@ -414,15 +456,22 @@ export const authService = {
 
       // قراءة أحدث رتبة ممنوحة من سجل الأدوار مع فحص Supabase إن كان متصلاً
       let effectiveRole: UserRole = foundUser.role || 'student';
+      let dbSubscribed = false;
+      let dbSubExpires: string | undefined = undefined;
+
       if (isSupabaseConfigured && foundUser.email) {
         try {
           const { data: dbProfile } = await supabase
             .from('profiles')
-            .select('role, is_banned, ban_reason')
+            .select('role, is_banned, ban_reason, is_subscribed, subscription_expires_at')
             .eq('email', emailLower)
             .maybeSingle();
           if (dbProfile?.role) {
             effectiveRole = dbProfile.role as UserRole;
+          }
+          if (dbProfile?.is_subscribed) {
+            dbSubscribed = Boolean(dbProfile.is_subscribed);
+            dbSubExpires = dbProfile.subscription_expires_at || undefined;
           }
         } catch {}
       }
@@ -436,9 +485,30 @@ export const authService = {
         if (assigned?.role) {
           effectiveRole = assigned.role;
         }
+        if (assigned?.isSubscribed) {
+          dbSubscribed = true;
+          dbSubExpires = assigned.subscriptionExpiresAt || dbSubExpires;
+        }
       } catch {}
 
       if (isOwner) effectiveRole = 'super_admin';
+
+      let demoSubscribed = isOwner ? true : (Boolean(foundUser.isSubscribed) || dbSubscribed);
+      let demoExpires = isOwner ? undefined : (foundUser.subscriptionExpiresAt || dbSubExpires);
+
+      if (!demoSubscribed) {
+        try {
+          const subsRaw = localStorage.getItem('tarqa_subscriptions');
+          if (subsRaw) {
+            const subs = JSON.parse(subsRaw);
+            const sub = subs[foundUser.id] || subs[emailLower];
+            if (sub && (sub.active === true || sub.isActive === true)) {
+              demoSubscribed = true;
+              demoExpires = sub.expiresAt || sub.expiresDate;
+            }
+          }
+        } catch {}
+      }
 
       const user: TarqaUser = {
         id: foundUser.id,
@@ -448,6 +518,8 @@ export const authService = {
         role: effectiveRole,
         telegramUsername: foundUser.telegramUsername,
         isBanned: false,
+        isSubscribed: demoSubscribed,
+        subscriptionExpiresAt: demoExpires,
       };
       localStorage.setItem('tarqa_current_user', JSON.stringify(user));
       syncUserToMembersDashboard(user);
@@ -482,6 +554,7 @@ export const authService = {
     return { user: newUser, isDemo: true };
   },
 
+
   // إنشاء حساب جديد
   signUp: async (params: {
     email: string;
@@ -490,7 +563,9 @@ export const authService = {
     targetScore: number;
     role?: UserRole;
     telegramUsername?: string;
-  }): Promise<{ user: TarqaUser; isDemo: boolean }> => {
+  }): Promise<{ user: TarqaUser; isDemo: boolean; needsConfirmation?: boolean }> => {
+    checkSignupRateLimit();
+
     const role: UserRole = 'student';
     const fullName: string = params.fullName;
 
@@ -549,11 +624,14 @@ export const authService = {
           telegramUsername: params.telegramUsername,
         };
 
-        localStorage.setItem('tarqa_current_user', JSON.stringify(user));
-        syncUserToMembersDashboard(user);
-        window.dispatchEvent(new Event('tarqa_user_changed'));
-        window.dispatchEvent(new Event('tarqa_roles_changed'));
-        return { user, isDemo: false };
+        const needsConfirmation = !data.session;
+        if (!needsConfirmation) {
+          localStorage.setItem('tarqa_current_user', JSON.stringify(user));
+          syncUserToMembersDashboard(user);
+          window.dispatchEvent(new Event('tarqa_user_changed'));
+          window.dispatchEvent(new Event('tarqa_roles_changed'));
+        }
+        return { user, isDemo: false, needsConfirmation };
       } catch (err: any) {
         console.error('Supabase SignUp failed:', err);
         throw err;

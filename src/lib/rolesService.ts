@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured, authService, syncUserToMembersDashboard, isValidUuid } from './supabase';
+import { isOwnerEmail } from './securityUtils';
 import { UserRole, UserWithRole, RoleChangeLog } from '../types';
 import { cancelAnnualSubscription, grantAnnualSubscription } from './subscriptionService';
 import { downloadTrackingService } from './downloadTrackingService';
@@ -60,8 +61,7 @@ export const rolesService = {
 
           supabaseUsers = filtered.map((d: any) => {
             const email = d.email || (d.telegram_username ? `@${d.telegram_username}` : `مستخدم_${d.id.substring(0, 6)}`);
-            const emailLower = (d.email || '').toLowerCase().trim();
-            const isOwner = emailLower === 'yassooooo27m@gmail.com' || emailLower === 'iyoskalg@gmail.com' || d.id === 'usr-admin-01';
+            const isOwner = isOwnerEmail(d.email) || d.id === 'usr-admin-01';
             return {
               id: d.id,
               email: d.email || email,
@@ -196,10 +196,7 @@ export const rolesService = {
     let resultUsers = unifiedUsers;
 
     // ضمان وجود الحساب الإداري الرئيسي (Yoska) في رأس القائمة دائماً كسوبر أدمن
-    const yoskaIndex = resultUsers.findIndex(u => {
-      const em = u.email?.toLowerCase().trim();
-      return em === 'yassooooo27m@gmail.com' || em === 'iyoskalg@gmail.com';
-    });
+    const yoskaIndex = resultUsers.findIndex(u => isOwnerEmail(u.email));
     let yoskaUser: UserWithRole;
     if (yoskaIndex >= 0) {
       yoskaUser = {
@@ -234,14 +231,29 @@ export const rolesService = {
 
     for (const u of resultUsers) {
       const em = (u.email || '').toLowerCase().trim();
-      const isOwner = em === 'yassooooo27m@gmail.com' || em === 'iyoskalg@gmail.com' || u.id === 'usr-admin-01' || u.role === 'super_admin';
+      const isOwner = isOwnerEmail(u.email) || u.id === 'usr-admin-01' || u.role === 'super_admin';
       if (isOwner) {
         u.isSubscribed = true;
       } else {
-        const sub = localSubs[u.id] || (u.email && localSubs[u.email.toLowerCase()]);
-        if (sub?.active) {
-          u.isSubscribed = true;
-          u.subscriptionExpiresAt = sub.expiresAt;
+        const sub = localSubs[u.id] || (u.email && (localSubs[u.email.toLowerCase()] || localSubs[em]));
+        if (sub) {
+          if (sub.active === true || sub.isActive === true) {
+            u.isSubscribed = true;
+            u.subscriptionExpiresAt = sub.expiresAt || sub.expiresDate || u.subscriptionExpiresAt;
+          } else if (sub.active === false || sub.isActive === false) {
+            u.isSubscribed = false;
+            u.subscriptionExpiresAt = undefined;
+          }
+        } else {
+          // إذا لم يوجد سجل اشتراك صريح في tarqa_subscriptions، نفحص الأدوار المخزنة محلياً
+          const fromRoles = localUsers.find(lu => lu.id === u.id || (lu.email && lu.email.trim().toLowerCase() === em));
+          if (fromRoles?.isSubscribed === true) {
+            u.isSubscribed = true;
+            u.subscriptionExpiresAt = fromRoles.subscriptionExpiresAt || u.subscriptionExpiresAt;
+          } else if (fromRoles?.isSubscribed === false) {
+            u.isSubscribed = false;
+            u.subscriptionExpiresAt = undefined;
+          }
         }
       }
 
@@ -314,8 +326,7 @@ export const rolesService = {
     const currentUser = authService.getCurrentUser();
 
     // 1. التحقق الصارم من صلاحية مسؤول المنصة (Admin / Super Admin / Owner)
-    const userEmail = currentUser?.email?.trim().toLowerCase();
-    const isOwner = userEmail === 'yassooooo27m@gmail.com' || userEmail === 'iyoskalg@gmail.com';
+    const isOwner = isOwnerEmail(currentUser?.email);
     const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || isOwner;
     if (!isAdmin) {
       return {
@@ -329,7 +340,7 @@ export const rolesService = {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const callerEmail = session?.user?.email?.trim().toLowerCase();
-        if (callerEmail !== 'yassooooo27m@gmail.com' && callerEmail !== 'iyoskalg@gmail.com') {
+        if (!isOwnerEmail(callerEmail)) {
           if (!session?.user?.id) {
             return { success: false, error: 'غير مصرح: يجب تسجيل الدخول بجلسة معتمدة لتنفيذ هذا الإجراء.' };
           }
@@ -338,7 +349,9 @@ export const rolesService = {
             return { success: false, error: 'عملية مرفوضة أمنياً: حسابك لا يملك صلاحية المسؤول في السيرفر.' };
           }
         }
-      } catch {}
+      } catch (err) {
+        console.error('[rolesService.changeUserRole] Supabase session check error:', err);
+      }
     }
 
     // جلب قائمة المستخدمين الحالية
@@ -523,8 +536,7 @@ export const rolesService = {
     reason?: string
   ): Promise<{ success: boolean; error?: string }> => {
     const currentUser = authService.getCurrentUser();
-    const userEmail = currentUser?.email?.trim().toLowerCase();
-    const isOwner = userEmail === 'yassooooo27m@gmail.com' || userEmail === 'iyoskalg@gmail.com';
+    const isOwner = isOwnerEmail(currentUser?.email);
     const isSuperAdmin = currentUser?.role === 'super_admin' || isOwner;
 
     if (!isSuperAdmin) {
@@ -536,14 +548,16 @@ export const rolesService = {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const callerEmail = session?.user?.email?.trim().toLowerCase();
-        if (callerEmail !== 'yassooooo27m@gmail.com' && callerEmail !== 'iyoskalg@gmail.com') {
+        if (!isOwnerEmail(callerEmail)) {
           if (!session?.user?.id) return { success: false, error: 'غير مصرح أمنياً: الجلسة غير موثقة.' };
           const { data: p } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
           if (p?.role !== 'super_admin') {
             return { success: false, error: 'غير مصرح: عملية الحظر تتطلب رتبة سوبر أدمن حقيقية.' };
           }
         }
-      } catch {}
+      } catch (err) {
+        console.error('[rolesService.banUser] Supabase session check error:', err);
+      }
     }
 
     if (currentUser?.id === targetUserId) {
@@ -556,7 +570,7 @@ export const rolesService = {
       return { success: false, error: 'لم يتم العثور على المستخدم المطلوب' };
     }
 
-    if (target.email?.toLowerCase() === 'yassooooo27m@gmail.com' || target.email?.toLowerCase() === 'iyoskalg@gmail.com' || target.role === 'super_admin') {
+    if (isOwnerEmail(target.email) || target.role === 'super_admin') {
       return { success: false, error: 'خطأ أمني: لا يمكن حظر حساب السوبر أدمن الرئيسي للمنصة.' };
     }
 
@@ -681,8 +695,7 @@ export const rolesService = {
   // مسح حساب مستخدم نهائياً (Delete User) - مقتصر حصراً على السوبر أدمن
   deleteUser: async (targetUserId: string): Promise<{ success: boolean; error?: string }> => {
     const currentUser = authService.getCurrentUser();
-    const userEmail = currentUser?.email?.trim().toLowerCase();
-    const isOwner = userEmail === 'yassooooo27m@gmail.com' || userEmail === 'iyoskalg@gmail.com';
+    const isOwner = isOwnerEmail(currentUser?.email);
     const isSuperAdmin = currentUser?.role === 'super_admin' || isOwner;
 
     if (!isSuperAdmin) {
@@ -694,14 +707,16 @@ export const rolesService = {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const callerEmail = session?.user?.email?.trim().toLowerCase();
-        if (callerEmail !== 'yassooooo27m@gmail.com' && callerEmail !== 'iyoskalg@gmail.com') {
+        if (!isOwnerEmail(callerEmail)) {
           if (!session?.user?.id) return { success: false, error: 'غير مصرح أمنياً: الجلسة غير موثقة.' };
           const { data: p } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
           if (p?.role !== 'super_admin') {
             return { success: false, error: 'غير مصرح: عملية الحذف تتطلب رتبة سوبر أدمن حقيقية.' };
           }
         }
-      } catch {}
+      } catch (err) {
+        console.error('[rolesService.deleteUser] Supabase session check error:', err);
+      }
     }
 
     if (currentUser?.id === targetUserId) {
@@ -714,7 +729,7 @@ export const rolesService = {
       return { success: false, error: 'لم يتم العثور على المستخدم' };
     }
 
-    if (target.email?.toLowerCase() === 'yassooooo27m@gmail.com' || target.email?.toLowerCase() === 'iyoskalg@gmail.com' || target.role === 'super_admin') {
+    if (isOwnerEmail(target.email) || target.role === 'super_admin') {
       return { success: false, error: 'خطأ أمني: لا يمكن مسح حساب السوبر أدمن الرئيسي للمنصة.' };
     }
 
@@ -798,11 +813,23 @@ export const rolesService = {
 
   // إلغاء اشتراك المستخدم
   cancelSubscription: async (userId: string, userEmail?: string) => {
-    return await cancelAnnualSubscription(userId, userEmail);
+    const res = await cancelAnnualSubscription(userId, userEmail);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('tarqa_roles_changed'));
+      window.dispatchEvent(new Event('tarqa_subscription_changed'));
+      window.dispatchEvent(new Event('tarqa_user_changed'));
+    }
+    return res;
   },
 
   // منح أو تفعيل اشتراك لمستخدم
   grantSubscription: async (targetUser: { id: string; email?: string; fullName?: string }, days: number = 365) => {
-    return await grantAnnualSubscription(targetUser, days);
+    const res = await grantAnnualSubscription(targetUser, days);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('tarqa_roles_changed'));
+      window.dispatchEvent(new Event('tarqa_subscription_changed'));
+      window.dispatchEvent(new Event('tarqa_user_changed'));
+    }
+    return res;
   },
 };

@@ -37,3 +37,8 @@ lerna-debug.log*
 
 # Legacy Next.js backup
 _legacy_nextjs/
+
+# Build archives and temporary artifacts
+*.zip
+frame_*.png
+scratch/

@@ -1,15 +1,68 @@
-import { UserRole, CourseModule, Lesson, CourseSubscription, CourseFileItem } from '../types';
-import { TarqaUser, supabase, isSupabaseConfigured } from './supabase';
+import { UserRole, CourseModule, Lesson, CourseSubscription, CourseFileItem, CourseEnrollmentStatus } from '../types';
+import { TarqaUser, supabase, isSupabaseConfigured, isValidUuid } from './supabase';
+import { isOwnerEmail } from './securityUtils';
+export { isOwnerEmail };
 import { mockFoundationModules, mockCourseFiles } from '../data/foundationModules';
 
 export const ANNUAL_SUBSCRIPTION_PRICE_SAR = 75;
-export const ANNUAL_SUBSCRIPTION_PRICE_EGP = 1020;
+export const ANNUAL_SUBSCRIPTION_PRICE_EGP = 1050;
 
-export const isOwnerEmail = (email?: string | null): boolean => {
-  if (!email) return false;
-  const e = email.trim().toLowerCase();
-  return e === 'yassooooo27m@gmail.com' || e === 'iyoskalg@gmail.com';
+/**
+ * التحقق مما إذا كان التسجيل في الدورة متاحاً حالياً
+ */
+export const isCourseEnrollmentOpen = (courseOrModule?: { status?: CourseEnrollmentStatus } | null): boolean => {
+  if (!courseOrModule || !courseOrModule.status) return true;
+  return courseOrModule.status === 'active';
 };
+
+/**
+ * الحصول على تفاصيل حالة التسجيل في الدورة (النص، اللون، إمكانية الاشتراك)
+ */
+export const getCourseEnrollmentInfo = (courseOrModule?: {
+  status?: CourseEnrollmentStatus;
+  availableDate?: string;
+  customStatusText?: string;
+} | null) => {
+  const status: CourseEnrollmentStatus = courseOrModule?.status || 'active';
+  const customText = courseOrModule?.customStatusText?.trim();
+  const availableDate = courseOrModule?.availableDate?.trim();
+
+  switch (status) {
+    case 'paused':
+      return {
+        status,
+        isOpen: false,
+        badgeText: customText || 'التسجيل مغلق مؤقتاً ⏸️',
+        buttonText: customText || 'قريباً ⏳',
+        badgeColor: 'amber',
+        notice: availableDate
+          ? `التسجيل في هذه الدورة مغلق مؤقتاً، وسيُعاد فتحه بتاريخ: ${availableDate}`
+          : 'التسجيل في هذه الدورة مغلق مؤقتاً لحين إعادة فتحها.',
+      };
+    case 'upcoming':
+      return {
+        status,
+        isOpen: false,
+        badgeText: customText || 'متاح قريباً ⏳',
+        buttonText: customText || 'قريباً ⏳',
+        badgeColor: 'blue',
+        notice: availableDate
+          ? `ستنطلق الدورة ويُتاح التسجيل بتاريخ: ${availableDate}`
+          : 'هذه الدورة قادمة قريباً، ترقبوا موعد الانطلاق!',
+      };
+    case 'active':
+    default:
+      return {
+        status: 'active' as CourseEnrollmentStatus,
+        isOpen: true,
+        badgeText: 'متاح قريباً ⏳',
+        buttonText: 'قريباً ⏳',
+        badgeColor: 'amber',
+        notice: null,
+      };
+  }
+};
+
 
 /**
  * فحص صلاحية التعديل على محتوى الدورات (متاحة حصرياً للمعلم والأدمن والسوبر أدمن والمالك)
@@ -31,23 +84,34 @@ export const isUserSubscribed = (user?: TarqaUser | null): boolean => {
     return true;
   }
 
-  // فحص حقل انتهاء الاشتراك في كائن المستخدم
-  if (user.subscriptionExpiresAt) {
+  // 1. فحص حقل isSubscribed الصريح في كائن المستخدم
+  if (user.isSubscribed === true) {
+    if (!user.subscriptionExpiresAt) return true;
     const expiry = new Date(user.subscriptionExpiresAt).getTime();
-    if (expiry > Date.now()) {
+    if (isNaN(expiry) || expiry > Date.now()) {
       return true;
     }
   }
 
-  // فحص التخزين المحلي للاشتراكات
+  // 2. فحص حقل انتهاء الاشتراك في كائن المستخدم
+  if (user.subscriptionExpiresAt) {
+    const expiry = new Date(user.subscriptionExpiresAt).getTime();
+    if (!isNaN(expiry) && expiry > Date.now()) {
+      return true;
+    }
+  }
+
+  // 3. فحص التخزين المحلي للاشتراكات
   try {
     const raw = localStorage.getItem('tarqa_subscriptions');
     if (raw) {
       const subs: Record<string, CourseSubscription> = JSON.parse(raw);
       const userSub = subs[user.id] || (user.email ? subs[user.email.toLowerCase()] : null);
-      if (userSub && userSub.isActive) {
-        const expiry = new Date(userSub.expiresDate).getTime();
-        if (expiry > Date.now()) {
+      if (userSub && (userSub.isActive || (userSub as any).active)) {
+        const expiryDate = userSub.expiresDate || (userSub as any).expiresAt;
+        if (!expiryDate) return true;
+        const expiry = new Date(expiryDate).getTime();
+        if (isNaN(expiry) || expiry > Date.now()) {
           return true;
         }
       }
@@ -137,6 +201,17 @@ export const canAccessLesson = (lesson: Lesson, user?: TarqaUser | null): boolea
 export const activateAnnualSubscription = async (
   user: TarqaUser
 ): Promise<{ success: boolean; expiresAt: string; message: string }> => {
+  // فحص حالة التسجيل في الدورة: منع أي اشتراك إذا كانت الدورة موقوفة مؤقتاً
+  const mainModule = coursesStorage.getModules()[0];
+  if (mainModule && mainModule.status && mainModule.status !== 'active') {
+    const info = getCourseEnrollmentInfo(mainModule);
+    return {
+      success: false,
+      expiresAt: '',
+      message: info.notice || 'التسجيل في هذه الدورة مغلق مؤقتاً (Course enrollment is currently paused)',
+    };
+  }
+
   const oneYearFromNow = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
 
   const subRecord: CourseSubscription = {
@@ -161,31 +236,92 @@ export const activateAnnualSubscription = async (
     }
     localStorage.setItem('tarqa_subscriptions', JSON.stringify(subs));
 
+    // تحديث قائمة الأعضاء في tarqa_all_users_roles
+    const allRolesRaw = localStorage.getItem('tarqa_all_users_roles');
+    if (allRolesRaw) {
+      const parsedRoles = JSON.parse(allRolesRaw);
+      if (Array.isArray(parsedRoles)) {
+        const updatedRoles = parsedRoles.map((u: any) => {
+          if (u.id === user.id || (user.email && u.email?.toLowerCase() === user.email.toLowerCase())) {
+            return {
+              ...u,
+              isSubscribed: true,
+              subscriptionExpiresAt: oneYearFromNow,
+            };
+          }
+          return u;
+        });
+        localStorage.setItem('tarqa_all_users_roles', JSON.stringify(updatedRoles));
+      }
+    }
+
+    // تحديث قائمة المستخدمين المسجلين tarqa_registered_users
+    const registeredRaw = localStorage.getItem('tarqa_registered_users');
+    if (registeredRaw) {
+      const parsedReg = JSON.parse(registeredRaw);
+      if (Array.isArray(parsedReg)) {
+        const updatedReg = parsedReg.map((u: any) => {
+          if (u.id === user.id || (user.email && u.email?.toLowerCase() === user.email.toLowerCase())) {
+            return {
+              ...u,
+              isSubscribed: true,
+              subscriptionExpiresAt: oneYearFromNow,
+            };
+          }
+          return u;
+        });
+        localStorage.setItem('tarqa_registered_users', JSON.stringify(updatedReg));
+      }
+    }
+
     // تحديث المستخدم الحالي في localStorage
     const currentRaw = localStorage.getItem('tarqa_current_user');
     if (currentRaw) {
       const parsed = JSON.parse(currentRaw);
-      parsed.isSubscribed = true;
-      parsed.subscriptionExpiresAt = oneYearFromNow;
-      localStorage.setItem('tarqa_current_user', JSON.stringify(parsed));
+      if (parsed.id === user.id || (user.email && parsed.email?.toLowerCase() === user.email.toLowerCase())) {
+        parsed.isSubscribed = true;
+        parsed.subscriptionExpiresAt = oneYearFromNow;
+        localStorage.setItem('tarqa_current_user', JSON.stringify(parsed));
+      }
     }
   } catch (err) {
     console.warn('Error saving subscription locally:', err);
   }
 
   // 2. تحديث في قاعدة بيانات Supabase إن وجدت
-  if (isSupabaseConfigured && user.id) {
+  if (isSupabaseConfigured && (user.id || user.email)) {
     try {
-      await supabase
-        .from('profiles')
-        .update({
-          is_subscribed: true,
-          subscription_expires_at: oneYearFromNow,
-          updated_at: new Date().toISOString(),
-        } as any)
-        .eq('id', user.id);
+      try {
+        await supabase.rpc('admin_grant_subscription', {
+          target_user_id: user.id,
+          days_count: 365,
+          target_email: user.email || null,
+        });
+      } catch (rpcErr) {}
+
+      if (user.id && isValidUuid(user.id)) {
+        await supabase
+          .from('profiles')
+          .update({
+            is_subscribed: true,
+            subscription_expires_at: oneYearFromNow,
+            updated_at: new Date().toISOString(),
+          } as any)
+          .eq('id', user.id);
+      }
+
+      if (user.email) {
+        await supabase
+          .from('profiles')
+          .update({
+            is_subscribed: true,
+            subscription_expires_at: oneYearFromNow,
+            updated_at: new Date().toISOString(),
+          } as any)
+          .ilike('email', user.email.trim());
+      }
     } catch (dbErr) {
-      console.warn('Could not sync subscription to Supabase (profiles columns might need update):', dbErr);
+      console.warn('Could not sync subscription to Supabase:', dbErr);
     }
   }
 
@@ -210,15 +346,24 @@ export const cancelAnnualSubscription = async (
   userId: string,
   userEmail?: string
 ): Promise<{ success: boolean; message: string }> => {
-  // 1. تحديث التخزين المحلي للاشتراكات
+  const emailClean = userEmail ? userEmail.toLowerCase().trim() : undefined;
+  const cancelledRecord = {
+    userId,
+    userEmail: emailClean,
+    isActive: false,
+    active: false,
+    cancelledAt: new Date().toISOString(),
+  };
+
+  // 1. تحديث التخزين المحلي للاشتراكات بشكل قاطع
   try {
     const raw = localStorage.getItem('tarqa_subscriptions') || '{}';
     const subs = JSON.parse(raw);
-    if (subs[userId]) {
-      subs[userId].isActive = false;
+    if (userId) {
+      subs[userId] = { ...(subs[userId] || {}), ...cancelledRecord };
     }
-    if (userEmail && subs[userEmail.toLowerCase()]) {
-      subs[userEmail.toLowerCase()].isActive = false;
+    if (emailClean) {
+      subs[emailClean] = { ...(subs[emailClean] || {}), ...cancelledRecord };
     }
     localStorage.setItem('tarqa_subscriptions', JSON.stringify(subs));
 
@@ -226,7 +371,8 @@ export const cancelAnnualSubscription = async (
     const currentRaw = localStorage.getItem('tarqa_current_user');
     if (currentRaw) {
       const parsed = JSON.parse(currentRaw);
-      if (parsed.id === userId || (userEmail && parsed.email?.toLowerCase() === userEmail.toLowerCase())) {
+      const curEmail = (parsed.email || '').toLowerCase().trim();
+      if (parsed.id === userId || (emailClean && curEmail === emailClean)) {
         parsed.isSubscribed = false;
         parsed.subscriptionExpiresAt = undefined;
         localStorage.setItem('tarqa_current_user', JSON.stringify(parsed));
@@ -239,7 +385,8 @@ export const cancelAnnualSubscription = async (
       const parsedRoles = JSON.parse(allRolesRaw);
       if (Array.isArray(parsedRoles)) {
         const updatedRoles = parsedRoles.map((u: any) => {
-          if (u.id === userId || (userEmail && u.email?.toLowerCase() === userEmail.toLowerCase())) {
+          const uEm = (u.email || '').toLowerCase().trim();
+          if (u.id === userId || (emailClean && uEm === emailClean)) {
             return {
               ...u,
               isSubscribed: false,
@@ -251,29 +398,72 @@ export const cancelAnnualSubscription = async (
         localStorage.setItem('tarqa_all_users_roles', JSON.stringify(updatedRoles));
       }
     }
+
+    // تحديث قائمة tarqa_registered_users
+    const regRaw = localStorage.getItem('tarqa_registered_users');
+    if (regRaw) {
+      const parsedReg = JSON.parse(regRaw);
+      if (Array.isArray(parsedReg)) {
+        const updatedReg = parsedReg.map((u: any) => {
+          const uEm = (u.email || '').toLowerCase().trim();
+          if (u.id === userId || (emailClean && uEm === emailClean)) {
+            return {
+              ...u,
+              isSubscribed: false,
+              subscriptionExpiresAt: undefined,
+            };
+          }
+          return u;
+        });
+        localStorage.setItem('tarqa_registered_users', JSON.stringify(updatedReg));
+      }
+    }
   } catch (err) {
     console.warn('Error cancelling subscription locally:', err);
   }
 
   // 2. تحديث في قاعدة بيانات Supabase إذا كانت متصلة
-  if (isSupabaseConfigured && userId) {
+  if (isSupabaseConfigured && (userId || emailClean)) {
     try {
-      await supabase
-        .from('profiles')
-        .update({
-          is_subscribed: false,
-          subscription_expires_at: null,
-          updated_at: new Date().toISOString(),
-        } as any)
-        .eq('id', userId);
+      // محاولة استدعاء دالة RPC المخصصة
+      try {
+        await supabase.rpc('admin_cancel_subscription', {
+          target_user_id: userId || '',
+          target_email: emailClean || null,
+        });
+      } catch (rpcErr) {}
+
+      // تحديث مباشر بالـ UUID إن وجد
+      if (userId && isValidUuid(userId)) {
+        await supabase
+          .from('profiles')
+          .update({
+            is_subscribed: false,
+            subscription_expires_at: null,
+            updated_at: new Date().toISOString(),
+          } as any)
+          .eq('id', userId);
+      }
+
+      // تحديث مباشر بالبريد الإلكتروني
+      if (emailClean) {
+        await supabase
+          .from('profiles')
+          .update({
+            is_subscribed: false,
+            subscription_expires_at: null,
+            updated_at: new Date().toISOString(),
+          } as any)
+          .ilike('email', emailClean);
+      }
     } catch (dbErr) {
       console.warn('Could not sync subscription cancellation to Supabase:', dbErr);
     }
   }
 
-  // 3. إطلاق الأحداث لتحديث واجهات الموقع فوراً
+  // 3. إطلاق الأحداث لتحديث كافة واجهات الموقع فوراً
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('tarqa_subscription_changed'));
+    window.dispatchEvent(new CustomEvent('tarqa_subscription_changed', { detail: { userId, email: emailClean, isActive: false } }));
     window.dispatchEvent(new CustomEvent('tarqa_user_changed'));
     window.dispatchEvent(new CustomEvent('tarqa_roles_changed'));
   }
@@ -291,10 +481,11 @@ export const grantAnnualSubscription = async (
   targetUser: { id: string; email?: string; fullName?: string },
   days: number = 365
 ): Promise<{ success: boolean; message: string }> => {
+  const emailClean = targetUser.email ? targetUser.email.toLowerCase().trim() : undefined;
   const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
   const subRecord: CourseSubscription = {
     userId: targetUser.id,
-    userEmail: targetUser.email,
+    userEmail: emailClean,
     userName: targetUser.fullName,
     planId: 'annual_75',
     planName: 'باقة طرقع السنوية الشاملة',
@@ -302,14 +493,17 @@ export const grantAnnualSubscription = async (
     startDate: new Date().toISOString(),
     expiresDate: expiresAt,
     isActive: true,
-  };
+    active: true,
+  } as any;
 
   try {
     const raw = localStorage.getItem('tarqa_subscriptions') || '{}';
     const subs = JSON.parse(raw);
-    subs[targetUser.id] = subRecord;
-    if (targetUser.email) {
-      subs[targetUser.email.toLowerCase()] = subRecord;
+    if (targetUser.id) {
+      subs[targetUser.id] = subRecord;
+    }
+    if (emailClean) {
+      subs[emailClean] = subRecord;
     }
     localStorage.setItem('tarqa_subscriptions', JSON.stringify(subs));
 
@@ -319,7 +513,8 @@ export const grantAnnualSubscription = async (
       const parsedRoles = JSON.parse(allRolesRaw);
       if (Array.isArray(parsedRoles)) {
         const updatedRoles = parsedRoles.map((u: any) => {
-          if (u.id === targetUser.id || (targetUser.email && u.email?.toLowerCase() === targetUser.email.toLowerCase())) {
+          const uEm = (u.email || '').toLowerCase().trim();
+          if (u.id === targetUser.id || (emailClean && uEm === emailClean)) {
             return {
               ...u,
               isSubscribed: true,
@@ -332,11 +527,32 @@ export const grantAnnualSubscription = async (
       }
     }
 
+    // تحديث tarqa_registered_users
+    const registeredRaw = localStorage.getItem('tarqa_registered_users');
+    if (registeredRaw) {
+      const parsedReg = JSON.parse(registeredRaw);
+      if (Array.isArray(parsedReg)) {
+        const updatedReg = parsedReg.map((u: any) => {
+          const uEm = (u.email || '').toLowerCase().trim();
+          if (u.id === targetUser.id || (emailClean && uEm === emailClean)) {
+            return {
+              ...u,
+              isSubscribed: true,
+              subscriptionExpiresAt: expiresAt,
+            };
+          }
+          return u;
+        });
+        localStorage.setItem('tarqa_registered_users', JSON.stringify(updatedReg));
+      }
+    }
+
     // تحديث المستخدم الحالي إذا كان هو نفسه
     const currentRaw = localStorage.getItem('tarqa_current_user');
     if (currentRaw) {
       const parsed = JSON.parse(currentRaw);
-      if (parsed.id === targetUser.id || (targetUser.email && parsed.email?.toLowerCase() === targetUser.email.toLowerCase())) {
+      const curEmail = (parsed.email || '').toLowerCase().trim();
+      if (parsed.id === targetUser.id || (emailClean && curEmail === emailClean)) {
         parsed.isSubscribed = true;
         parsed.subscriptionExpiresAt = expiresAt;
         localStorage.setItem('tarqa_current_user', JSON.stringify(parsed));
@@ -344,17 +560,42 @@ export const grantAnnualSubscription = async (
     }
   } catch (e) {}
 
-  if (isSupabaseConfigured && targetUser.id) {
+  if (isSupabaseConfigured && (targetUser.id || emailClean)) {
     try {
-      await supabase
-        .from('profiles')
-        .update({
-          is_subscribed: true,
-          subscription_expires_at: expiresAt,
-          updated_at: new Date().toISOString(),
-        } as any)
-        .eq('id', targetUser.id);
-    } catch (e) {}
+      // 1. محاولة استخدام الدالة المباشرة المقفلة بأمان
+      try {
+        await supabase.rpc('admin_grant_subscription', {
+          target_user_id: targetUser.id || '',
+          days_count: days,
+          target_email: emailClean || null,
+        });
+      } catch (rpcErr) {}
+
+      // 2. تحديث جدول profiles مباشرة إذا كان الـ ID من نوع UUID
+      if (targetUser.id && isValidUuid(targetUser.id)) {
+        await supabase
+          .from('profiles')
+          .update({
+            is_subscribed: true,
+            subscription_expires_at: expiresAt,
+            updated_at: new Date().toISOString(),
+          } as any)
+          .eq('id', targetUser.id);
+      }
+
+      if (emailClean) {
+        await supabase
+          .from('profiles')
+          .update({
+            is_subscribed: true,
+            subscription_expires_at: expiresAt,
+            updated_at: new Date().toISOString(),
+          } as any)
+          .ilike('email', emailClean);
+      }
+    } catch (supErr) {
+      console.warn('[grantAnnualSubscription] Supabase sync notice:', supErr);
+    }
   }
 
   if (typeof window !== 'undefined') {
@@ -453,27 +694,40 @@ export const coursesStorage = {
         console.warn('[coursesStorage] Cloud JSON parse error:', e);
       }
 
-      if (cloudModules && cloudModules.length > 0) {
+      const cloudHasLessons = Boolean(
+        cloudModules &&
+        cloudModules.length > 0 &&
+        cloudModules.some((m) => Array.isArray(m.lessons) && m.lessons.length > 0)
+      );
+
+      if (cloudModules && cloudModules.length > 0 && cloudHasLessons) {
         localStorage.setItem('tarqa_custom_modules_v7', JSON.stringify(cloudModules));
         localStorage.setItem('tarqa_custom_modules_v6', JSON.stringify(cloudModules));
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('tarqa_courses_modules_changed', { detail: cloudModules }));
         }
+      } else {
+        // إذا كان مخزن السحابة لا يحتوي على محاضرات صالحة، نقوم برفع المحاضرات المعتمدة فوراً لإصلاحه
+        const defaultMods = this.getModules();
+        const defaultFiles = this.getFiles();
+        this.syncToCloud(defaultMods, defaultFiles);
       }
 
-      if (cloudFiles && Array.isArray(cloudFiles) && cloudFiles.length > 0) {
+      const cloudHasFiles = Boolean(cloudFiles && Array.isArray(cloudFiles) && cloudFiles.length > 0);
+      if (cloudHasFiles && cloudFiles) {
         localStorage.setItem('tarqa_custom_files_v1', JSON.stringify(cloudFiles));
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('tarqa_courses_files_changed', { detail: cloudFiles }));
         }
+      } else {
+        const defaultFiles = this.getFiles();
+        this.syncToCloud(undefined, defaultFiles);
       }
 
-      if (cloudModules || (cloudFiles && cloudFiles.length > 0)) {
-        return {
-          modules: cloudModules || this.getModules(),
-          files: (cloudFiles && cloudFiles.length > 0) ? cloudFiles : this.getFiles(),
-        };
-      }
+      return {
+        modules: cloudModules && cloudHasLessons ? cloudModules : this.getModules(),
+        files: cloudFiles && cloudHasFiles ? cloudFiles : this.getFiles(),
+      };
     } catch (e) {
       console.warn('[coursesStorage] syncFromCloud exception:', e);
     }
@@ -487,7 +741,10 @@ export const coursesStorage = {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          const hasAnyLessons = parsed.some((m) => Array.isArray(m.lessons) && m.lessons.length > 0);
+          if (hasAnyLessons) {
+            return parsed;
+          }
         }
       }
 
@@ -496,15 +753,18 @@ export const coursesStorage = {
       if (rawV6) {
         const parsedV6 = JSON.parse(rawV6);
         if (Array.isArray(parsedV6) && parsedV6.length > 0) {
-          this.saveModules(parsedV6);
-          return parsedV6;
+          const hasAnyLessonsV6 = parsedV6.some((m) => Array.isArray(m.lessons) && m.lessons.length > 0);
+          if (hasAnyLessonsV6) {
+            this.saveModules(parsedV6);
+            return parsedV6;
+          }
         }
       }
     } catch (e) {
       console.warn('Failed to parse saved modules:', e);
     }
 
-    // 3. الحالة الافتراضية المبدئية عند فتح الموقع لأول مرة فقط
+    // 3. الحالة الافتراضية المعتمدة (8 محاضرات تأسيسية) عند فتح الموقع أو فراغ التخزين
     const initial = JSON.parse(JSON.stringify(mockFoundationModules));
     this.saveModules(initial);
     return initial;
@@ -536,6 +796,26 @@ export const coursesStorage = {
   updateModule(updatedModule: CourseModule): CourseModule[] {
     const current = this.getModules();
     const updated = current.map((m) => (m.id === updatedModule.id ? updatedModule : m));
+    return this.saveModules(updated);
+  },
+
+  updateModuleStatus(
+    moduleId: string,
+    status: CourseEnrollmentStatus,
+    availableDate?: string,
+    customStatusText?: string
+  ): CourseModule[] {
+    const current = this.getModules();
+    const updated = current.map((m) =>
+      m.id === moduleId
+        ? {
+            ...m,
+            status,
+            availableDate: availableDate !== undefined ? availableDate : m.availableDate,
+            customStatusText: customStatusText !== undefined ? customStatusText : m.customStatusText,
+          }
+        : m
+    );
     return this.saveModules(updated);
   },
 
@@ -679,9 +959,17 @@ export const coursesStorage = {
     return this.saveModules(updated);
   },
 
+  resetFilesToDefault(): CourseFileItem[] {
+    const defaultFiles = JSON.parse(JSON.stringify(mockCourseFiles));
+    this.saveFiles(defaultFiles);
+    return defaultFiles;
+  },
+
   resetToDefault(): CourseModule[] {
     const resetData = JSON.parse(JSON.stringify(mockFoundationModules));
-    return this.saveModules(resetData);
+    this.saveModules(resetData);
+    this.resetFilesToDefault();
+    return resetData;
   },
 
   // إدارة قسم ملفات ومذكرات الدورة
@@ -695,7 +983,9 @@ export const coursesStorage = {
         }
       }
     } catch (e) {}
-    return mockCourseFiles;
+    const defaultFiles = JSON.parse(JSON.stringify(mockCourseFiles));
+    this.saveFiles(defaultFiles);
+    return defaultFiles;
   },
 
   saveFiles(files: CourseFileItem[]) {

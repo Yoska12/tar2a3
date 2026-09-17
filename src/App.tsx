@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Zap,
   Layers,
@@ -13,6 +13,7 @@ import {
   BrainCircuit,
   Lightbulb,
   GraduationCap,
+  FileText,
   X
 } from 'lucide-react';
 import { Navbar } from './components/Navbar';
@@ -28,20 +29,15 @@ import { SuperAdminRolesPanel } from './components/SuperAdminRolesPanel';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { LegalPoliciesModal, PolicyTab } from './components/LegalPoliciesModal';
 import { CookieConsentBanner } from './components/CookieConsentBanner';
+import { ThemeTransitionOrb } from './components/ThemeTransitionOrb';
 import { mockFoundationModules } from './data/foundationModules';
 import { mockCategories, mockQuestions } from './data/mockQuestions';
 import { QuizSettings, QuizResult, Category, Question, CourseModule, Lesson, UserRole, CourseFileItem } from './types';
-import { localScoreStorage, authService, TarqaUser, supabase, isSupabaseConfigured, syncUserToMembersDashboard, isValidUuid } from './lib/supabase';
+import { localScoreStorage, authService, TarqaUser, supabase, isSupabaseConfigured, syncUserToMembersDashboard, isValidUuid, isOwnerEmail } from './lib/supabase';
 import { sendQuizCompletedNotification, TELEGRAM_BOT_URL, TELEGRAM_BOT_USERNAME } from './lib/telegram';
 import { coursesStorage, CLOUD_LECTURES_STORE_ID, CLOUD_LECTURES_STORE_EMAIL } from './lib/subscriptionService';
 import { questionBankStorage, CLOUD_QUESTIONS_STORE_ID, CLOUD_QUESTIONS_STORE_EMAIL } from './lib/questionBankStorage';
 import { initGlobalAntiHack, logSecurityViolation } from './lib/antiHack';
-
-const isOwnerEmail = (email?: string | null) => {
-  if (!email) return false;
-  const e = email.trim().toLowerCase();
-  return e === 'yassooooo27m@gmail.com' || e === 'iyoskalg@gmail.com';
-};
 
 export const App: React.FC = () => {
   // وضع الشاشة: home | courses | quiz | result | dashboard | admin | classroom | admin-lectures | admin-roles
@@ -59,6 +55,9 @@ export const App: React.FC = () => {
     return authService.getCurrentUser();
   });
 
+  // تبويب الصفحة الرئيسية التفاعلي لتوزيع المحتوى وتخفيف الزحام
+  const [homeTab, setHomeTab] = useState<'modes' | 'roadmap' | 'method'>('modes');
+
   // نافذة السياسات القانونية (شروط الاستخدام، الخصوصية، الكوكيز، الاسترجاع)
   const [policiesModalOpen, setPoliciesModalOpen] = useState<boolean>(false);
   const [policiesInitialTab, setPoliciesInitialTab] = useState<PolicyTab>('terms');
@@ -75,6 +74,23 @@ export const App: React.FC = () => {
     };
     window.addEventListener('tarqa_open_policies', handleGlobalOpenPolicies);
     return () => window.removeEventListener('tarqa_open_policies', handleGlobalOpenPolicies);
+  }, []);
+
+  // دعم الدخول المباشر لصفحة اللوجن التفاعلية عبر الرابط #login أو #signup
+  useEffect(() => {
+    const checkAuthRoute = () => {
+      const hash = window.location.hash;
+      if (hash === '#login' || hash === '#signin') {
+        setAuthInitialTab('signin');
+        setIsAuthOpen(true);
+      } else if (hash === '#signup' || hash === '#register') {
+        setAuthInitialTab('signup');
+        setIsAuthOpen(true);
+      }
+    };
+    checkAuthRoute();
+    window.addEventListener('hashchange', checkAuthRoute);
+    return () => window.removeEventListener('hashchange', checkAuthRoute);
   }, []);
 
   // تفعيل درع طرقع الأمني ومكافحة الاختراق والفحص (Global Anti-Hack Shield Core)
@@ -105,9 +121,9 @@ export const App: React.FC = () => {
 
           let isBanned = false;
           let banReason = '';
+          let profile: any = null;
 
           try {
-            let profile = null;
             const { data: pById } = await supabase
               .from('profiles')
               .select('*')
@@ -147,6 +163,22 @@ export const App: React.FC = () => {
 
           const isOwner = isOwnerEmail(session.user.email);
           const verifiedRole: UserRole = isOwner ? 'super_admin' : role;
+          let isSubscribed = isOwner ? true : Boolean(profile?.is_subscribed);
+          let subscriptionExpiresAt = isOwner ? undefined : (profile?.subscription_expires_at || undefined);
+
+          if (!isSubscribed) {
+            try {
+              const subsRaw = localStorage.getItem('tarqa_subscriptions');
+              if (subsRaw) {
+                const subs = JSON.parse(subsRaw);
+                const sub = subs[session.user.id] || (session.user.email && subs[session.user.email.toLowerCase()]);
+                if (sub && (sub.active === true || sub.isActive === true)) {
+                  isSubscribed = true;
+                  subscriptionExpiresAt = sub.expiresAt || sub.expiresDate;
+                }
+              }
+            } catch {}
+          }
 
           const user: TarqaUser = {
             id: session.user.id,
@@ -157,6 +189,8 @@ export const App: React.FC = () => {
             telegramUsername,
             avatarUrl,
             isBanned: false,
+            isSubscribed,
+            subscriptionExpiresAt,
           };
           localStorage.setItem('tarqa_current_user', JSON.stringify(user));
           setCurrentUser(user);
@@ -202,6 +236,23 @@ export const App: React.FC = () => {
                   logSecurityViolation('role_tampering', 'تم رصد محاولة تزييف رتبة مدير في المتصفح وإرجاع الحساب إلى رتبة طالب');
                 }
 
+                let localSubscribed = isOwner ? true : (Boolean(profile.is_subscribed) || Boolean(localCur.isSubscribed));
+                let localExpires = isOwner ? undefined : (profile.subscription_expires_at || localCur.subscriptionExpiresAt);
+
+                if (!localSubscribed) {
+                  try {
+                    const subsRaw = localStorage.getItem('tarqa_subscriptions');
+                    if (subsRaw) {
+                      const subs = JSON.parse(subsRaw);
+                      const sub = subs[profile.id || localCur.id] || (localCur.email && subs[localCur.email.toLowerCase()]);
+                      if (sub && (sub.active === true || sub.isActive === true)) {
+                        localSubscribed = true;
+                        localExpires = sub.expiresAt || sub.expiresDate;
+                      }
+                    }
+                  } catch {}
+                }
+
                 const updatedUser: TarqaUser = {
                   ...localCur,
                   id: profile.id || localCur.id,
@@ -209,6 +260,8 @@ export const App: React.FC = () => {
                   fullName: isOwner ? 'Yoska' : (profile.full_name || localCur.fullName),
                   email: (profile.email && !profile.email.includes('@telegram.tarqa')) ? profile.email : localCur.email,
                   isBanned: Boolean(profile.is_banned),
+                  isSubscribed: localSubscribed,
+                  subscriptionExpiresAt: localExpires,
                 };
                 if (profile.is_banned) {
                   localStorage.removeItem('tarqa_current_user');
@@ -357,12 +410,13 @@ export const App: React.FC = () => {
                   try {
                     const parsed = JSON.parse(updated.ban_reason);
                     const newMods = Array.isArray(parsed) ? parsed : (parsed?.modules || []);
-                    if (Array.isArray(newMods) && newMods.length > 0) {
+                    const hasRealLessons = Array.isArray(newMods) && newMods.some((m: any) => Array.isArray(m.lessons) && m.lessons.length > 0);
+                    if (hasRealLessons) {
                       localStorage.setItem('tarqa_custom_modules_v7', JSON.stringify(newMods));
                       localStorage.setItem('tarqa_custom_modules_v6', JSON.stringify(newMods));
                       setModules([...newMods]);
                     }
-                    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.files)) {
+                    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.files) && parsed.files.length > 0) {
                       localStorage.setItem('tarqa_custom_files_v1', JSON.stringify(parsed.files));
                       setCourseFiles([...parsed.files]);
                       if (typeof window !== 'undefined') {
@@ -426,60 +480,6 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // فحص دوري تلقائي خفيف (كل 4 ثوانٍ) لضمان مزامنة رتبة المستخدم الحالي مع قاعدة البيانات
-  useEffect(() => {
-    if (!isSupabaseConfigured) return;
-
-    const interval = setInterval(async () => {
-      const cur = authService.getCurrentUser();
-      if (!cur) return;
-
-      try {
-        let profile: any = null;
-        const cleanTg = (cur.telegramUsername || '').replace(/^@/, '').trim();
-
-        if (cur.id && isValidUuid(cur.id)) {
-          const { data: pById } = await supabase.from('profiles').select('id, role, full_name, is_banned, email').eq('id', cur.id).maybeSingle();
-          if (pById) profile = pById;
-        }
-
-        if (!profile && cur.email && !cur.email.includes('@telegram.tarqa') && !cur.email.includes('@user.tarqa')) {
-          const { data: pByEmail } = await supabase.from('profiles').select('id, role, full_name, is_banned, email').eq('email', cur.email.toLowerCase()).maybeSingle();
-          if (pByEmail) profile = pByEmail;
-        }
-
-        if (!profile && cur.telegramId) {
-          const { data: pByTgId } = await supabase.from('profiles').select('id, role, full_name, is_banned, email').eq('telegram_id', cur.telegramId).maybeSingle();
-          if (pByTgId) profile = pByTgId;
-        }
-
-        if (!profile && cleanTg) {
-          const { data: pByTgName } = await supabase.from('profiles').select('id, role, full_name, is_banned, email').or(`telegram_username.eq.${cleanTg},telegram_username.eq.@${cleanTg},telegram_username.ilike.%${cleanTg}%`).maybeSingle();
-          if (pByTgName) profile = pByTgName;
-        }
-
-        if (profile && profile.role && profile.role !== cur.role) {
-          const isOwner = isOwnerEmail(cur.email) || (profile.email && isOwnerEmail(profile.email));
-          const newRole: UserRole = isOwner ? 'super_admin' : (profile.role as UserRole);
-          const updatedUser: TarqaUser = {
-            ...cur,
-            id: profile.id || cur.id,
-            role: newRole,
-            fullName: isOwner ? 'Yoska' : (profile.full_name || cur.fullName),
-            email: (profile.email && !profile.email.includes('@telegram.tarqa')) ? profile.email : cur.email,
-            isBanned: Boolean(profile.is_banned),
-          };
-          localStorage.setItem('tarqa_current_user', JSON.stringify(updatedUser));
-          setCurrentUser(updatedUser);
-          syncUserToMembersDashboard(updatedUser);
-          window.dispatchEvent(new Event('tarqa_user_changed'));
-          window.dispatchEvent(new Event('tarqa_roles_changed'));
-        }
-      } catch {}
-    }, 4000);
-
-    return () => clearInterval(interval);
-  }, []);
 
   // الاستماع الفوري لتغييرات الرتب والمستخدمين عبر النوافذ والتبويبات
   useEffect(() => {
@@ -503,10 +503,21 @@ export const App: React.FC = () => {
   const [allQuestions, setAllQuestions] = useState<Question[]>(() => questionBankStorage.getQuestions());
   const [customQuizzes, setCustomQuizzes] = useState<any[]>(() => questionBankStorage.getQuizzes());
 
-  // إعدادات الوضع الليلي
+  // إعدادات الوضع الليلي / النهاري
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('tarqa_theme') !== 'light';
   });
+
+  // مزامنة الوضع الليلي مع الـ HTML وتخزين تفضيل المستخدم
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('tarqa_theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('tarqa_theme', 'light');
+    }
+  }, [darkMode]);
 
   // حالة الاختبار الحالي
   const [activeQuestions, setActiveQuestions] = useState<Question[]>(mockQuestions);
@@ -518,24 +529,17 @@ export const App: React.FC = () => {
   const [quizTitle, setQuizTitle] = useState<string>('اختبار محاكي قياس للكمي');
   const [lastResult, setLastResult] = useState<QuizResult | null>(null);
 
-  // تحديث كلاس الوضع الليلي على وسم html
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('tarqa_theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('tarqa_theme', 'light');
-    }
-  }, [darkMode]);
-
-  // الاستماع لتغييرات المستخدم والأدوار (RBAC Updates)
+  // الاستماع لتغييرات المستخدم والأدوار والاشتراكات (RBAC & Subscription Updates)
   useEffect(() => {
     const handleUserChanged = () => {
       setCurrentUser(authService.getCurrentUser());
     };
     window.addEventListener('tarqa_user_changed', handleUserChanged);
-    return () => window.removeEventListener('tarqa_user_changed', handleUserChanged);
+    window.addEventListener('tarqa_subscription_changed', handleUserChanged);
+    return () => {
+      window.removeEventListener('tarqa_user_changed', handleUserChanged);
+      window.removeEventListener('tarqa_subscription_changed', handleUserChanged);
+    };
   }, []);
 
   // الاستماع لتحديثات المحاضرات والدورات فورياً
@@ -578,11 +582,18 @@ export const App: React.FC = () => {
   // مزامنة فورية صامتة عند بدء تشغيل الموقع لجلب أحدث محاضرات تم تعديلها أو إضافتها سحابياً
   useEffect(() => {
     coursesStorage.syncFromCloud().then((cloudData) => {
-      if (cloudData?.modules && Array.isArray(cloudData.modules) && cloudData.modules.length > 0) {
-        setModules([...cloudData.modules]);
+      if (cloudData?.modules && Array.isArray(cloudData.modules)) {
+        const hasLessons = cloudData.modules.some((m) => Array.isArray(m.lessons) && m.lessons.length > 0);
+        if (hasLessons) {
+          setModules([...cloudData.modules]);
+        } else {
+          setModules(coursesStorage.getModules());
+        }
       }
-      if (cloudData?.files && Array.isArray(cloudData.files)) {
+      if (cloudData?.files && Array.isArray(cloudData.files) && cloudData.files.length > 0) {
         setCourseFiles([...cloudData.files]);
+      } else {
+        setCourseFiles(coursesStorage.getFiles());
       }
     });
   }, []);
@@ -617,7 +628,30 @@ export const App: React.FC = () => {
     });
   }, []);
 
-  const toggleDarkMode = () => setDarkMode((prev) => !prev);
+  // حالة أنيميشن الدائرة عند تبديل الثيم
+  const [orbTarget, setOrbTarget] = useState<boolean | null>(null);
+  const [orbAnimationId, setOrbAnimationId] = useState<number>(0);
+
+  const toggleDarkMode = () => {
+    // منع الضغطات المتكررة أثناء عمل حركة الانتقال
+    if (orbTarget !== null) return;
+    setOrbTarget(!darkMode);
+    setOrbAnimationId((prev) => prev + 1);
+  };
+
+  const handleOrbMidpoint = () => {
+    // تطبيق الثيم الجديد الفعلي بدقة لحظة تغطية الشاشة بالكامل
+    if (orbTarget !== null) {
+      setDarkMode(orbTarget);
+    } else {
+      setDarkMode((prev) => !prev);
+    }
+  };
+
+  const handleOrbComplete = () => {
+    // الأنيميشن انتهى - ازل الدائرة
+    setOrbTarget(null);
+  };
 
   // حالة الإشعار التفاعلي لميزات "قريباً"
   const [comingSoonNotice, setComingSoonNotice] = useState<string | null>(null);
@@ -731,8 +765,16 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#070b14] text-slate-900 dark:text-slate-100 flex flex-col font-cairo">
-
+    <div className="min-h-screen bg-white dark:bg-[#0b101b] text-slate-900 dark:text-slate-100 flex flex-col font-cairo">
+      {/* دائرة انتقال الثيم */}
+      {orbTarget !== null && (
+          <ThemeTransitionOrb
+            key={orbAnimationId}
+            targetIsDark={orbTarget}
+            onMidpoint={handleOrbMidpoint}
+            onComplete={handleOrbComplete}
+          />
+        )}
       {/* الشريط العلوي */}
       <Navbar
         darkMode={darkMode}
@@ -923,6 +965,7 @@ export const App: React.FC = () => {
               onResetDefault={() => {
                 const reset = coursesStorage.resetToDefault();
                 setModules([...reset]);
+                setCourseFiles([...coursesStorage.getFiles()]);
               }}
               onSyncCloud={async () => {
                 coursesStorage.syncToCloud(modules, courseFiles);
@@ -1057,70 +1100,59 @@ export const App: React.FC = () => {
       )}
 
       {/* ======================================================================= */}
-      {/* 7. الصفحة الرئيسية ومسار التأسيس (Foundation Roadmap) */}
+      {/* 7. الصفحة الرئيسية (Clean, Minimalist & Spacious) */}
       {/* ======================================================================= */}
       {currentView === 'home' && (
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col gap-12 pb-24 md:pb-8">
+        <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-10 sm:py-16 flex flex-col gap-12 sm:gap-16 pb-24 md:pb-12">
 
-          {/* قسم الهيرو (Hero Section) بهوية طرقع الذهبية */}
-          <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent dark:from-[#11192e] dark:to-[#070b14] border border-amber-500/20 p-6 sm:p-12 shadow-sm">
-
+          {/* قسم الهيرو (Hero Section) هادئ، واسع وبسيط */}
+          <section className="relative overflow-hidden rounded-3xl bg-white dark:bg-[#0c1324] border border-slate-200/90 dark:border-slate-800 p-8 sm:p-14 text-center sm:text-start shadow-sm">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-
-              <div className="lg:col-span-8 flex flex-col items-start gap-4">
-
+              
+              <div className="lg:col-span-8 flex flex-col items-center sm:items-start gap-4">
                 <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs font-bold">
-                  <Flame className="w-4 h-4 text-amber-500 fill-amber-500" />
-                  <span>تجميعات النماذج الحديثة 1446 • القسم الكمي</span>
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  <span>تأسيس وتجميعات 1446 • القسم الكمي</span>
                 </div>
 
                 <h1 className="text-3xl sm:text-5xl font-black text-slate-900 dark:text-white leading-[1.25]">
-                  طرقع مسائل الكمي.. <br className="hidden sm:inline" />
+                  تأسيس ذكي وسريع.. <br className="hidden sm:inline" />
                   <span className="text-transparent bg-clip-text bg-gradient-to-l from-amber-600 via-amber-500 to-yellow-500">
-                    بأسرع الاستراتيجيات وأعلى دقة!
+                    طرقع مسائل الكمي بدقة 100%
                   </span>
                 </h1>
 
-                <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 max-w-2xl leading-relaxed">
-                  منصة تفاعلية خفيفة وسريعة مصممة لطلاب القدرات، تجمع بين بيئة اختبارات قياس الواقعية، وحيل التدرج المنتظم والحل الذهني السريع بدون معادلات معقدة.
+                <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 max-w-xl leading-relaxed">
+                  بيئة تدريب تحاكي اختبارات قياس الواقعية، مع شروحات "طرقع" للحل الذهني السريع بدون معادلات معقدة.
                 </p>
 
-                {/* أزرار الإجراءات الرئيسية */}
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2 w-full sm:w-auto">
+                {/* أزرار الإجراءات الرئيسية الواضحة */}
+                <div className="flex flex-col sm:flex-row items-center gap-3 pt-3 w-full sm:w-auto">
                   <button
                     onClick={() => handleTabSelect('courses')}
-                    className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl font-black text-sm bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 shadow-md hover:shadow-glow transition-all transform hover:-translate-y-0.5 active:scale-98"
+                    className="w-full sm:w-auto flex items-center justify-center gap-2.5 px-8 py-3.5 rounded-2xl font-black text-sm bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 shadow-md hover:shadow-glow transition-all transform hover:-translate-y-0.5 active:scale-98 cursor-pointer"
                   >
-                    <GraduationCap className="w-4 h-4" />
+                    <GraduationCap className="w-5 h-5" />
                     <span>تصفح الدورات والتأسيس 🎓</span>
                   </button>
 
                   <button
                     onClick={startMockExam}
-                    className="flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl font-bold text-sm bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-all active:scale-98"
+                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl font-bold text-sm bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 shadow-sm transition-all active:scale-98 cursor-pointer"
                   >
                     <Clock className="w-4 h-4 text-blue-500" />
                     <span>محاكي قياس (قريباً ⏳)</span>
                   </button>
-
-                  <button
-                    onClick={startSpeedChallenge}
-                    className="flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl font-bold text-sm bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-400 border border-purple-500/25 transition-all active:scale-98"
-                  >
-                    <Zap className="w-4 h-4" />
-                    <span>تحدي 45 ثانية (قريباً ⏳)</span>
-                  </button>
                 </div>
-
               </div>
 
-              {/* بطاقة الهوية والشعار المرفق */}
+              {/* بطاقة الشعار البسيطة والأنيقة */}
               <div className="lg:col-span-4 flex justify-center">
-                <div className="relative w-64 h-64 sm:w-72 sm:h-72 rounded-3xl overflow-hidden shadow-2xl border-2 border-amber-500/40 bg-gradient-to-b from-amber-400 to-amber-600 flex items-center justify-center p-6 group">
+                <div className="w-56 h-56 sm:w-64 sm:h-64 rounded-3xl border border-amber-500/30 bg-gradient-to-b from-amber-400 to-amber-500 flex items-center justify-center p-6 shadow-xl relative overflow-hidden group">
                   <img
                     src="/frame_000012.png"
                     alt="شعار منصة طرقع"
-                    className="w-full h-auto max-h-48 object-contain drop-shadow-md group-hover:scale-105 transition-transform duration-300"
+                    className="w-full h-auto max-h-44 object-contain drop-shadow-md group-hover:scale-105 transition-transform duration-300"
                     onError={(e) => {
                       const el = e.target as HTMLElement;
                       el.style.display = 'none';
@@ -1132,17 +1164,10 @@ export const App: React.FC = () => {
                     <span className="text-6xl font-black font-cairo">ط</span>
                     <span className="text-xl font-black">منصة طرقع</span>
                   </div>
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
-                  <div className="absolute bottom-4 inset-x-4 text-center">
-                    <span className="text-xs font-bold text-white bg-black/40 backdrop-blur-md px-3 py-1 rounded-full border border-white/20">
-                      طريقة طرقع: فك السؤال في ثوانٍ
-                    </span>
-                  </div>
                 </div>
               </div>
 
             </div>
-
           </section>
 
           {/* ترحيب بالمستخدم المسجل */}
@@ -1169,142 +1194,119 @@ export const App: React.FC = () => {
             </div>
           )}
 
-
-          {/* أوضاع الاختبار الثلاثة (بأسلوب Alaqsam التفاعلي) */}
-          <section className="flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-                  أوضاع التدريب والاختبار
-                </h2>
-                <p className="text-xs text-slate-500">اختر البيئة المناسبة لمستواك وهدفك التدريبي اليوم</p>
-              </div>
+          {/* ======================================================================= */}
+          {/* أقسام المنصة الأساسية (3 بطاقات واضحة، بسيطة ومباشرة) */}
+          {/* ======================================================================= */}
+          <section className="flex flex-col gap-5">
+            <div className="text-center sm:text-start">
+              <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
+                ابدأ رحلتك نحو الـ 100 🎯
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">اختر القسم المناسب لهدفك اليوم بدون تعقيد</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              {/* البطاقة 1: دورة التأسيس الشاملة */}
+              <div
+                onClick={() => handleTabSelect('courses')}
+                className="p-6 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/90 dark:border-slate-800 hover:border-amber-500/60 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group"
+              >
+                <div>
+                  <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
+                    <GraduationCap className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">
+                    دورة التأسيس الشاملة
+                  </h3>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
+                    محاضرات فيديو متدرجة من الصفر لتغطية الحساب، الجبر، الهندسة والإحصاء باستراتيجيات طرقع للحل السريع.
+                  </p>
+                </div>
+                <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800/80 text-xs">
+                  <span className="font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1 group-hover:translate-x-[-3px] transition-transform">
+                    <span>دخول المحاضرات</span>
+                    <span>←</span>
+                  </span>
+                  <span className="text-[10px] font-black px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                    متاح الآن 🎓
+                  </span>
+                </div>
+              </div>
 
-              {/* الوضع 1: محاكي قياس الفعلي */}
+              {/* البطاقة 2: المذكرات وتجميعات PDF */}
+              <div
+                onClick={() => handleTabSelect('courses')}
+                className="p-6 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/90 dark:border-slate-800 hover:border-blue-500/60 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group"
+              >
+                <div>
+                  <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
+                    <FileText className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">
+                    المذكرات وبنك الملفات
+                  </h3>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
+                    ملازم تأسيس شاملة وتجميعات كمي حديثة 1446 منسقة بصيغة PDF للتحميل والمذاكرة أوفلاين.
+                  </p>
+                </div>
+                <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800/80 text-xs">
+                  <span className="font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1 group-hover:translate-x-[-3px] transition-transform">
+                    <span>استعراض المذكرات</span>
+                    <span>←</span>
+                  </span>
+                  <span className="text-[10px] font-black px-2.5 py-0.5 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                    تحميل مباشر 📥
+                  </span>
+                </div>
+              </div>
+
+              {/* البطاقة 3: محاكي قياس الفعلي */}
               <div
                 onClick={startMockExam}
-                className="group relative p-6 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800 hover:border-amber-500/50 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between overflow-hidden"
+                className="p-6 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/90 dark:border-slate-800 hover:border-purple-500/60 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group"
               >
-                <div className="absolute top-4 left-4">
-                  <span className="px-2.5 py-1 rounded-full text-[11px] font-black bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1 shadow-sm">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                    <span>قريباً ⏳</span>
-                  </span>
-                </div>
-
                 <div>
-                  <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <div className="w-12 h-12 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
                     <Clock className="w-6 h-6" />
                   </div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-amber-500 transition-colors">
-                    محاكي قياس الفعلي
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">
+                    محاكي قياس الذكي
                   </h3>
-                  <p className="text-xs text-slate-500 leading-relaxed mb-4">
-                    مؤقت زمني دقيق لكل سؤال، لوحة تنقل بين الأرقام، حجب الشروحات وتصحيح كامل مع نهاية الاختبار.
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
+                    بيئة اختبار تحاكي مركز قياس بمؤقت زمني وتصحيح تفصيلي، يجري تجهيزها وتدشينها قريباً لجميع الطلاب.
                   </p>
                 </div>
-                <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800 text-xs font-bold text-slate-500 dark:text-slate-400">
-                  <span className="flex items-center gap-1.5">
-                    <span>متاح قريباً للطلاب</span>
-                  </span>
-                  <span className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                    قريباً
+                <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800/80 text-xs">
+                  <span className="text-slate-500 dark:text-slate-400">متاح قريباً للطلاب</span>
+                  <span className="text-[10px] font-black px-2.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                    قريباً ⏳
                   </span>
                 </div>
               </div>
-
-              {/* الوضع 2: التدريب الفوري مع الشروحات */}
-              <div
-                onClick={() => startPracticeMode()}
-                className="group relative p-6 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800 hover:border-amber-500/50 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between overflow-hidden"
-              >
-                <div className="absolute top-4 left-4">
-                  <span className="px-2.5 py-1 rounded-full text-[11px] font-black bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1 shadow-sm">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                    <span>قريباً ⏳</span>
-                  </span>
-                </div>
-
-                <div>
-                  <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                    <BrainCircuit className="w-6 h-6" />
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-amber-500 transition-colors">
-                    التدريب الفوري الذكي
-                  </h3>
-                  <p className="text-xs text-slate-500 leading-relaxed mb-4">
-                    حل بدون ضغط الوقت، واكشف شرح "طرقع" السريع فور اختيار الإجابة لترسيخ القوانين الذهنية.
-                  </p>
-                </div>
-                <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800 text-xs font-bold text-slate-500 dark:text-slate-400">
-                  <span className="flex items-center gap-1.5">
-                    <span>متاح قريباً للطلاب</span>
-                  </span>
-                  <span className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                    قريباً
-                  </span>
-                </div>
-              </div>
-
-              {/* الوضع 3: تحدي السرعة */}
-              <div
-                onClick={startSpeedChallenge}
-                className="group relative p-6 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800 hover:border-amber-500/50 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between overflow-hidden"
-              >
-                <div className="absolute top-4 left-4">
-                  <span className="px-2.5 py-1 rounded-full text-[11px] font-black bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1 shadow-sm">
-                    <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
-                    <span>قريباً ⏳</span>
-                  </span>
-                </div>
-
-                <div>
-                  <div className="w-12 h-12 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                    <Zap className="w-6 h-6" />
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-amber-500 transition-colors">
-                    تحدي طرقع للسرعة
-                  </h3>
-                  <p className="text-xs text-slate-500 leading-relaxed mb-4">
-                    45 ثانية فقط لكل سؤال! صُمم لرفع سرعة بديهتك الحسابية والتخلص من عادة الخطوات الطويلة.
-                  </p>
-                </div>
-                <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800 text-xs font-bold text-slate-500 dark:text-slate-400">
-                  <span className="flex items-center gap-1.5">
-                    <span>متاح قريباً للطلاب</span>
-                  </span>
-                  <span className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                    قريباً
-                  </span>
-                </div>
-              </div>
-
             </div>
           </section>
 
-
-          {/* بطاقة ميزات "طريقة طرقع" */}
-          <section className="p-8 rounded-3xl bg-slate-900 text-white border border-slate-800 flex flex-col md:flex-row items-center justify-between gap-6">
+          {/* ======================================================================= */}
+          {/* بطاقة "منهجية طرقع" الهادئة والبسيطة (متوافقة تماماً مع اللايت والدارك) */}
+          {/* ======================================================================= */}
+          <section className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#0d1424] text-slate-900 dark:text-white border border-slate-200/90 dark:border-slate-800 flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center font-black text-2xl shrink-0">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center font-black text-xl shrink-0">
                 ⚡
               </div>
               <div>
-                <h3 className="text-lg font-bold">لماذا سميت المنصة بـ "طرقع"؟</h3>
-                <p className="text-xs text-slate-400 max-w-xl mt-1 leading-relaxed">
-                  لأن الهدف أن تـ "طرقع" السؤال في أقل من 30 ثانية بدون تضييع وقتك في المعادلات والخطوات الطويلة، عبر استراتيجيات التجريب الذكي، التدرج المنتظم، وثلاثيات فيثاغورس الذهبية.
+                <h3 className="text-base sm:text-lg font-bold">لماذا سميت المنصة بـ "طرقع"؟</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xl mt-1 leading-relaxed">
+                  لأن الهدف أن تـ "طرقع" السؤال في أقل من 30 ثانية بدون تضييع وقتك في المعادلات والخطوات الطويلة، عبر استراتيجيات التجريب الذكي، التدرج المنتظم، وثلاثيات فيثاغورس.
                 </p>
               </div>
             </div>
             <button
               onClick={() => handleTabSelect('courses')}
-              className="px-6 py-3 rounded-xl font-bold text-xs bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-sm shrink-0 transition flex items-center gap-2"
+              className="px-6 py-3 rounded-xl font-bold text-xs bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-sm shrink-0 transition flex items-center gap-2 cursor-pointer self-stretch sm:self-auto justify-center"
             >
               <GraduationCap className="w-4 h-4" />
-              <span>تصفح الدورات والتأسيس 🎓</span>
+              <span>تصفح دورة التأسيس 🎓</span>
             </button>
           </section>
 
@@ -1312,7 +1314,7 @@ export const App: React.FC = () => {
       )}
 
       {/* التذييل المؤسسي لمنصة طرقع */}
-      <footer className="border-t border-slate-200/80 dark:border-slate-800/80 bg-slate-50/50 dark:bg-[#070b14]/50 py-8 px-4 text-center text-xs text-slate-500 space-y-4">
+      <footer className="border-t border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-[#070b14]/50 py-8 px-4 text-center text-xs text-slate-500 space-y-4">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="text-center sm:text-start space-y-1">
             <div className="flex items-center justify-center sm:justify-start gap-2">

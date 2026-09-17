@@ -31,10 +31,13 @@ export const sanitizeUrl = (url?: string | null, fallback: string = '#'): string
     return fallback;
   }
 
-  // السماح بالروابط الآمنة: https, http, mailto, tel, أو روابط نسبية
+  // السماح بالروابط الآمنة: https, http, vault, blob, data:pdf, mailto, tel, أو روابط نسبية
   if (
     trimmed.startsWith('https://') ||
     trimmed.startsWith('http://') ||
+    trimmed.startsWith('vault://') ||
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('data:application/pdf') ||
     trimmed.startsWith('mailto:') ||
     trimmed.startsWith('tel:') ||
     trimmed.startsWith('/') ||
@@ -75,4 +78,21 @@ export const sanitizeSvg = (svg?: string | null): string => {
  */
 export const isValidRole = (role: unknown): boolean => {
   return role === 'student' || role === 'teacher' || role === 'admin' || role === 'super_admin';
+};
+
+/**
+ * القائمة البيضاء المعتمدة لحسابات مالك المنصة (Super Admin & Platform Owner)
+ */
+export const OWNER_EMAILS = Object.freeze([
+  'yassooooo27m@gmail.com',
+  'iyoskalg@gmail.com',
+] as const);
+
+/**
+ * التحقق المركزي الموحد مما إذا كان البريد الإلكتروني يخص مالك المنصة
+ */
+export const isOwnerEmail = (email?: string | null): boolean => {
+  if (!email) return false;
+  const normalized = email.trim().toLowerCase();
+  return OWNER_EMAILS.includes(normalized as any);
 };

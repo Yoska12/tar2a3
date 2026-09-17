@@ -38,6 +38,7 @@ import {
 import { UserRole, UserWithRole, RoleChangeLog, StudentDownloadedFile } from '../types';
 import { rolesService } from '../lib/rolesService';
 import { authService, TarqaUser, supabase, isSupabaseConfigured } from '../lib/supabase';
+import { isOwnerEmail } from '../lib/securityUtils';
 import { downloadTrackingService } from '../lib/downloadTrackingService';
 
 interface SuperAdminRolesPanelProps {
@@ -51,8 +52,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
 }) => {
   // استنتاج المستخدم الحالي وصلاحياته الموثوقة (مع أخذ السوبر أدمن والمالك بعين الاعتبار)
   const currentLoggedUser = currentUser || authService.getCurrentUser();
-  const currentEmailLower = currentLoggedUser?.email?.trim().toLowerCase();
-  const isOwner = currentEmailLower === 'yassooooo27m@gmail.com' || currentEmailLower === 'iyoskalg@gmail.com';
+  const isOwner = isOwnerEmail(currentLoggedUser?.email);
   const isSuperAdmin = currentLoggedUser?.role === 'super_admin' || isOwner;
   const isAuthorizedAdmin = currentLoggedUser?.role === 'admin' || isSuperAdmin;
 
@@ -178,7 +178,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
       student: users.filter((u) => u.role === 'student').length,
       banned: users.filter((u) => u.isBanned).length,
       subscribed: users.filter((u) => u.isSubscribed).length,
-      unsubscribed: users.filter((u) => !u.isSubscribed && u.role !== 'super_admin' && u.email?.toLowerCase() !== 'yassooooo27m@gmail.com').length,
+      unsubscribed: users.filter((u) => !u.isSubscribed && u.role !== 'super_admin' && !isOwnerEmail(u.email)).length,
       downloaded: users.filter((u) => Boolean(u.hasDownloadedFiles)).length,
       notDownloaded: users.filter((u) => !u.hasDownloadedFiles).length,
     };
@@ -208,7 +208,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
           : selectedRoleFilter === 'subscribed'
           ? Boolean(user.isSubscribed)
           : selectedRoleFilter === 'unsubscribed'
-          ? !user.isSubscribed && user.role !== 'super_admin' && user.email?.toLowerCase() !== 'yassooooo27m@gmail.com'
+          ? !user.isSubscribed && user.role !== 'super_admin' && !isOwnerEmail(user.email)
           : selectedRoleFilter === 'downloaded'
           ? Boolean(user.hasDownloadedFiles)
           : selectedRoleFilter === 'not_downloaded'
@@ -220,8 +220,8 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
 
     // ترتيب القائمة: حساب السوبر أدمن Yoska في المقدمة دائماً، ثم الأعضاء الجدد أولاً
     return list.sort((a, b) => {
-      const isSuperA = a.email?.toLowerCase() === 'yassooooo27m@gmail.com' || a.role === 'super_admin';
-      const isSuperB = b.email?.toLowerCase() === 'yassooooo27m@gmail.com' || b.role === 'super_admin';
+      const isSuperA = isOwnerEmail(a.email) || a.role === 'super_admin';
+      const isSuperB = isOwnerEmail(b.email) || b.role === 'super_admin';
       if (isSuperA && !isSuperB) return -1;
       if (!isSuperA && isSuperB) return 1;
 
@@ -237,7 +237,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
       showToast('صلاحية الحظر وفك الحظر محصورة برتبة السوبر أدمن (Super Admin) فقط!', 'error');
       return;
     }
-    if (user.role === 'super_admin' || user.email?.toLowerCase() === 'yassooooo27m@gmail.com') {
+    if (user.role === 'super_admin' || isOwnerEmail(user.email)) {
       showToast('لا يمكن حظر حساب السوبر أدمن الرئيسي للمنصة!', 'error');
       return;
     }
@@ -285,7 +285,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
       showToast('صلاحية مسح الحسابات محصورة برتبة السوبر أدمن (Super Admin) فقط!', 'error');
       return;
     }
-    if (user.role === 'super_admin' || user.email?.toLowerCase() === 'yassooooo27m@gmail.com') {
+    if (user.role === 'super_admin' || isOwnerEmail(user.email)) {
       showToast('لا يمكن مسح حساب السوبر أدمن الرئيسي للمنصة!', 'error');
       return;
     }
@@ -386,7 +386,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
 
   // شارة حالة الاشتراك
   const renderSubscriptionBadge = (user: UserWithRole) => {
-    const isOwnerOrSuper = user.role === 'super_admin' || user.email?.toLowerCase() === 'yassooooo27m@gmail.com';
+    const isOwnerOrSuper = user.role === 'super_admin' || isOwnerEmail(user.email);
     if (isOwnerOrSuper) {
       return (
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold bg-amber-500/15 text-amber-600 dark:text-amber-300 border border-amber-500/30">
@@ -449,16 +449,33 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
     }
     if (window.confirm(`هل أنت متأكد من رغبتك في إلغاء اشتراك الطالب "${user.fullName}" في باقة طرقع السنوية؟`)) {
       setIsProcessingAction(true);
+      // تحديث متفائل فوري للواجهة (Optimistic UI) بدون أي انتظار
+      setUsers((prev) =>
+        prev.map((u) => {
+          const matchId = u.id && u.id === user.id;
+          const matchEmail = user.email && u.email && u.email.toLowerCase().trim() === user.email.toLowerCase().trim();
+          if (matchId || matchEmail) {
+            return {
+              ...u,
+              isSubscribed: false,
+              subscriptionExpiresAt: undefined,
+            };
+          }
+          return u;
+        })
+      );
+
       try {
         const res = await rolesService.cancelSubscription(user.id, user.email);
         if (res.success) {
           showToast(`تم إلغاء اشتراك ${user.fullName} بنجاح`, 'success');
-          await loadData(true);
         } else {
-          showToast('تعذر إلغاء الاشتراك', 'error');
+          showToast('تعذر إلغاء الاشتراك في السيرفر، تم الإلغاء محلياً', 'warning');
         }
+        await loadData(true);
       } catch (e: any) {
         showToast(e?.message || 'حدث خطأ أثناء إلغاء الاشتراك', 'error');
+        await loadData(true);
       } finally {
         setIsProcessingAction(false);
       }
@@ -473,16 +490,35 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
     }
     if (window.confirm(`هل تريد تفعيل باقة طرقع السنوية الشاملة (365 يوماً) للطالب "${user.fullName}"؟`)) {
       setIsProcessingAction(true);
+      const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+      
+      // تحديث متفائل فوري للواجهة (Optimistic UI) بدون أي انتظار
+      setUsers((prev) =>
+        prev.map((u) => {
+          const matchId = u.id && u.id === user.id;
+          const matchEmail = user.email && u.email && u.email.toLowerCase().trim() === user.email.toLowerCase().trim();
+          if (matchId || matchEmail) {
+            return {
+              ...u,
+              isSubscribed: true,
+              subscriptionExpiresAt: expiresAt,
+            };
+          }
+          return u;
+        })
+      );
+
       try {
         const res = await rolesService.grantSubscription(user, 365);
         if (res.success) {
           showToast(`تم تفعيل الاشتراك السنوي لـ ${user.fullName} بنجاح لمدة 365 يوماً`, 'success');
-          await loadData(true);
         } else {
-          showToast('تعذر تفعيل الاشتراك', 'error');
+          showToast('تعذر تفعيل الاشتراك في السيرفر، تم التفعيل محلياً', 'warning');
         }
+        await loadData(true);
       } catch (e: any) {
         showToast(e?.message || 'حدث خطأ أثناء تفعيل الاشتراك', 'error');
+        await loadData(true);
       } finally {
         setIsProcessingAction(false);
       }
@@ -926,7 +962,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
               ) : (
                 filteredUsers.map((user) => {
                   const isCurrentLoggedUser = currentLoggedUser?.id === user.id;
-                  const isTargetSuperAdminOrOwner = user.email?.toLowerCase() === 'yassooooo27m@gmail.com' || user.email?.toLowerCase() === 'iyoskalg@gmail.com' || user.role === 'super_admin';
+                  const isTargetSuperAdminOrOwner = isOwnerEmail(user.email) || user.role === 'super_admin';
 
                   return (
                     <tr
@@ -1184,7 +1220,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
           ) : (
             filteredUsers.map((user) => {
               const isCurrentLoggedUser = currentLoggedUser?.id === user.id;
-              const isTargetSuperAdminOrOwner = user.email?.toLowerCase() === 'yassooooo27m@gmail.com' || user.email?.toLowerCase() === 'iyoskalg@gmail.com' || user.role === 'super_admin';
+              const isTargetSuperAdminOrOwner = isOwnerEmail(user.email) || user.role === 'super_admin';
 
               return (
                 <div key={user.id} className={`p-4 flex flex-col gap-3 ${user.isBanned ? 'bg-rose-500/5 dark:bg-rose-950/15' : ''}`}>
@@ -1808,7 +1844,17 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
             {/* الأزرار بالأسفل */}
             <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
               <a
-                href="https://supabase.com/dashboard/project/djkwgwdlygxqcateivbc/sql/new"
+                href={(() => {
+                  try {
+                    const rawUrl = import.meta.env.VITE_SUPABASE_URL || '';
+                    const ref = rawUrl ? new URL(rawUrl).hostname.split('.')[0] : '';
+                    return ref && ref !== 'placeholder'
+                      ? `https://supabase.com/dashboard/project/${ref}/sql/new`
+                      : 'https://supabase.com/dashboard';
+                  } catch {
+                    return 'https://supabase.com/dashboard';
+                  }
+                })()}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-4 py-2.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 transition flex items-center gap-2"
@@ -2168,7 +2214,7 @@ BEGIN
     ),
     CASE 
       WHEN LOWER(TRIM(NEW.email)) = 'yassooooo27m@gmail.com' THEN 'super_admin'::public.user_role
-      ELSE COALESCE((NEW.raw_user_meta_data->>'role')::public.user_role, 'student'::public.user_role)
+      ELSE 'student'::public.user_role
     END,
     COALESCE(
       CASE 

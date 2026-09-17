@@ -6,10 +6,24 @@
  * ==============================================================================
  */
 
-// 1. ترويسات CORS الكاملة للسماح بالرفع من الموقع
-header('Access-Control-Allow-Origin: *');
+// 1. ترويسات CORS الآمنة للمنصة
+$allowed_origins = [
+    'https://tarqa3.net',
+    'https://www.tarqa3.net',
+    'http://localhost:3000',
+    'http://localhost:5173'
+];
+
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if (in_array($origin, $allowed_origins, true)) {
+    header("Access-Control-Allow-Origin: $origin");
+} else {
+    header("Access-Control-Allow-Origin: https://tarqa3.net");
+}
+
+header('Access-Control-Allow-Credentials: true');
 header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
-header('Access-Control-Allow-Headers: Origin, X-Requested-With, Content-Type, Accept, Authorization, Range');
+header('Access-Control-Allow-Headers: Origin, X-Requested-With, Content-Type, Accept, Authorization, Range, X-Upload-Key');
 header('Access-Control-Expose-Headers: Content-Length, Content-Range, Content-Disposition');
 
 // معالجة طلبات الفحص المسبق (Preflight OPTIONS)
@@ -20,6 +34,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // ضبط نوع الاستجابة JSON بترميز UTF-8
 header('Content-Type: application/json; charset=utf-8');
+
+// التحقق الأمني الإلزامي من مفتاح الصلاحية (Authorization Key) لمنع الرفع العشوائي
+$expectedKey = getenv('UPLOAD_API_SECRET') ?: 'tarqa_upload_sec_2026';
+$providedKey = $_SERVER['HTTP_X_UPLOAD_KEY'] ?? ($_POST['upload_key'] ?? '');
+
+if (empty($providedKey) || !hash_equals($expectedKey, (string)$providedKey)) {
+    http_response_code(403);
+    echo json_encode([
+        'success' => false,
+        'error' => 'غير مصرح: مفتاح الصلاحية غير صحيح أو مفقود لرفع الملفات على السيرفر.'
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 // زيادة حدود استهلاك الذاكرة والوقت في بيئة PHP لرفع الملفات الكبيرة
 @ini_set('memory_limit', '512M');

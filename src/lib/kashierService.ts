@@ -46,7 +46,7 @@ export const defaultKashierSettings: KashierSettings = {
   mode: 'test',
   merchantId: (import.meta as any).env?.VITE_KASHIER_MERCHANT_ID || 'MID-TARQA-TEST',
   apiKey: (import.meta as any).env?.VITE_KASHIER_API_KEY || '',
-  secretKey: (import.meta as any).env?.VITE_KASHIER_SECRET_KEY || '',
+  secretKey: '',
   currency: 'EGP',
   amount: 1050.00, // 1050 جنيه مصري أو 75 ريال سعودي
   brandColor: '#f59e0b', // اللون البرتقالي المميز لمنصة طرقع
@@ -66,7 +66,8 @@ export const getKashierSettings = (): KashierSettings => {
     if (parsed.currency === 'EGP' && (parsed.amount === 75 || parsed.amount === 1020)) {
       parsed.amount = 1050;
     }
-    return { ...defaultKashierSettings, ...parsed };
+    // المفتاح السري لا يُقرأ من localStorage لحماية التاجر
+    return { ...defaultKashierSettings, ...parsed, secretKey: '' };
   } catch {
     return { ...defaultKashierSettings };
   }
@@ -79,7 +80,9 @@ export const saveKashierSettings = (newSettings: Partial<KashierSettings>): Kash
   try {
     const current = getKashierSettings();
     const updated: KashierSettings = { ...current, ...newSettings };
-    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(updated));
+    // حماية المفتاح السري ومنع تخزينه في المتصفح
+    const safeToStore = { ...updated, secretKey: '' };
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(safeToStore));
     window.dispatchEvent(new CustomEvent('tarqa_kashier_settings_changed', { detail: updated }));
     return updated;
   } catch (e) {

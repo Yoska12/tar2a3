@@ -25,6 +25,7 @@ export const uploadFileToHostinger = (
     const endpoint = '/api/upload.php';
 
     xhr.open('POST', endpoint, true);
+    xhr.setRequestHeader('X-Upload-Key', 'tarqa_upload_sec_2026');
 
     if (xhr.upload && onProgress) {
       xhr.upload.onprogress = (event) => {

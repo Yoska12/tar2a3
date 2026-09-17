@@ -1174,18 +1174,21 @@ export const App: React.FC = () => {
             </div>
           </section>
 
-          {/* ترحيب بالمستخدم المسجل */}
+          {/* ترحيب بالمستخدم المسجل بتصميم زجاجي كوني متناغم */}
           {currentUser && (
-            <div className="flex items-center justify-between p-4 rounded-2xl bg-amber-500/10 dark:bg-[#060a14]/60 backdrop-blur-xl border border-amber-500/25 dark:border-amber-500/35 dark:shadow-[0_0_20px_rgba(245,158,11,0.1)] animate-in fade-in">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-400 text-slate-950 flex items-center justify-center font-black text-sm shadow-sm">
+            <div className="relative overflow-hidden flex items-center justify-between p-4 sm:p-5 rounded-2xl bg-white/80 dark:bg-gradient-to-r dark:from-[#140c06]/60 dark:via-[#0a070e]/50 dark:to-[#050409]/60 backdrop-blur-2xl border border-slate-200/90 dark:border-amber-500/30 shadow-sm dark:shadow-[0_4px_30px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(245,158,11,0.25)] animate-in fade-in">
+              {/* خط وميض علوي */}
+              <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-amber-400/40 to-transparent pointer-events-none" />
+
+              <div className="flex items-center gap-3.5 relative z-10">
+                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-tr from-amber-500 via-amber-400 to-orange-400 text-slate-950 flex items-center justify-center font-black text-sm shadow-[0_0_18px_rgba(245,158,11,0.4)] shrink-0">
                   {currentUser.fullName ? currentUser.fullName.trim().charAt(0) : 'ط'}
                 </div>
                 <div>
-                  <h4 className="font-bold text-sm text-slate-900 dark:text-white">
+                  <h4 className="font-black text-sm sm:text-base text-slate-900 dark:text-white">
                     مرحباً بك مجدداً، {currentUser.fullName}!
                   </h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                  <p className="text-xs text-slate-500 dark:text-amber-200/70">
                     أنت مسجل الآن وجاهز لاختبارات قدرات كمي • درجتك المستهدفة: {currentUser.targetScore || 100} 🎯
                   </p>
                 </div>
@@ -1194,7 +1197,7 @@ export const App: React.FC = () => {
           )}
 
           {/* ======================================================================= */}
-          {/* أقسام المنصة الأساسية (3 بطاقات واضحة، بسيطة ومباشرة) */}
+          {/* أقسام المنصة الأساسية (3 بطاقات زجاجية كونية منسجمة مع المجرة البرتقالية) */}
           {/* ======================================================================= */}
           <section className="flex flex-col gap-5">
             <div className="text-center sm:text-start">
@@ -1205,79 +1208,91 @@ export const App: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-              {/* البطاقة 1: دورة التأسيس الشاملة */}
+              {/* البطاقة 1: دورة التأسيس الشاملة (Warm Solar Amber) */}
               <div
                 onClick={() => handleTabSelect('courses')}
-                className="p-6 rounded-2xl bg-white/90 dark:bg-[#060a14]/65 backdrop-blur-xl border border-slate-200/90 dark:border-amber-500/25 hover:border-amber-500/60 shadow-sm hover:shadow-md dark:hover:shadow-[0_0_25px_rgba(245,158,11,0.2)] transition-all cursor-pointer flex flex-col justify-between group"
+                className="relative overflow-hidden p-6 rounded-2xl bg-white/85 dark:bg-gradient-to-b dark:from-[#150d06]/65 dark:via-[#0a070e]/50 dark:to-[#050409]/60 backdrop-blur-2xl border border-slate-200/90 dark:border-amber-500/25 hover:border-amber-500/60 dark:hover:border-amber-400/65 shadow-sm hover:shadow-lg dark:shadow-[0_4px_25px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(245,158,11,0.2)] dark:hover:shadow-[0_12px_40px_-5px_rgba(245,158,11,0.3),0_0_25px_rgba(245,158,11,0.18)] hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
               >
-                <div>
-                  <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
-                    <GraduationCap className="w-6 h-6" />
+                {/* خط إضاءة علوي كوني */}
+                <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-amber-400/40 to-transparent pointer-events-none" />
+
+                <div className="relative z-10">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500/20 to-orange-500/10 text-amber-400 border border-amber-500/35 shadow-[0_0_15px_rgba(245,158,11,0.25)] flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                    <GraduationCap className="w-6 h-6 drop-shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
                   </div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">
+                  <h3 className="text-base font-black text-slate-900 dark:text-white group-hover:dark:text-amber-200 transition-colors mb-2">
                     دورة التأسيس الشاملة
                   </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
+                  <p className="text-xs text-slate-600 dark:text-slate-300/80 leading-relaxed mb-4">
                     محاضرات فيديو متدرجة من الصفر لتغطية الحساب، الجبر، الهندسة والإحصاء باستراتيجيات طرقع للحل السريع.
                   </p>
                 </div>
-                <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800/80 text-xs">
-                  <span className="font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1 group-hover:translate-x-[-3px] transition-transform">
+
+                <div className="relative z-10 flex items-center justify-between pt-4 border-t border-slate-100 dark:border-amber-500/15 text-xs">
+                  <span className="font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1 group-hover:translate-x-[-3px] transition-transform drop-shadow-[0_0_8px_rgba(245,158,11,0.35)]">
                     <span>دخول المحاضرات</span>
                     <span>←</span>
                   </span>
-                  <span className="text-[10px] font-black px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                  <span className="text-[10px] font-black px-2.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.15)]">
                     متاح الآن 🎓
                   </span>
                 </div>
               </div>
 
-              {/* البطاقة 2: المذكرات وتجميعات PDF */}
+              {/* البطاقة 2: المذكرات وبنك الملفات (Cosmic Flame Orange) */}
               <div
                 onClick={() => handleTabSelect('courses')}
-                className="p-6 rounded-2xl bg-white/90 dark:bg-[#060a14]/65 backdrop-blur-xl border border-slate-200/90 dark:border-blue-500/25 hover:border-blue-500/60 shadow-sm hover:shadow-md dark:hover:shadow-[0_0_25px_rgba(59,130,246,0.2)] transition-all cursor-pointer flex flex-col justify-between group"
+                className="relative overflow-hidden p-6 rounded-2xl bg-white/85 dark:bg-gradient-to-b dark:from-[#150d06]/65 dark:via-[#0a070e]/50 dark:to-[#050409]/60 backdrop-blur-2xl border border-slate-200/90 dark:border-orange-500/25 hover:border-orange-500/60 dark:hover:border-orange-400/65 shadow-sm hover:shadow-lg dark:shadow-[0_4px_25px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(249,115,22,0.2)] dark:hover:shadow-[0_12px_40px_-5px_rgba(249,115,22,0.3),0_0_25px_rgba(249,115,22,0.18)] hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
               >
-                <div>
-                  <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
-                    <FileText className="w-6 h-6" />
+                {/* خط إضاءة علوي كوني */}
+                <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-orange-400/40 to-transparent pointer-events-none" />
+
+                <div className="relative z-10">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500/20 to-amber-500/10 text-orange-400 border border-orange-500/35 shadow-[0_0_15px_rgba(249,115,22,0.25)] flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                    <FileText className="w-6 h-6 drop-shadow-[0_0_6px_rgba(249,115,22,0.6)]" />
                   </div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">
+                  <h3 className="text-base font-black text-slate-900 dark:text-white group-hover:dark:text-orange-200 transition-colors mb-2">
                     المذكرات وبنك الملفات
                   </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
+                  <p className="text-xs text-slate-600 dark:text-slate-300/80 leading-relaxed mb-4">
                     ملازم تأسيس شاملة وتجميعات كمي حديثة 1446 منسقة بصيغة PDF للتحميل والمذاكرة أوفلاين.
                   </p>
                 </div>
-                <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800/80 text-xs">
-                  <span className="font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1 group-hover:translate-x-[-3px] transition-transform">
+
+                <div className="relative z-10 flex items-center justify-between pt-4 border-t border-slate-100 dark:border-orange-500/15 text-xs">
+                  <span className="font-bold text-orange-600 dark:text-orange-400 flex items-center gap-1 group-hover:translate-x-[-3px] transition-transform drop-shadow-[0_0_8px_rgba(249,115,22,0.35)]">
                     <span>استعراض المذكرات</span>
                     <span>←</span>
                   </span>
-                  <span className="text-[10px] font-black px-2.5 py-0.5 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                  <span className="text-[10px] font-black px-2.5 py-0.5 rounded-md bg-orange-500/15 text-orange-600 dark:text-orange-400 border border-orange-500/30 shadow-[0_0_10px_rgba(249,115,22,0.15)]">
                     تحميل مباشر 📥
                   </span>
                 </div>
               </div>
 
-              {/* البطاقة 3: محاكي قياس الفعلي */}
+              {/* البطاقة 3: محاكي قياس الفعلي (Supernova Stellar Gold) */}
               <div
                 onClick={startMockExam}
-                className="p-6 rounded-2xl bg-white/90 dark:bg-[#060a14]/65 backdrop-blur-xl border border-slate-200/90 dark:border-purple-500/25 hover:border-purple-500/60 shadow-sm hover:shadow-md dark:hover:shadow-[0_0_25px_rgba(168,85,247,0.2)] transition-all cursor-pointer flex flex-col justify-between group"
+                className="relative overflow-hidden p-6 rounded-2xl bg-white/85 dark:bg-gradient-to-b dark:from-[#150d06]/65 dark:via-[#0a070e]/50 dark:to-[#050409]/60 backdrop-blur-2xl border border-slate-200/90 dark:border-amber-500/25 hover:border-amber-500/60 dark:hover:border-amber-400/65 shadow-sm hover:shadow-lg dark:shadow-[0_4px_25px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(251,191,36,0.2)] dark:hover:shadow-[0_12px_40px_-5px_rgba(245,158,11,0.3),0_0_25px_rgba(245,158,11,0.18)] hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
               >
-                <div>
-                  <div className="w-12 h-12 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
-                    <Clock className="w-6 h-6" />
+                {/* خط إضاءة علوي كوني */}
+                <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-amber-400/40 to-transparent pointer-events-none" />
+
+                <div className="relative z-10">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400/20 to-orange-500/10 text-amber-300 border border-amber-400/35 shadow-[0_0_15px_rgba(251,191,36,0.25)] flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                    <Clock className="w-6 h-6 drop-shadow-[0_0_6px_rgba(251,191,36,0.6)]" />
                   </div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white mb-2">
+                  <h3 className="text-base font-black text-slate-900 dark:text-white group-hover:dark:text-amber-200 transition-colors mb-2">
                     محاكي قياس الذكي
                   </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
+                  <p className="text-xs text-slate-600 dark:text-slate-300/80 leading-relaxed mb-4">
                     بيئة اختبار تحاكي مركز قياس بمؤقت زمني وتصحيح تفصيلي، يجري تجهيزها وتدشينها قريباً لجميع الطلاب.
                   </p>
                 </div>
-                <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800/80 text-xs">
-                  <span className="text-slate-500 dark:text-slate-400">متاح قريباً للطلاب</span>
-                  <span className="text-[10px] font-black px-2.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+
+                <div className="relative z-10 flex items-center justify-between pt-4 border-t border-slate-100 dark:border-amber-500/15 text-xs">
+                  <span className="text-slate-500 dark:text-amber-200/60 font-medium">متاح قريباً للطلاب</span>
+                  <span className="text-[10px] font-black px-2.5 py-0.5 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-300 border border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.2)]">
                     قريباً ⏳
                   </span>
                 </div>

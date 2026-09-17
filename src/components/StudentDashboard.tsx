@@ -192,16 +192,16 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       {/* ======================================================================= */}
       {/* 1. الهيدر والبانر الترحيبي (Welcome & Goal Banner) */}
       {/* ======================================================================= */}
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-transparent dark:from-[#11192e] dark:to-[#070b14] border border-amber-500/25 p-6 sm:p-8 shadow-sm">
+      <section className="relative overflow-hidden rounded-3xl bg-white/90 dark:bg-gradient-to-br dark:from-[#1c130b]/92 dark:via-[#120c1f]/88 dark:to-[#07050e]/92 border border-sky-200/90 dark:border-amber-500/35 p-6 sm:p-8 backdrop-blur-2xl shadow-[0_10px_35px_rgba(14,165,233,0.08)] dark:shadow-[0_10px_35px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.15)]">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
-              <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1.5">
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-sky-500/10 dark:bg-amber-500/20 text-sky-800 dark:text-amber-400 border border-sky-200/80 dark:border-amber-500/30 flex items-center gap-1.5 shadow-sm">
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>لوحة متابعة الطالب</span>
               </span>
-              <span className="text-xs text-slate-500">• آخر تحديث: اليوم</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">• آخر تحديث: اليوم</span>
             </div>
 
             <h1 className="text-2xl sm:text-4xl font-black text-slate-900 dark:text-white">
@@ -223,7 +223,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                   {currentAverage}% (متبقي {Math.max(0, targetScore - currentAverage)} درجات)
                 </span>
               </div>
-              <div className="w-full h-3 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-300 dark:border-slate-700">
+              <div className="w-full h-3 bg-sky-100/80 dark:bg-slate-800 rounded-full overflow-hidden p-0.5 border border-sky-200/80 dark:border-slate-700">
                 <div
                   className="h-full bg-gradient-to-r from-amber-500 to-yellow-400 rounded-full transition-all duration-700 shadow-sm"
                   style={{ width: `${progressRatio}%` }}
@@ -236,7 +236,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
           <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 shrink-0">
             <button
               onClick={() => onStartPractice()}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-bold text-xs border border-slate-200 dark:border-slate-700 shadow-sm transition"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-white/90 hover:bg-white dark:bg-[#161021]/80 dark:hover:bg-[#1f1630] text-slate-900 dark:text-white font-bold text-xs border border-sky-200/80 dark:border-amber-500/30 shadow-sm transition"
             >
               <Lightbulb className="w-4 h-4 text-amber-500" />
               <span>تدريب على الأقسام</span>
@@ -244,7 +244,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
             <button
               onClick={onStartMock}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-md transition"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/25 transition"
             >
               <Play className="w-4 h-4 fill-current" />
               <span>محاكي قياس جديد</span>
@@ -310,7 +310,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 ? 'لديك وصول دائم وشامل لجميع المحاضرات والملفات والخدمات بدون قيود.'
                 : subscription.isSubscribed
                 ? `باقة طرقع السنوية مفعلة. متبقي ${subscription.daysRemaining} يوم (حتى ${subscription.expiresDateFormatted}).`
-                : 'اشترك الآن في باقة الدورات السنوية بـ 75 ريال فقط لفتح جميع المحاضرات وملفات التجميعات.'}
+                : 'الاشتراك في باقة الدورات السنوية سيكون متاحاً قريباً جداً فور تدشين وتفعيل بوابة الدفع الإلكتروني! ⏳'}
             </p>
           </div>
         </div>
@@ -332,10 +332,10 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
           {(!subscription.isSubscribed && !subscription.isManager) && (
             <button
               onClick={() => onNavigateCourses?.()}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-950 text-xs font-black shadow-md transition"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500/20 to-amber-600/20 border border-amber-500/40 hover:bg-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-black shadow-sm transition"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>تصفح الدورات والاشتراك (75 ريال) 🎓</span>
+              <span>تصفح الدورات (الاشتراك متاح قريباً ⏳) 🎓</span>
             </button>
           )}
         </div>
@@ -347,7 +347,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
         {/* الدقة الإجمالية */}
-        <div className="p-5 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800/80 shadow-sm flex flex-col justify-between">
+        <div className="p-5 rounded-2xl bg-white/90 dark:bg-gradient-to-b dark:from-[#161021]/90 dark:via-[#100b18]/85 dark:to-[#090610]/90 border border-sky-200/80 dark:border-amber-500/25 backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex flex-col justify-between hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-bold text-slate-500">معدل الدقة الإجمالي</span>
             <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
@@ -369,7 +369,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         </div>
 
         {/* سرعة الحل */}
-        <div className="p-5 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800/80 shadow-sm flex flex-col justify-between">
+        <div className="p-5 rounded-2xl bg-white/90 dark:bg-gradient-to-b dark:from-[#161021]/90 dark:via-[#100b18]/85 dark:to-[#090610]/90 border border-sky-200/80 dark:border-amber-500/25 backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex flex-col justify-between hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-bold text-slate-500">سرعة حل المسألة</span>
             <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
@@ -394,7 +394,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         </div>
 
         {/* الاختبارات المكتملة */}
-        <div className="p-5 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800/80 shadow-sm flex flex-col justify-between">
+        <div className="p-5 rounded-2xl bg-white/90 dark:bg-gradient-to-b dark:from-[#161021]/90 dark:via-[#100b18]/85 dark:to-[#090610]/90 border border-sky-200/80 dark:border-amber-500/25 backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex flex-col justify-between hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-bold text-slate-500">الاختبارات المكتملة</span>
             <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
@@ -413,7 +413,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         </div>
 
         {/* سلسلة الالتزام اليومي */}
-        <div className="p-5 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800/80 shadow-sm flex flex-col justify-between">
+        <div className="p-5 rounded-2xl bg-white/90 dark:bg-gradient-to-b dark:from-[#161021]/90 dark:via-[#100b18]/85 dark:to-[#090610]/90 border border-sky-200/80 dark:border-amber-500/25 backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex flex-col justify-between hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-bold text-slate-500">سلسلة الالتزام (Streak)</span>
             <div className="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center">
@@ -439,7 +439,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* مخطط الرادار (Radar Chart) */}
-        <div className="lg:col-span-6 p-6 rounded-3xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800/80 shadow-sm flex flex-col items-center justify-between">
+        <div className="lg:col-span-6 p-6 rounded-3xl bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/92 dark:via-[#110c1a]/88 dark:to-[#07050e]/92 border border-sky-200/80 dark:border-amber-500/30 backdrop-blur-2xl shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.7),0_0_20px_rgba(245,158,11,0.12)] flex flex-col items-center justify-between">
           <div className="w-full flex items-center justify-between mb-4">
             <div>
               <h2 className="text-base font-bold text-slate-900 dark:text-white">
@@ -468,7 +468,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         {/* أشرطة الإتقان التفصيلية ونقطة الضعف */}
         <div className="lg:col-span-6 flex flex-col gap-4">
           
-          <div className="p-6 rounded-3xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800/80 shadow-sm flex-1 flex flex-col justify-between">
+          <div className="p-6 rounded-3xl bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/92 dark:via-[#110c1a]/88 dark:to-[#07050e]/92 border border-sky-200/80 dark:border-amber-500/30 backdrop-blur-2xl shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.7),0_0_20px_rgba(245,158,11,0.12)] flex-1 flex flex-col justify-between">
             <div>
               <h2 className="text-base font-bold text-slate-900 dark:text-white mb-1">
                 تفاصيل إتقان الأقسام
@@ -564,7 +564,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       {/* ======================================================================= */}
       {/* 4. سجل الاختبارات الأخيرة (Recent Attempts Table) الحقيقي */}
       {/* ======================================================================= */}
-      <section className="p-6 rounded-3xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800/80 shadow-sm">
+      <section className="p-6 rounded-3xl bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/92 dark:via-[#110c1a]/88 dark:to-[#07050e]/92 border border-sky-200/80 dark:border-amber-500/30 backdrop-blur-2xl shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.7),0_0_20px_rgba(245,158,11,0.12)]">
         <div className="flex items-center justify-between mb-5">
           <div>
             <h2 className="text-base font-bold text-slate-900 dark:text-white">

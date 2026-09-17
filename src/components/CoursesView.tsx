@@ -28,9 +28,10 @@ import {
   Film,
   Loader2,
   Shield,
-  CreditCard
+  CreditCard,
+  RotateCcw
 } from 'lucide-react';
-import { CourseModule, Lesson, LessonAttachment, VideoProvider, CourseFileItem } from '../types';
+import { CourseModule, Lesson, LessonAttachment, VideoProvider, CourseFileItem, CourseEnrollmentStatus } from '../types';
 import { TarqaUser } from '../lib/supabase';
 import { uploadLessonVideo, formatVideoSize } from '../lib/videoUploadService';
 import {
@@ -41,14 +42,17 @@ import {
   getSubscriptionDetails,
   activateAnnualSubscription,
   canAccessLesson,
-  coursesStorage
+  coursesStorage,
+  getCourseEnrollmentInfo,
+  isCourseEnrollmentOpen
 } from '../lib/subscriptionService';
 import { downloadTrackingService } from '../lib/downloadTrackingService';
 import { KashierCheckoutModal } from './KashierCheckoutModal';
 import { getKashierSettings, KashierTransaction } from '../lib/kashierService';
 import { sanitizeUrl } from '../lib/securityUtils';
-import { fileStorageService } from '../lib/fileStorageService';
+import { fileStorageService, isMobileDevice } from '../lib/fileStorageService';
 import { PdfPreviewModal } from './PdfPreviewModal';
+import { CourseEnrollButton } from './CourseEnrollButton';
 
 interface CoursesViewProps {
   currentUser?: TarqaUser | null;
@@ -74,8 +78,13 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
     description: 'محاضرات التأسيس الشاملة للقدرات من الصفر حتى الاحتراف.',
     orderIndex: 1,
     isPublished: true,
+    status: 'paused' as CourseEnrollmentStatus,
+    customStatusText: 'الاشتراك متاح قريباً ⏳',
+    availableDate: '',
     lessons: [],
   };
+
+  const moduleEnrollmentInfo = getCourseEnrollmentInfo(currentModule);
 
   const [subscriptionInfo, setSubscriptionInfo] = useState(() => getSubscriptionDetails(currentUser));
   const isEditor = canEditCourses(currentUser?.role, currentUser?.email);
@@ -92,6 +101,11 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
   // حالة التحميل والتنزيل المباشر
   const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null);
   const [downloadToast, setDownloadToast] = useState<string | null>(null);
+  const [downloadNotice, setDownloadNotice] = useState<{
+    fileName: string;
+    url: string;
+    title: string;
+  } | null>(null);
 
   // نافذة إضافة / تعديل محاضرة
   const [lessonModalOpen, setLessonModalOpen] = useState(false);
@@ -148,11 +162,14 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
     }
   };
 
-  // نافذة تعديل اسم وتفاصيل باب المحاضرات
+  // نافذة تعديل اسم وتفاصيل وحالة باب المحاضرات
   const [moduleModalOpen, setModuleModalOpen] = useState(false);
   const [moduleFormData, setModuleFormData] = useState({
     title: currentModule.title || 'المحاضرات',
     description: currentModule.description || '',
+    status: (currentModule.status || 'paused') as CourseEnrollmentStatus,
+    availableDate: currentModule.availableDate || '',
+    customStatusText: currentModule.customStatusText || 'الاشتراك متاح قريباً ⏳',
   });
 
   // نافذة إضافة / تعديل ملف
@@ -228,18 +245,55 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
     }
   };
 
+  // وظيفة استعادة المحاضرات والملفات الافتراضية المعتمدة للمنصة
+  const handleRestoreDefaults = () => {
+    if (window.confirm('هل تريد استعادة كافة المحاضرات والملفات المعتمدة للمنصة (8 محاضرات تأسيسية و 3 مذكرات وملخصات)؟')) {
+      const defaultMods = coursesStorage.resetToDefault();
+      const defaultFiles = coursesStorage.resetFilesToDefault();
+      setModules([...defaultMods]);
+      setFiles([...defaultFiles]);
+      coursesStorage.syncToCloud(defaultMods, defaultFiles);
+      setDownloadToast('تمت استعادة كافة المحاضرات والملفات بنجاح ومزامنتها سحابياً! ✅');
+      setTimeout(() => setDownloadToast(null), 4000);
+    }
+  };
+
+  // حماية تلقائية وفورية: التأكد من وجود المحاضرات والملفات وعدم بقائها فارغة
+  useEffect(() => {
+    const currentMods = coursesStorage.getModules();
+    const hasLessons = currentMods.some((m) => Array.isArray(m.lessons) && m.lessons.length > 0);
+    if (!hasLessons || !modules[0]?.lessons || modules[0].lessons.length === 0) {
+      const restored = coursesStorage.resetToDefault();
+      setModules([...restored]);
+    }
+    const currentFiles = coursesStorage.getFiles();
+    if (!currentFiles || currentFiles.length === 0 || files.length === 0) {
+      const restoredFiles = coursesStorage.resetFilesToDefault();
+      setFiles([...restoredFiles]);
+    }
+  }, []);
+
   // الاستماع لتغييرات الدورات والملفات والاشتراكات
   useEffect(() => {
     const handleSubChanged = () => {
       setSubscriptionInfo(getSubscriptionDetails(currentUser));
     };
     const handleModulesChanged = (e: any) => {
-      if (e.detail) setModules(e.detail);
-      else setModules(coursesStorage.getModules());
+      const incoming = e.detail || coursesStorage.getModules();
+      const hasLessons = incoming && incoming.some((m: any) => Array.isArray(m.lessons) && m.lessons.length > 0);
+      if (hasLessons) {
+        setModules([...incoming]);
+      } else {
+        setModules(coursesStorage.getModules());
+      }
     };
     const handleFilesChanged = (e: any) => {
-      if (e.detail !== undefined) setFiles(e.detail);
-      else setFiles(coursesStorage.getFiles());
+      const incoming = e.detail !== undefined ? e.detail : coursesStorage.getFiles();
+      if (Array.isArray(incoming) && incoming.length > 0) {
+        setFiles([...incoming]);
+      } else {
+        setFiles(coursesStorage.getFiles());
+      }
     };
 
     window.addEventListener('tarqa_subscription_changed', handleSubChanged);
@@ -320,31 +374,50 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
 
   // تحميل أو فتح ملف
   const handleFileAction = async (file: CourseFileItem, previewMode = false) => {
-    if (previewMode) {
-      // المعاينة والتصفح متاحان دائماً لجميع الطلاب
+    const hasAccess = Boolean(file.isFreePreview || subscriptionInfo.isSubscribed);
+
+    if (!hasAccess) {
+      setShowSubscribeModal(true);
+      setDownloadToast('عفواً، معاينة وتنزيل هذا الملف متاحة للمشتركين فقط 🔒');
+      setTimeout(() => setDownloadToast(null), 4000);
+      return;
+    }
+
+    downloadTrackingService.trackDownload(
+      {
+        id: file.id,
+        title: file.title,
+        fileUrl: file.fileUrl,
+        fileType: file.fileType,
+        fileSize: file.fileSize,
+      },
+      currentUser
+    );
+
+    const isMobile = isMobileDevice();
+    // على الموبايل أو في حال طلب المعاينة، نفتح دائماً نافذة التحميل الشاملة لمنع حجب المتصفحات الجوالة (سفاري وكروم) للتنزيل الصامت
+    if (isMobile || previewMode) {
       setPreviewFile(file);
       setIsPreviewModalOpen(true);
       return;
     }
 
-    // تنزيل الملف كاملاً على جهاز الطالب مباشرة مع ختم وتشفير بياناته الأمنية
+    // تنزيل الملف كاملاً على جهاز الطالب مباشرة مع ختم وتشفير بياناته الأمنية (للكمبيوتر)
     setDownloadingFileId(file.id);
     setDownloadToast(`جاري تشفير وتنزيل [${file.title}] على جهازك... 🛡️`);
 
     try {
-      downloadTrackingService.trackDownload(
-        {
-          id: file.id,
+      const res = await fileStorageService.downloadWatermarkedFile(file, currentUser);
+      if (res && res.success) {
+        setDownloadNotice({
+          fileName: res.fileName,
+          url: res.url,
           title: file.title,
-          fileUrl: file.fileUrl,
-          fileType: file.fileType,
-          fileSize: file.fileSize,
-        },
-        currentUser
-      );
-
-      await fileStorageService.downloadWatermarkedFile(file, currentUser);
-      setDownloadToast(`تم تنزيل [${file.title}] بنجاح على جهازك (PDF مشفر ومحمي) ✅`);
+        });
+        setDownloadToast(`تم تجهيز وتنزيل [${file.title}] على جهازك بنجاح ✅`);
+      } else {
+        setDownloadToast('تعذر تنزيل الملف، يرجى المحاولة مجدداً');
+      }
       setTimeout(() => setDownloadToast(null), 5000);
     } catch (err) {
       console.error('Error downloading file:', err);
@@ -423,7 +496,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
     setModules([...updated]);
   };
 
-  // حفظ تفاصيل باب المحاضرات
+  // حفظ تفاصيل وحالة باب المحاضرات
   const handleSaveModule = (e: React.FormEvent) => {
     e.preventDefault();
     if (!moduleFormData.title.trim()) return;
@@ -432,6 +505,9 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
       ...currentModule,
       title: moduleFormData.title.trim(),
       description: moduleFormData.description.trim(),
+      status: moduleFormData.status,
+      availableDate: moduleFormData.availableDate.trim(),
+      customStatusText: moduleFormData.customStatusText.trim(),
     };
     const updatedList = coursesStorage.updateModule(updated);
     setModules([...updatedList]);
@@ -497,16 +573,16 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
   const mainFile = files[0];
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#070b14] text-slate-900 dark:text-slate-100 transition-colors pb-24">
+    <div className="min-h-screen bg-transparent text-slate-900 dark:text-slate-100 transition-colors pb-24">
       {/* ======================================================================= */}
       {/* 1. رأس الصفحة والبانر الترحيبي وبطاقة الاشتراك السنوي (75 ريال / سنة) */}
       {/* ======================================================================= */}
-      <section className="relative overflow-hidden pt-8 pb-12 px-4 sm:px-6 lg:px-8 border-b border-slate-200/80 dark:border-slate-800/80 bg-gradient-to-b from-amber-500/10 via-amber-500/5 to-transparent">
+      <section className="relative overflow-hidden pt-8 pb-12 px-4 sm:px-6 lg:px-8 border-b border-sky-200/50 dark:border-amber-500/20 bg-gradient-to-b from-sky-400/10 via-amber-400/5 to-transparent dark:from-amber-950/30 dark:via-[#130d1d]/20 dark:to-transparent">
         <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
           
           {/* الجانب الأيمن: النص والعنوان */}
           <div className="lg:col-span-7 space-y-4 text-right">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs font-bold">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/80 dark:bg-amber-500/15 border border-sky-200/70 dark:border-amber-500/30 text-sky-900 dark:text-amber-400 text-xs font-bold shadow-sm backdrop-blur-sm">
               <GraduationCap className="w-4 h-4 text-amber-500" />
               <span>دورة طرقع للتأسيس الشامل • المحاضرات والملف المعتمد 1446</span>
             </div>
@@ -546,7 +622,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
 
             {/* أدوات المشرف / المعلم */}
             {isEditor && (
-              <div className="pt-2 flex items-center gap-2">
+              <div className="pt-2 flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => setIsEditMode(!isEditMode)}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border shadow-sm ${
@@ -558,13 +634,22 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                   <Edit3 className="w-3.5 h-3.5" />
                   <span>{isEditMode ? 'إغلاق وضع تعديل المحتوى' : 'تفعيل وضع إدارة وتعديل المحتوى (معلم / مشرف)'}</span>
                 </button>
+
+                <button
+                  onClick={handleRestoreDefaults}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border shadow-sm bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30 cursor-pointer"
+                  title="استعادة كافة المحاضرات والمذكرات التأسيسية المعتمدة ومزامنتها سحابياً"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-amber-500" />
+                  <span>استعادة المحاضرات والملفات المعتمدة (8 محاضرات و 3 مذكرات) 🔄</span>
+                </button>
               </div>
             )}
           </div>
 
           {/* الجانب الأيسر: بطاقة الاشتراك (75 ريال / سنة) */}
           <div className="lg:col-span-5 flex justify-center">
-            <div className="w-full max-w-sm rounded-3xl bg-white/90 dark:bg-[#0d1424]/90 backdrop-blur-xl border-2 border-amber-500/40 p-6 shadow-2xl relative overflow-hidden">
+            <div className="w-full max-w-sm rounded-3xl bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/95 dark:via-[#110c1a]/90 dark:to-[#07050e]/95 backdrop-blur-2xl border-2 border-sky-200/90 dark:border-amber-500/40 p-6 shadow-[0_12px_40px_rgba(14,165,233,0.12)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.8),0_0_25px_rgba(245,158,11,0.18)] relative overflow-hidden">
               <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-400" />
               
               <div className="flex items-center justify-between mb-4">
@@ -572,7 +657,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                   الباقة السنوية الشاملة
                 </span>
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                  سنة كاملة (365 يوماً)
+                  قريباً ⏳
                 </span>
               </div>
 
@@ -630,11 +715,16 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                 </div>
               ) : (
                 <button
-                  onClick={() => setShowSubscribeModal(true)}
-                  className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-sm shadow-md hover:shadow-glow transition-all flex items-center justify-center gap-2 active:scale-98 cursor-pointer"
+                  type="button"
+                  disabled
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-base shadow-lg shadow-amber-500/30 flex items-center justify-center gap-2 cursor-not-allowed select-none opacity-95 transition-all"
                 >
-                  <Sparkles className="w-4 h-4 fill-current" />
-                  <span>اشترك الآن ({ANNUAL_SUBSCRIPTION_PRICE_SAR} ريال / {ANNUAL_SUBSCRIPTION_PRICE_EGP} جنيه)</span>
+                  <Clock className="w-5 h-5 animate-pulse text-slate-950 shrink-0" />
+                  <span>قريباً ⏳</span>
                 </button>
               )}
 
@@ -650,14 +740,14 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-8">
         
         {/* أزرار التبديل الفورية بين الأقسام */}
-        <div className="flex flex-wrap items-center justify-between gap-4 bg-white/60 dark:bg-[#0c1324]/60 p-2 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 backdrop-blur-md">
+        <div className="flex flex-wrap items-center justify-between gap-4 bg-white/80 dark:bg-[#120e1d]/80 p-2 rounded-2xl border border-sky-200/70 dark:border-amber-500/25 backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
           <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-none max-w-full py-1 -mx-1 px-1">
             <button
               onClick={() => setActiveTab('all')}
               className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold transition flex items-center gap-1 sm:gap-1.5 cursor-pointer shrink-0 whitespace-nowrap ${
                 activeTab === 'all'
-                  ? 'bg-amber-500 text-slate-950 shadow-sm'
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-black shadow-md shadow-amber-500/25'
+                  : 'text-slate-700 dark:text-slate-300 hover:bg-sky-100/60 dark:hover:bg-white/5'
               }`}
             >
               <Layers className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
@@ -668,8 +758,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
               onClick={() => setActiveTab('lectures')}
               className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold transition flex items-center gap-1 sm:gap-1.5 cursor-pointer shrink-0 whitespace-nowrap ${
                 activeTab === 'lectures'
-                  ? 'bg-amber-500 text-slate-950 shadow-sm'
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-black shadow-md shadow-amber-500/25'
+                  : 'text-slate-700 dark:text-slate-300 hover:bg-sky-100/60 dark:hover:bg-white/5'
               }`}
             >
               <Video className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
@@ -681,8 +771,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
               onClick={() => setActiveTab('files')}
               className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold transition flex items-center gap-1 sm:gap-1.5 cursor-pointer shrink-0 whitespace-nowrap ${
                 activeTab === 'files'
-                  ? 'bg-amber-500 text-slate-950 shadow-sm'
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-black shadow-md shadow-amber-500/25'
+                  : 'text-slate-700 dark:text-slate-300 hover:bg-sky-100/60 dark:hover:bg-white/5'
               }`}
             >
               <FolderDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
@@ -777,10 +867,9 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
               )}
             </div>
 
-            {/* بطاقة الملف الرئيسي البارزة (Hero File Card) */}
             {/* بطاقة الملف الرئيسي البارزة (Hero File Card) أو بطاقة الحالة الفارغة */}
             {mainFile ? (
-              <div className="rounded-3xl bg-gradient-to-br from-blue-500/10 via-amber-500/5 to-purple-500/10 border-2 border-blue-500/30 p-6 sm:p-8 backdrop-blur-xl shadow-lg relative overflow-hidden">
+              <div className="rounded-3xl bg-white/90 dark:bg-gradient-to-br dark:from-[#1c130b]/92 dark:via-[#120c1f]/88 dark:to-[#07050e]/92 border-2 border-sky-200/90 dark:border-amber-500/40 p-6 sm:p-8 backdrop-blur-2xl shadow-[0_10px_35px_rgba(14,165,233,0.1)] dark:shadow-[0_10px_35px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.15)] relative overflow-hidden">
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
                   <div className="lg:col-span-8 space-y-3">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -790,7 +879,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                       </span>
                       {mainFile.isFreePreview && (
                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                          معاينة مجانية متاحة 🎁
+                          معاينة مجانية 🎁
                         </span>
                       )}
                     </div>
@@ -814,31 +903,58 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
 
                   {/* أزرار تحميل ومعاينة الملف الرئيسي */}
                   <div className="lg:col-span-4 flex flex-col sm:flex-row lg:flex-col gap-3 justify-center">
-                    <button
-                      onClick={() => handleFileAction(mainFile, false)}
-                      disabled={downloadingFileId === mainFile.id}
-                      className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2 cursor-pointer active:scale-98 disabled:opacity-75"
-                    >
-                      {downloadingFileId === mainFile.id ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>جاري تشفير وتنزيل الملف على جهازك...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Download className="w-4 h-4" />
-                          <span>تحميل الملف الكامل الآن على جهازك 📥</span>
-                        </>
-                      )}
-                    </button>
+                    {Boolean(mainFile.isFreePreview || subscriptionInfo.isSubscribed) ? (
+                      <button
+                        onClick={() => handleFileAction(mainFile, false)}
+                        disabled={downloadingFileId === mainFile.id}
+                        className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2 cursor-pointer active:scale-98 disabled:opacity-75"
+                      >
+                        {downloadingFileId === mainFile.id ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>جاري تشفير وتنزيل الملف على جهازك...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-4 h-4" />
+                            <span>تحميل الملف الكامل الآن على جهازك 📥</span>
+                          </>
+                        )}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setDownloadToast('الاشتراك سيكون متاحاً قريباً جداً فور تفعيل بوابة الدفع! ⏳');
+                          setShowSubscribeModal(true);
+                        }}
+                        className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-amber-500/20 to-amber-600/20 border border-amber-500/40 hover:bg-amber-500/30 text-amber-600 dark:text-amber-400 font-black text-xs sm:text-sm shadow-sm transition flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                      >
+                        <Clock className="w-4 h-4" />
+                        <span>الاشتراك متاح قريباً ⏳</span>
+                      </button>
+                    )}
 
-                    <button
-                      onClick={() => handleFileAction(mainFile, true)}
-                      className="w-full py-3 px-5 rounded-2xl bg-white/80 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs border border-slate-300 dark:border-slate-700 transition flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <Eye className="w-4 h-4" />
-                      <span>معاينة وتصفح الملف 👁️</span>
-                    </button>
+                    {Boolean(mainFile.isFreePreview || subscriptionInfo.isSubscribed) ? (
+                      <button
+                        onClick={() => handleFileAction(mainFile, true)}
+                        className="w-full py-3 px-5 rounded-2xl bg-white/80 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs border border-slate-300 dark:border-slate-700 transition flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <Eye className="w-4 h-4 text-blue-500" />
+                        <span>معاينة وتصفح الملف 👁️</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setDownloadToast('عفواً، معاينة هذا الملف متاحة للمشتركين فقط 🔒');
+                          setShowSubscribeModal(true);
+                        }}
+                        className="w-full py-3 px-5 rounded-2xl bg-slate-100/80 hover:bg-amber-500/10 dark:bg-slate-800/80 dark:hover:bg-amber-500/10 text-slate-500 dark:text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 font-bold text-xs border border-dashed border-slate-300 dark:border-slate-700 hover:border-amber-500/40 transition flex items-center justify-center gap-2 cursor-pointer"
+                        title="معاينة الملف متاحة للمشتركين فقط"
+                      >
+                        <Lock className="w-4 h-4 text-amber-500" />
+                        <span>معاينة الملف (للمشتركين فقط 🔒)</span>
+                      </button>
+                    )}
 
                     {/* أدوات المشرف للملف الرئيسي */}
                     {isEditor && isEditMode && (
@@ -881,28 +997,37 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                   لا توجد مذكرات أو ملفات مضافة حالياً
                 </h3>
                 <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  يمكن للمعلمين والمشرفين تفعيل وضع التعديل أعلاه لإضافة ونشر مذكرات التأسيس وأوراق العمل للطلاب.
+                  يمكنك استعادة المذكرات المعتمدة (مذكرة طرقع الشاملة، كتيب القوانين، وأوراق العمل) بنقرة واحدة.
                 </p>
-                {isEditor && (
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
                   <button
-                    onClick={() => {
-                      setEditingFile(null);
-                      setFileFormData({
-                        title: '',
-                        description: '',
-                        fileUrl: '',
-                        fileSize: '10 MB',
-                        pagesCount: '100 صفحة',
-                        fileType: 'pdf',
-                        isFreePreview: false,
-                      });
-                      setFileModalOpen(true);
-                    }}
-                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md transition cursor-pointer"
+                    onClick={handleRestoreDefaults}
+                    className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md transition flex items-center gap-2 cursor-pointer"
                   >
-                    + إضافة أول مذكرة الآن
+                    <RotateCcw className="w-4 h-4" />
+                    <span>استعادة مذكرات وملفات الدورة المعتمدة 📄</span>
                   </button>
-                )}
+                  {isEditor && (
+                    <button
+                      onClick={() => {
+                        setEditingFile(null);
+                        setFileFormData({
+                          title: '',
+                          description: '',
+                          fileUrl: '',
+                          fileSize: '10 MB',
+                          pagesCount: '100 صفحة',
+                          fileType: 'pdf',
+                          isFreePreview: false,
+                        });
+                        setFileModalOpen(true);
+                      }}
+                      className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md transition cursor-pointer"
+                    >
+                      + إضافة مذكرة جديدة
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -914,7 +1039,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                   return (
                     <div
                       key={file.id}
-                      className="p-5 rounded-3xl bg-white/80 dark:bg-[#0c1324]/80 border border-slate-200/80 dark:border-slate-800/80 backdrop-blur-sm shadow-sm flex flex-col justify-between gap-4"
+                      className="p-5 rounded-3xl bg-white/90 dark:bg-gradient-to-b dark:from-[#161021]/85 dark:to-[#0d0915]/85 border border-sky-200/80 dark:border-amber-500/25 backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex flex-col justify-between gap-4 hover:border-sky-300 dark:hover:border-amber-400/50 transition-all"
                     >
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
@@ -952,34 +1077,60 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                       </div>
 
                       <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                        <button
-                          type="button"
-                          onClick={() => handleFileAction(file, false)}
-                          disabled={downloadingFileId === file.id}
-                          className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95 disabled:opacity-75"
-                        >
-                          {downloadingFileId === file.id ? (
-                            <>
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              <span>جاري التنزيل...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Download className="w-3.5 h-3.5" />
-                              <span>تحميل الملف</span>
-                            </>
-                          )}
-                        </button>
+                        {hasAccess ? (
+                          <button
+                            type="button"
+                            onClick={() => handleFileAction(file, false)}
+                            disabled={downloadingFileId === file.id}
+                            className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95 disabled:opacity-75"
+                          >
+                            {downloadingFileId === file.id ? (
+                              <>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                <span>جاري التنزيل...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Download className="w-3.5 h-3.5" />
+                                <span>تحميل الملف</span>
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setShowSubscribeModal(true)}
+                            className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-amber-500/10 dark:bg-slate-800 dark:hover:bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                          >
+                            <Clock className="w-3.5 h-3.5" />
+                            <span>متاح قريباً ⏳</span>
+                          </button>
+                        )}
 
-                        <button
-                          type="button"
-                          onClick={() => handleFileAction(file, true)}
-                          className="px-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer active:scale-95"
-                          title="معاينة وتصفح محتوى الملف"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-amber-500" />
-                          <span>معاينة</span>
-                        </button>
+                        {hasAccess ? (
+                          <button
+                            type="button"
+                            onClick={() => handleFileAction(file, true)}
+                            className="px-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer active:scale-95"
+                            title="معاينة وتصفح محتوى الملف"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-amber-500" />
+                            <span>معاينة</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDownloadToast('عفواً، معاينة هذا الملف متاحة للمشتركين فقط 🔒');
+                              setShowSubscribeModal(true);
+                            }}
+                            className="px-3 py-2.5 rounded-xl bg-slate-100/70 hover:bg-amber-500/10 dark:bg-slate-800/50 dark:hover:bg-amber-500/10 text-slate-400 dark:text-slate-500 hover:text-amber-500 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                            title="معاينة هذا الملف تتطلب اشتراكاً"
+                          >
+                            <Lock className="w-3.5 h-3.5 text-amber-500" />
+                            <span>مغلق 🔒</span>
+                          </button>
+                        )}
 
                         {isEditor && isEditMode && (
                           <div className="flex items-center gap-1">
@@ -1043,6 +1194,9 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                       setModuleFormData({
                         title: currentModule.title,
                         description: currentModule.description,
+                        status: (currentModule.status || 'paused') as CourseEnrollmentStatus,
+                        availableDate: currentModule.availableDate || '',
+                        customStatusText: currentModule.customStatusText || 'الاشتراك متاح قريباً ⏳',
                       });
                       setModuleModalOpen(true);
                     }}
@@ -1079,12 +1233,22 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
             </div>
 
             {/* قائمة المحاضرات داخل باب المحاضرات */}
-            <div className="rounded-3xl bg-white/80 dark:bg-[#0c1324]/85 backdrop-blur-xl border border-slate-200/80 dark:border-slate-800/80 shadow-sm overflow-hidden p-4 sm:p-6 space-y-3">
+            <div className="rounded-3xl bg-white/90 dark:bg-gradient-to-b dark:from-[#140e1f]/90 dark:via-[#0f0a17]/90 dark:to-[#08050e]/90 backdrop-blur-2xl border border-sky-200/80 dark:border-amber-500/30 shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.7),0_0_20px_rgba(245,158,11,0.1)] overflow-hidden p-4 sm:p-6 space-y-3">
               
               {currentModule.lessons.length === 0 ? (
-                <div className="py-12 text-center space-y-2">
-                  <Video className="w-10 h-10 text-slate-300 dark:text-slate-700 mx-auto" />
-                  <p className="text-xs text-slate-400">لا توجد محاضرات في هذا الباب حتى الآن.</p>
+                <div className="py-12 text-center space-y-3">
+                  <Video className="w-12 h-12 text-slate-300 dark:text-slate-700 mx-auto" />
+                  <h4 className="text-sm font-black text-slate-700 dark:text-slate-200">لا توجد محاضرات في هذا الباب حالياً</h4>
+                  <p className="text-xs text-slate-400 max-w-md mx-auto">
+                    اضغط على الزر أدناه لاستعادة المحاضرات التأسيسية الـ 8 المعتمدة لدورة طرقع فوراً.
+                  </p>
+                  <button
+                    onClick={handleRestoreDefaults}
+                    className="mt-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs transition shadow-md inline-flex items-center gap-2 cursor-pointer"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    <span>استعادة المحاضرات التأسيسية المعتمدة (8 محاضرات) 🔄</span>
+                  </button>
                 </div>
               ) : (
                 currentModule.lessons.map((lesson, lesIdx) => {
@@ -1095,8 +1259,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                       key={lesson.id}
                       className={`p-4 sm:p-5 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
                         hasAccess
-                          ? 'bg-white dark:bg-[#0f172a]/70 border-slate-200/80 dark:border-slate-800 hover:border-amber-500/50 hover:shadow-sm'
-                          : 'bg-slate-100/50 dark:bg-slate-900/40 border-slate-200/40 dark:border-slate-800/40 opacity-90'
+                          ? 'bg-sky-50/70 dark:bg-[#191326]/70 border-sky-200/80 dark:border-amber-500/20 hover:bg-white dark:hover:bg-[#201733]/90 hover:border-sky-400 dark:hover:border-amber-400/50 shadow-sm'
+                          : 'bg-slate-100/60 dark:bg-slate-900/40 border-slate-200/50 dark:border-slate-800/40 opacity-85'
                       }`}
                     >
                       <div className="flex items-center gap-3.5 min-w-0">
@@ -1130,8 +1294,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                               </span>
                             ) : (
                               <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-200 dark:bg-slate-800 text-slate-500 border border-slate-300 dark:border-slate-700 flex items-center gap-1">
-                                <Lock className="w-2.5 h-2.5" />
-                                <span>مقفل (75 ر.س/سنة)</span>
+                                <Clock className="w-2.5 h-2.5" />
+                                <span>متاح قريباً ⏳</span>
                               </span>
                             )}
                           </div>
@@ -1219,8 +1383,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                             onClick={() => setShowSubscribeModal(true)}
                             className="px-3.5 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-700 dark:text-slate-300 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer"
                           >
-                            <Lock className="w-3.5 h-3.5" />
-                            <span>اشترك لفتح الدرس</span>
+                            <Clock className="w-3.5 h-3.5" />
+                            <span>متاح قريباً ⏳</span>
                           </button>
                         )}
                       </div>
@@ -1278,66 +1442,33 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                   <span>{subscribeSuccessMessage}</span>
                 </div>
               ) : (
-                <div className="space-y-3 pt-2">
-                  {/* زر الدفع الآمن عبر كاشير */}
-                  <button
-                    disabled={isSubscribing}
-                    onClick={() => {
-                      if (!currentUser) {
-                        setShowSubscribeModal(false);
-                        onOpenAuth?.();
-                        return;
-                      }
-                      setShowSubscribeModal(false);
-                      setIsKashierCheckoutOpen(true);
-                    }}
-                    className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 via-amber-600 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-950 font-black text-sm shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    <CreditCard className="w-4 h-4 text-slate-950" />
-                    <span>الدفع الإلكتروني الآمن (Kashier) 💳</span>
-                  </button>
-
-                  <div className="flex items-center justify-center gap-2 text-[10px] text-slate-500 dark:text-slate-400 flex-wrap">
-                    <span>طرق الدفع:</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-bold text-slate-700 dark:text-slate-300">مدى Mada</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-bold text-slate-700 dark:text-slate-300">Visa / Master</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-bold text-slate-700 dark:text-slate-300">المحافظ الإلكترونية</span>
+                <div className="space-y-4 pt-2">
+                  {/* بطاقة الإشعار بقرب تفعيل الاشتراك */}
+                  <div className="p-5 rounded-2xl bg-gradient-to-b from-amber-500/10 to-amber-500/5 border border-amber-500/30 text-center space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-500 flex items-center justify-center mx-auto shadow-inner">
+                      <Clock className="w-6 h-6 animate-pulse" />
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                        الاشتراك سيكون متاحاً قريباً جداً 🚀
+                      </h4>
+                      <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed max-w-xs mx-auto">
+                        نعمل حالياً على تجهيز وتثبيت بوابة الدفع الإلكتروني لتوفير تجربة دفع سهلة ومؤمّنة للجميع. ترقبوا الانطلاق قريباً!
+                      </p>
+                    </div>
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[11px] font-black">
+                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
+                      <span>جاري إعداد البوابة • ترقبوا التدشين</span>
+                    </div>
                   </div>
 
-                  {/* زر التفعيل التجريبي السريع */}
                   <button
                     type="button"
-                    disabled={isSubscribing}
-                    onClick={async () => {
-                      if (!currentUser) {
-                        setShowSubscribeModal(false);
-                        onOpenAuth?.();
-                        return;
-                      }
-                      setIsSubscribing(true);
-                      try {
-                        const res = await activateAnnualSubscription(currentUser);
-                        setSubscriptionInfo(getSubscriptionDetails(currentUser));
-                        setSubscribeSuccessMessage(res.message);
-                        setTimeout(() => {
-                          setSubscribeSuccessMessage(null);
-                          setShowSubscribeModal(false);
-                        }, 2000);
-                      } catch (e) {
-                        console.error(e);
-                      } finally {
-                        setIsSubscribing(false);
-                      }
-                    }}
-                    className="w-full py-2.5 rounded-xl border border-dashed border-amber-500/40 hover:border-amber-500 text-slate-600 dark:text-slate-400 hover:text-amber-500 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    onClick={() => setShowSubscribeModal(false)}
+                    className="w-full py-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition cursor-pointer"
                   >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>تفعيل تجريبي فوري (Demo Mode)</span>
+                    حسناً، فهمت
                   </button>
-
-                  <p className="text-[10px] text-slate-400">
-                    * الدفع مشفر بنكياً بنظام 256-bit SSL والاشتراك سارٍ لمدة 365 يوماً.
-                  </p>
                 </div>
               )}
             </div>
@@ -1782,6 +1913,58 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                 />
               </div>
 
+              {/* قسم التحكم في حالة التسجيل والاشتراك بالدورة */}
+              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-3">
+                <span className="text-xs font-black text-amber-700 dark:text-amber-300 block">
+                  ⚙️ إعدادات حالة التسجيل والاشتراك (Enrollment Status):
+                </span>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    حالة الدورة والزر للمستخدمين:
+                  </label>
+                  <select
+                    value={moduleFormData.status}
+                    onChange={(e) => setModuleFormData({ ...moduleFormData, status: e.target.value as CourseEnrollmentStatus })}
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 font-bold"
+                  >
+                    <option value="active">🟢 متاح للتسجيل والاشتراك فوراً (Active)</option>
+                    <option value="paused">⏸️ التسجيل مغلق مؤقتاً / قريباً (Paused)</option>
+                    <option value="upcoming">⏳ قادمة قريباً (Upcoming)</option>
+                  </select>
+                </div>
+
+                {moduleFormData.status !== 'active' && (
+                  <>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        نص الزر والحالة المخصص:
+                      </label>
+                      <input
+                        type="text"
+                        value={moduleFormData.customStatusText}
+                        onChange={(e) => setModuleFormData({ ...moduleFormData, customStatusText: e.target.value })}
+                        placeholder="مثال: قريباً ⏳ أو مغلق مؤقتاً للتحديث"
+                        className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        موعد فتح التسجيل المتوقع (اختياري):
+                      </label>
+                      <input
+                        type="text"
+                        value={moduleFormData.availableDate}
+                        onChange={(e) => setModuleFormData({ ...moduleFormData, availableDate: e.target.value })}
+                        placeholder="مثال: 15 أكتوبر 2026 أو قريباً"
+                        className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+
               <div className="flex items-center gap-2 pt-2">
                 <button
                   type="submit"
@@ -1815,10 +1998,69 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
         currentUser={currentUser}
         isSubscribed={subscriptionInfo.isSubscribed}
         onSubscribeClick={() => setShowSubscribeModal(true)}
-        onDownloadClick={(fileToDownload) => handleFileAction(fileToDownload, false)}
+        onDownloadClick={(fileToDownload) => {
+          downloadTrackingService.trackDownload(
+            {
+              id: fileToDownload.id,
+              title: fileToDownload.title,
+              fileUrl: fileToDownload.fileUrl,
+              fileType: fileToDownload.fileType,
+              fileSize: fileToDownload.fileSize,
+            },
+            currentUser
+          );
+        }}
       />
-      {/* إشعار عائم بحالة التنزيل والتشفير */}
-      {downloadToast && (
+      {/* إشعار عائم وشريط حفظ الملف المباشر على الجهاز */}
+      {downloadNotice && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 p-4 max-w-xl w-[92%] rounded-3xl bg-slate-950/95 text-white border-2 border-amber-500 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-3 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center shrink-0 font-black shadow-md">
+              <Download className="w-5 h-5" />
+            </div>
+            <div className="min-w-0 space-y-0.5 text-right">
+              <p className="text-xs sm:text-sm font-black text-white truncate">
+                تم تجهيز [{downloadNotice.title}] للتحميل 📥
+              </p>
+              <p className="text-[11px] text-amber-400 font-medium">
+                إذا لم يبدأ التنزيل تلقائياً، اضغط على الزر لحفظه مباشرة على جهازك:
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+            <a
+              href={downloadNotice.url}
+              download={downloadNotice.fileName}
+              onClick={() => {
+                setDownloadToast('جاري حفظ وتنزيل الملف على جهازك ✅');
+                setTimeout(() => setDownloadToast(null), 3000);
+              }}
+              className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 active:scale-95 cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>حفظ الملف على الجهاز 💾</span>
+            </a>
+            <a
+              href={downloadNotice.url}
+              target="_blank"
+              rel="noopener"
+              className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+              title="فتح الملف في تبويب مستقل للموبايل"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>فتح 👁️</span>
+            </a>
+            <button
+              onClick={() => setDownloadNotice(null)}
+              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {downloadToast && !downloadNotice && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl bg-slate-900 text-white text-xs sm:text-sm font-bold shadow-2xl border border-amber-500/40 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4">
           <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
           <span>{downloadToast}</span>

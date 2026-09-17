@@ -414,7 +414,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* ======================================================================= */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
-        <div className="p-5 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800/80 shadow-sm flex items-center gap-4">
+        <div className="p-5 rounded-2xl bg-white/90 dark:bg-gradient-to-b dark:from-[#161021]/90 dark:via-[#100b18]/85 dark:to-[#090610]/90 border border-sky-200/80 dark:border-amber-500/25 backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex items-center gap-4 hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
           <div className="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-500 flex items-center justify-center font-bold text-lg">
             <Users className="w-6 h-6" />
           </div>
@@ -427,7 +427,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800/80 shadow-sm flex items-center gap-4">
+        <div className="p-5 rounded-2xl bg-white/90 dark:bg-gradient-to-b dark:from-[#161021]/90 dark:via-[#100b18]/85 dark:to-[#090610]/90 border border-sky-200/80 dark:border-amber-500/25 backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex items-center gap-4 hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
           <div className="w-12 h-12 rounded-2xl bg-blue-500/15 text-blue-500 flex items-center justify-center font-bold text-lg">
             <Database className="w-6 h-6" />
           </div>
@@ -440,7 +440,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800/80 shadow-sm flex items-center gap-4">
+        <div className="p-5 rounded-2xl bg-white/90 dark:bg-gradient-to-b dark:from-[#161021]/90 dark:via-[#100b18]/85 dark:to-[#090610]/90 border border-sky-200/80 dark:border-amber-500/25 backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex items-center gap-4 hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
           <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center font-bold text-lg">
             <CheckSquare className="w-6 h-6" />
           </div>
@@ -453,7 +453,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800/80 shadow-sm flex items-center gap-4">
+        <div className="p-5 rounded-2xl bg-white/90 dark:bg-gradient-to-b dark:from-[#161021]/90 dark:via-[#100b18]/85 dark:to-[#090610]/90 border border-sky-200/80 dark:border-amber-500/25 backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex items-center gap-4 hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
           <div className="w-12 h-12 rounded-2xl bg-purple-500/15 text-purple-500 flex items-center justify-center font-bold text-lg">
             <TrendingUp className="w-6 h-6" />
           </div>
@@ -583,7 +583,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* 2. جدول بنك الأسئلة (Question Bank Manager Table) */}
       {/* ======================================================================= */}
       {activeTab === 'questions' && (
-        <section className="p-6 rounded-3xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800/80 shadow-sm flex flex-col gap-4">
+        <section className="p-6 rounded-3xl bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/92 dark:via-[#110c1a]/88 dark:to-[#07050e]/92 backdrop-blur-2xl border border-sky-200/80 dark:border-amber-500/35 shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.12)] flex flex-col gap-4">
           
           {/* شريط البحث والفلترة */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -1541,13 +1541,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       setKashierSettings({
                         ...kashierSettings,
                         currency: newCur,
-                        amount: newCur === 'SAR' ? 75 : 1020,
+                        amount: newCur === 'SAR' ? 75 : 1050,
                       });
                     }}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs font-bold text-slate-900 dark:text-white"
                   >
                     <option value="SAR">🇸🇦 SAR (75 ريال سعودي)</option>
-                    <option value="EGP">🇪🇬 EGP (1020 جنيه مصري)</option>
+                    <option value="EGP">🇪🇬 EGP (1050 جنيه مصري)</option>
                   </select>
                   <div className="flex items-center gap-2 mt-1.5">
                     <button
@@ -1559,10 +1559,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setKashierSettings({ ...kashierSettings, currency: 'EGP', amount: 1020 })}
+                      onClick={() => setKashierSettings({ ...kashierSettings, currency: 'EGP', amount: 1050 })}
                       className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold hover:text-amber-500 cursor-pointer"
                     >
-                      تعيين 1020 جنيه 🇪🇬
+                      تعيين 1050 جنيه 🇪🇬
                     </button>
                   </div>
                 </div>
@@ -1576,11 +1576,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     min="1"
                     step="0.5"
                     value={kashierSettings.amount}
-                    onChange={(e) => setKashierSettings({ ...kashierSettings, amount: parseFloat(e.target.value) || (kashierSettings.currency === 'SAR' ? 75 : 1020) })}
+                    onChange={(e) => setKashierSettings({ ...kashierSettings, amount: parseFloat(e.target.value) || (kashierSettings.currency === 'SAR' ? 75 : 1050) })}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs font-bold text-slate-900 dark:text-white font-mono"
                   />
                   <p className="text-[10px] text-slate-400 mt-1">
-                    المبلغ الافتراضي: <strong>75 ريال سعودي</strong> للطلاب بالسعودية أو <strong>1020 جنيه مصري</strong> للطلاب بمصر.
+                    المبلغ الافتراضي: <strong>75 ريال سعودي</strong> للطلاب بالسعودية أو <strong>1050 جنيه مصري</strong> للطلاب بمصر.
                   </p>
                 </div>
               </div>

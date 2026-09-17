@@ -105,15 +105,15 @@ export const ResultView: React.FC<ResultViewProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#070b14] text-slate-900 dark:text-slate-100 py-8 px-4 sm:px-6">
+    <div className="min-h-screen bg-transparent text-slate-900 dark:text-slate-100 py-8 px-4 sm:px-6">
       <div className="max-w-4xl mx-auto flex flex-col gap-8">
         
         {/* بطاقة النتيجة الرئيسية */}
-        <div className="relative overflow-hidden bg-white dark:bg-[#0d1424] rounded-3xl p-6 sm:p-10 border border-slate-200/80 dark:border-slate-800 shadow-xl text-center">
+        <div className="relative overflow-hidden bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/92 dark:via-[#110c1a]/88 dark:to-[#07050e]/92 backdrop-blur-2xl rounded-3xl p-6 sm:p-10 border border-sky-200/80 dark:border-amber-500/35 shadow-[0_12px_40px_rgba(14,165,233,0.1)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.8),0_0_25px_rgba(245,158,11,0.15)] text-center">
           
           {/* زخرفة خلفية ذهبية */}
           <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-64 h-64 bg-sky-500/10 dark:bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
 
           {/* أيقونة الكأس والتقييم */}
           <div className="relative z-10 flex flex-col items-center">
@@ -121,7 +121,7 @@ export const ResultView: React.FC<ResultViewProps> = ({
               <Trophy className="w-10 h-10" />
             </div>
 
-            <span className="px-3.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 mb-2">
+            <span className="px-3.5 py-1 rounded-full text-xs font-bold bg-white/80 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-sky-200/80 dark:border-amber-500/30 mb-2 shadow-sm">
               {rating.badge}
             </span>
 
@@ -134,11 +134,11 @@ export const ResultView: React.FC<ResultViewProps> = ({
             </p>
 
             {/* النسبة المئوية الدائرية الكبيرة */}
-            <div className="my-2 p-6 rounded-3xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800/80 inline-flex flex-col items-center">
+            <div className="my-2 p-6 rounded-3xl bg-sky-50/80 dark:bg-slate-900/60 border border-sky-200/70 dark:border-slate-800/80 inline-flex flex-col items-center shadow-inner">
               <span className="text-5xl sm:text-6xl font-black font-mono text-slate-900 dark:text-white">
                 {result.percentageScore}%
               </span>
-              <span className="text-xs font-semibold text-slate-500 mt-1">
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-1">
                 ({result.correctAnswers} إجابة صحيحة من أصل {result.totalQuestions})
               </span>
             </div>
@@ -202,7 +202,7 @@ export const ResultView: React.FC<ResultViewProps> = ({
 
         {/* تحليل الأداء حسب أقسام الكمي */}
         {Object.keys(result.categoryPerformance).length > 0 && (
-          <div className="bg-white dark:bg-[#0d1424] rounded-2xl p-6 border border-slate-200/80 dark:border-slate-800 shadow-sm">
+          <div className="bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/92 dark:via-[#110c1a]/88 dark:to-[#07050e]/92 backdrop-blur-2xl rounded-3xl p-6 border border-sky-200/80 dark:border-amber-500/35 shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.12)]">
             <h3 className="font-bold text-base text-slate-900 dark:text-white mb-4 flex items-center gap-2">
               <BarChart2 className="w-5 h-5 text-amber-500" />
               <span>تحليل الأداء حسب أقسام الكمي (لتحديد نقاط الضعف)</span>
@@ -214,14 +214,14 @@ export const ResultView: React.FC<ResultViewProps> = ({
                 const isGood = percent >= 70;
 
                 return (
-                  <div key={category} className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800">
+                  <div key={category} className="p-4 rounded-2xl bg-white/70 dark:bg-slate-900/50 border border-sky-100 dark:border-slate-800">
                     <div className="flex items-center justify-between text-sm font-semibold mb-2">
                       <span className="text-slate-800 dark:text-slate-200">{category}</span>
                       <span className={`font-mono font-bold ${isGood ? 'text-emerald-500' : 'text-amber-500'}`}>
                         {stats.correct}/{stats.total} ({percent}%)
                       </span>
                     </div>
-                    <div className="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+                    <div className="w-full bg-sky-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
                       <div
                         className={`h-2 rounded-full transition-all ${
                           isGood ? 'bg-emerald-500' : 'bg-amber-500'
@@ -237,7 +237,7 @@ export const ResultView: React.FC<ResultViewProps> = ({
         )}
 
         {/* استعراض ومراجعة الأسئلة والشروحات */}
-        <div className="bg-white dark:bg-[#0d1424] rounded-2xl p-6 border border-slate-200/80 dark:border-slate-800 shadow-sm">
+        <div className="bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/92 dark:via-[#110c1a]/88 dark:to-[#07050e]/92 backdrop-blur-2xl rounded-3xl p-6 border border-sky-200/80 dark:border-amber-500/35 shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.12)]">
           
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 mb-6 border-b border-slate-100 dark:border-slate-800">
             <div>

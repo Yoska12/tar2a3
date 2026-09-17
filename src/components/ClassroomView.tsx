@@ -18,15 +18,17 @@ import {
   Minimize,
   Lightbulb,
   Award,
-  Eye
+  Eye,
+  X,
+  Lock
 } from 'lucide-react';
 import { Lesson, CourseModule, LessonAttachment, CourseFileItem } from '../types';
 import { TarqaUser } from '../lib/supabase';
 import { SecureVideoPlayer } from './SecureVideoPlayer';
 import { downloadTrackingService } from '../lib/downloadTrackingService';
-import { sanitizeUrl } from '../lib/securityUtils';
-import { fileStorageService } from '../lib/fileStorageService';
+import { fileStorageService, isMobileDevice } from '../lib/fileStorageService';
 import { PdfPreviewModal } from './PdfPreviewModal';
+import { isUserSubscribed } from '../lib/subscriptionService';
 
 interface ClassroomViewProps {
   currentModule: CourseModule;
@@ -59,6 +61,11 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
   // حالة معاينة ملف الـ PDF المرفق
   const [previewFile, setPreviewFile] = useState<CourseFileItem | null>(null);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+  const [downloadNotice, setDownloadNotice] = useState<{
+    fileName: string;
+    url: string;
+    title: string;
+  } | null>(null);
 
   // استخراج رابط الـ Embed ليوتيوب
   // فحص واستخراج روابط التشغيل لليوتيوب وفيميو والروابط المباشرة
@@ -282,10 +289,10 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
   const nextLesson = currentIndex < currentModule.lessons.length - 1 ? currentModule.lessons[currentIndex + 1] : null;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#070b14] text-slate-900 dark:text-slate-100 flex flex-col font-cairo">
+    <div className="min-h-screen bg-transparent text-slate-900 dark:text-slate-100 flex flex-col font-cairo">
       
       {/* الشريط العلوي لغرفة المحاضرة - متجاوب ومضغوط المساحات تماماً على الموبايل */}
-      <header className="sticky top-0 z-20 bg-white/95 dark:bg-[#0a0f1d]/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-2 sm:px-6 h-12 sm:h-14 flex items-center justify-between gap-1.5 sm:gap-4">
+      <header className="sticky top-0 z-20 bg-white/85 dark:bg-[#0d0915]/85 backdrop-blur-2xl border-b border-sky-200/60 dark:border-amber-500/20 px-2 sm:px-6 h-12 sm:h-14 flex items-center justify-between gap-1.5 sm:gap-4">
         <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
           <button
             onClick={onBackToRoadmap}
@@ -494,7 +501,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
           </div>
 
           {/* تبويبات ما بعد المحاضرة (المذكرات، الكويز، طريقة طرقع) - مسافات محسوبة ومضغوطة لتظهر كاملة على الموبايل */}
-          <div className="bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 rounded-2xl sm:rounded-3xl p-3 sm:p-6 shadow-sm overflow-hidden">
+          <div className="bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/92 dark:via-[#110c1a]/88 dark:to-[#07050e]/92 backdrop-blur-2xl border border-sky-200/80 dark:border-amber-500/35 rounded-2xl sm:rounded-3xl p-3 sm:p-6 shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.12)] overflow-hidden">
             <div className="flex items-center gap-1 sm:gap-2 border-b border-slate-200 dark:border-slate-800 pb-2.5 mb-4 sm:mb-6 overflow-x-auto scrollbar-none flex-nowrap -mx-1 px-1">
               <button
                 type="button"
@@ -567,56 +574,105 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                         </div>
 
                         <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setPreviewFile({
-                                id: att.id,
-                                title: att.title,
-                                description: `ملف ومذكرة شرح مرفقة بدرس: ${currentLesson.title}`,
-                                fileUrl: att.fileUrl,
-                                fileSize: att.fileSize,
-                                pagesCount: 'ملف الدرس',
-                                fileType: att.fileType as any,
-                                isFreePreview: true,
-                              });
-                              setIsPreviewModalOpen(true);
-                            }}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs transition cursor-pointer active:scale-95"
-                            title="معاينة وتصفح محتوى الملف"
-                          >
-                            <Eye className="w-3.5 h-3.5 text-amber-500" />
-                            <span>معاينة</span>
-                          </button>
+                          {(() => {
+                            const isAttFree = Boolean((att as any).isFreePreview || currentLesson.isFreePreview);
+                            const hasAccess = isAttFree || isUserSubscribed(currentUser);
 
-                          <button
-                            type="button"
-                            onClick={() => {
-                              downloadTrackingService.trackDownload(
-                                {
-                                  id: att.id,
-                                  title: att.title,
-                                  fileUrl: att.fileUrl,
-                                  fileType: att.fileType,
-                                  fileSize: att.fileSize,
-                                },
-                                currentUser
-                              );
-                              fileStorageService.downloadWatermarkedFile(
-                                {
-                                  title: att.title,
-                                  fileUrl: att.fileUrl,
-                                  description: `ملف ومذكرة شرح مرفقة بدرس: ${currentLesson.title}`,
-                                  pagesCount: 'ملف الدرس',
-                                },
-                                currentUser
-                              );
-                            }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-sm cursor-pointer active:scale-95"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            <span>تحميل</span>
-                          </button>
+                            return (
+                              <>
+                                {hasAccess ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setPreviewFile({
+                                          id: att.id,
+                                          title: att.title,
+                                          description: `ملف ومذكرة شرح مرفقة بدرس: ${currentLesson.title}`,
+                                          fileUrl: att.fileUrl,
+                                          fileSize: att.fileSize,
+                                          pagesCount: 'ملف الدرس',
+                                          fileType: att.fileType as any,
+                                          isFreePreview: isAttFree,
+                                        });
+                                        setIsPreviewModalOpen(true);
+                                      }}
+                                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs transition cursor-pointer active:scale-95"
+                                      title="معاينة وتصفح محتوى الملف"
+                                    >
+                                      <Eye className="w-3.5 h-3.5 text-amber-500" />
+                                      <span>معاينة</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        downloadTrackingService.trackDownload(
+                                          {
+                                            id: att.id,
+                                            title: att.title,
+                                            fileUrl: att.fileUrl,
+                                            fileType: att.fileType,
+                                            fileSize: att.fileSize,
+                                          },
+                                          currentUser
+                                        );
+
+                                        // على الموبايل، نفتح دائماً نافذة العرض والتحميل الشاملة لمنع حجب سفاري وكروم للتنزيل الصامت
+                                        if (isMobileDevice()) {
+                                          setPreviewFile({
+                                            id: att.id,
+                                            title: att.title,
+                                            description: `ملف ومذكرة شرح مرفقة بدرس: ${currentLesson.title}`,
+                                            fileUrl: att.fileUrl,
+                                            fileSize: att.fileSize,
+                                            pagesCount: 'ملف الدرس',
+                                            fileType: att.fileType as any,
+                                            isFreePreview: isAttFree,
+                                          });
+                                          setIsPreviewModalOpen(true);
+                                          return;
+                                        }
+
+                                        const res = await fileStorageService.downloadWatermarkedFile(
+                                          {
+                                            title: att.title,
+                                            fileUrl: att.fileUrl,
+                                            description: `ملف ومذكرة شرح مرفقة بدرس: ${currentLesson.title}`,
+                                            pagesCount: 'ملف الدرس',
+                                          },
+                                          currentUser
+                                        );
+                                        if (res && res.success) {
+                                          setDownloadNotice({
+                                            fileName: res.fileName,
+                                            url: res.url,
+                                            title: att.title,
+                                          });
+                                        }
+                                      }}
+                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-sm cursor-pointer active:scale-95"
+                                    >
+                                      <Download className="w-3.5 h-3.5" />
+                                      <span>تحميل</span>
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      alert('عفواً، معاينة هذا الملف وتنزيله متاحان فقط لمشتركي باقة طرقع 🔒');
+                                    }}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100/80 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 font-bold text-xs transition cursor-pointer hover:text-amber-500 border border-dashed border-slate-200 dark:border-slate-700"
+                                    title="هذا الملف متاح للمشتركين فقط"
+                                  >
+                                    <Lock className="w-3.5 h-3.5 text-amber-500" />
+                                    <span>مغلق للمشتركين 🔒</span>
+                                  </button>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
                     ))}
@@ -673,7 +729,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
 
         {/* القسم الجانبي (فهرس دروس الباب التأسيسي): 4 أعمدة */}
         <div className="lg:col-span-4 flex flex-col gap-4">
-          <div className="bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm sticky top-20">
+          <div className="bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/92 dark:via-[#110c1a]/88 dark:to-[#07050e]/92 backdrop-blur-2xl border border-sky-200/80 dark:border-amber-500/35 rounded-3xl p-5 shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.12)] sticky top-20">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
               <div>
                 <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">
@@ -758,14 +814,70 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
         }}
         file={previewFile}
         currentUser={currentUser}
-        isSubscribed={true}
+        isSubscribed={isUserSubscribed(currentUser)}
+        onSubscribeClick={() => {
+          alert('هذا الملف متاح حصرياً لمشتركي باقة طرقع 🔒 يرجى تفعيل أو تجديد الاشتراك لتنزيل الملفات');
+        }}
         onDownloadClick={(fileToDownload) => {
-          fileStorageService.downloadWatermarkedFile(
-            fileToDownload,
+          const hasAccess = Boolean(fileToDownload.isFreePreview || isUserSubscribed(currentUser));
+          if (!hasAccess) return;
+          downloadTrackingService.trackDownload(
+            {
+              id: fileToDownload.id,
+              title: fileToDownload.title,
+              fileUrl: fileToDownload.fileUrl,
+              fileType: fileToDownload.fileType,
+              fileSize: fileToDownload.fileSize,
+            },
             currentUser
           );
         }}
       />
+
+      {/* شريط حفظ الملف المباشر على الجهاز */}
+      {downloadNotice && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 p-4 max-w-xl w-[92%] rounded-3xl bg-slate-950/95 text-white border-2 border-amber-500 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-3 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center shrink-0 font-black shadow-md">
+              <Download className="w-5 h-5" />
+            </div>
+            <div className="min-w-0 space-y-0.5 text-right">
+              <p className="text-xs sm:text-sm font-black text-white truncate">
+                تم تجهيز [{downloadNotice.title}] للتحميل 📥
+              </p>
+              <p className="text-[11px] text-amber-400 font-medium">
+                إذا لم يبدأ التنزيل تلقائياً على جهازك، اضغط على زر الحفظ:
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+            <a
+              href={downloadNotice.url}
+              download={downloadNotice.fileName}
+              className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 active:scale-95 cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>حفظ الملف على الجهاز 💾</span>
+            </a>
+            <a
+              href={downloadNotice.url}
+              target="_blank"
+              rel="noopener"
+              className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+              title="فتح الملف في تبويب مستقل للموبايل"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>فتح 👁️</span>
+            </a>
+            <button
+              onClick={() => setDownloadNotice(null)}
+              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

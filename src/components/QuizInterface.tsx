@@ -354,14 +354,14 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
   const currentAnswer = userAnswers[currentQuestion?.id];
 
   return (
-    <div className={`min-h-screen bg-slate-100 dark:bg-[#070b14] text-slate-900 dark:text-slate-100 flex flex-col transition-colors duration-300 ${
+    <div className={`min-h-screen bg-transparent text-slate-900 dark:text-slate-100 flex flex-col transition-colors duration-300 ${
       isFullscreen ? 'fixed inset-0 z-[99999] overflow-y-auto w-screen h-screen' : ''
     }`}>
       
       {/* ========================================================================= */}
       {/* 1. الشريط العلوي (Alaqsam & Qiyas Modern Exam Header) */}
       {/* ========================================================================= */}
-      <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#0d1424]/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm">
+      <header className="sticky top-0 z-40 bg-white/85 dark:bg-[#0d0915]/85 backdrop-blur-2xl border-b border-sky-200/60 dark:border-amber-500/20 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           
           {/* الشعار وعنوان الاختبار */}
@@ -469,18 +469,18 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
                 details: 'محاولة نسخ نص السؤال أو الخيارات أثناء الاختبار',
               });
             }}
-            className="bg-white dark:bg-[#0d1424] rounded-2xl p-5 sm:p-8 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between flex-1 relative overflow-hidden select-none"
+            className="bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/92 dark:via-[#110c1a]/88 dark:to-[#07050e]/92 backdrop-blur-2xl rounded-3xl p-5 sm:p-8 border border-sky-200/80 dark:border-amber-500/35 shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.12)] flex flex-col justify-between flex-1 relative overflow-hidden select-none"
           >
             
             {/* رأس السؤال والتصنيف */}
             <div>
-              <div className="flex items-center justify-between gap-3 pb-4 mb-5 border-b border-slate-100 dark:border-slate-800/80">
+              <div className="flex items-center justify-between gap-3 pb-4 mb-5 border-b border-sky-100 dark:border-amber-500/20">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="bg-amber-500 text-slate-950 text-xs font-black px-2.5 py-1 rounded-lg">
+                  <span className="bg-amber-500 text-slate-950 text-xs font-black px-2.5 py-1 rounded-lg shadow-sm">
                     سؤال {currentIndex + 1}
                   </span>
                   {currentQuestion.categoryTitle && (
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60">
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-sky-50 dark:bg-slate-800/80 text-sky-800 dark:text-slate-300 border border-sky-200/60 dark:border-slate-700/60">
                       {currentQuestion.categoryTitle}
                     </span>
                   )}
@@ -497,7 +497,7 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                     isCurrentFlagged 
                       ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/40 shadow-sm' 
-                      : 'bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 border border-slate-200 dark:border-slate-700'
+                      : 'bg-white/80 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 border border-sky-200/70 dark:border-slate-700'
                   }`}
                   title="مراجعة لاحقاً (اختصار: F)"
                 >
@@ -514,7 +514,7 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
               {/* رسم توضيحي هندسي SVG إن وجد */}
               {currentQuestion.svgDiagram && (
                 <div 
-                  className="my-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 flex items-center justify-center"
+                  className="my-4 p-4 rounded-2xl bg-white/70 dark:bg-slate-900/60 border border-sky-100 dark:border-slate-800 flex items-center justify-center"
                   dangerouslySetInnerHTML={{ __html: sanitizeSvg(currentQuestion.svgDiagram) }}
                 />
               )}
@@ -529,17 +529,17 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
                     <button
                       key={option.id}
                       onClick={() => handleSelectOption(option.id)}
-                      className={`group relative flex items-center gap-4 p-4 rounded-xl border text-right transition-all duration-200 ${
+                      className={`group relative flex items-center gap-4 p-4 rounded-2xl border text-right transition-all duration-200 ${
                         isSelected
-                          ? 'bg-amber-500/10 dark:bg-amber-500/15 border-amber-500 text-slate-950 dark:text-white ring-2 ring-amber-500/30 shadow-sm'
-                          : 'bg-slate-50/70 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 hover:border-amber-400/60 dark:hover:border-amber-500/50 hover:bg-slate-100/70 dark:hover:bg-slate-800/80'
+                          ? 'bg-amber-500/15 dark:bg-amber-500/20 border-amber-500 dark:border-amber-400 text-slate-950 dark:text-white ring-2 ring-amber-500/30 shadow-md shadow-amber-500/15'
+                          : 'bg-white/80 dark:bg-[#150f22]/70 border-sky-200/70 dark:border-amber-500/20 text-slate-800 dark:text-slate-200 hover:border-sky-400 dark:hover:border-amber-400/50 hover:bg-sky-50/60 dark:hover:bg-[#1f1633]/80 shadow-sm'
                       }`}
                     >
                       {/* دائرة الحرف (أ، ب، ج، د) */}
-                      <span className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm shrink-0 transition-colors ${
+                      <span className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 transition-colors ${
                         isSelected
                           ? 'bg-amber-500 text-slate-950 shadow-sm'
-                          : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 group-hover:border-amber-400'
+                          : 'bg-sky-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-sky-200/80 dark:border-slate-700 group-hover:border-sky-400 dark:group-hover:border-amber-400'
                       }`}>
                         {arabicLetter}
                       </span>
@@ -641,7 +641,7 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
 
         {/* العمود الجانبي: لوحة التنقل السريع بين الأسئلة (Qiyas-Style Navigation Grid) */}
         <aside className="lg:col-span-4 xl:col-span-3">
-          <div className="bg-white dark:bg-[#0d1424] rounded-2xl p-5 border border-slate-200/80 dark:border-slate-800 shadow-sm sticky top-24">
+          <div className="bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/92 dark:via-[#110c1a]/88 dark:to-[#07050e]/92 rounded-3xl p-5 border border-sky-200/80 dark:border-amber-500/35 backdrop-blur-2xl shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.12)] sticky top-24">
             
             <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100 dark:border-slate-800">
               <h3 className="font-bold text-sm text-slate-800 dark:text-slate-200 flex items-center gap-2">

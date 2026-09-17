@@ -20,7 +20,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   return (
     <nav 
       aria-label="التنقل السفلي للموبايل"
-      className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 dark:bg-[#070b14]/95 backdrop-blur-xl border-t border-slate-200/80 dark:border-slate-800/80 px-2 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-2xl transition-all"
+      className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/85 dark:bg-[#0c0814]/85 backdrop-blur-2xl border-t border-sky-200/60 dark:border-amber-500/20 px-2 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-4px_25px_rgba(14,165,233,0.08)] dark:shadow-[0_-4px_25px_rgba(0,0,0,0.8)] transition-all"
     >
       <div className="max-w-md mx-auto grid grid-cols-5 items-center gap-1 text-center font-cairo">
         

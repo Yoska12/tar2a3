@@ -10,6 +10,7 @@ import {
   ExternalLink,
   Sparkles,
   Wallet,
+  Clock,
 } from 'lucide-react';
 import { TarqaUser } from '../lib/supabase';
 import {
@@ -49,15 +50,19 @@ export const KashierCheckoutModal: React.FC<KashierCheckoutModalProps> = ({
   const settings = getKashierSettings();
   const [selectedCurrency, setSelectedCurrency] = useState<'EGP' | 'SAR'>(customCurrency || settings.currency || 'SAR');
 
-  const amount = customAmount ?? (selectedCurrency === 'SAR' ? 75 : 1020);
+  const amount = customAmount ?? (selectedCurrency === 'SAR' ? 75 : 1050);
   const currency = selectedCurrency;
+
+  // تعطيل بوابة الدفع مؤقتاً لحين انتهاء الإعداد
+  const IS_PAYMENT_ACTIVE = false;
 
   // تهيئة جلسة الدفع فور فتح النافذة أو تغير العملة
   useEffect(() => {
-    if (!isOpen) {
+    if (!isOpen || !IS_PAYMENT_ACTIVE) {
       setSessionUrl(null);
       setError(null);
       setPaymentDone(false);
+      setLoading(false);
       return;
     }
 
@@ -183,6 +188,50 @@ export const KashierCheckoutModal: React.FC<KashierCheckoutModalProps> = ({
 
   if (!isOpen) return null;
 
+  // عرض شاشة الاشتراك متاح قريباً مؤقتاً
+  if (!IS_PAYMENT_ACTIVE) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in">
+        <div className="w-full max-w-md rounded-3xl bg-white/95 dark:bg-gradient-to-b dark:from-[#181108]/95 dark:via-[#110c1a]/92 dark:to-[#07050e]/95 backdrop-blur-2xl border-2 border-sky-200/90 dark:border-amber-500/40 p-6 shadow-[0_20px_60px_rgba(14,165,233,0.15)] dark:shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_25px_rgba(245,158,11,0.2)] relative text-center space-y-4">
+          <button
+            onClick={onClose}
+            className="absolute top-4 left-4 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition cursor-pointer"
+            aria-label="إغلاق"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          <div className="w-16 h-16 rounded-2xl bg-amber-500/15 text-amber-500 border border-amber-500/30 flex items-center justify-center mx-auto shadow-lg shadow-amber-500/10 mt-2">
+            <Clock className="w-8 h-8 animate-pulse" />
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-lg font-black text-slate-900 dark:text-white">
+              الاشتراك الإلكتروني متاح قريباً 🚀
+            </h3>
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed max-w-xs mx-auto">
+              نعمل حالياً على تجهيز وتثبيت بوابة الدفع الإلكتروني لنقدم لكم خيارات دفع مريحة وآمنة (مدى، فيزا، ماستركارد، والمحافظ الإلكترونية).
+            </p>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-xs font-bold text-amber-600 dark:text-amber-400 flex items-center justify-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+            <span>جاري إعداد البوابة • ترقبوا التدشين قريباً!</span>
+          </div>
+
+          <div className="pt-2">
+            <button
+              onClick={onClose}
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs transition cursor-pointer shadow-md"
+            >
+              حسناً، فهمت
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
       <div className="w-full max-w-xl bg-white dark:bg-[#0b1120] border-2 border-amber-500/40 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] relative">
@@ -218,7 +267,7 @@ export const KashierCheckoutModal: React.FC<KashierCheckoutModalProps> = ({
           </button>
         </div>
 
-        {/* شريط التبديل السريع بين العملتين (75 ريال سعودي أو 1020 جنيه مصري) */}
+        {/* شريط التبديل السريع بين العملتين (75 ريال سعودي أو 1050 جنيه مصري) */}
         <div className="px-5 py-2.5 bg-slate-50 dark:bg-slate-900/70 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 flex-wrap">
           <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
             اختر عملة وطريقة الدفع المناسبة لك:
@@ -246,7 +295,7 @@ export const KashierCheckoutModal: React.FC<KashierCheckoutModalProps> = ({
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <span>🇪🇬 1020 جنيه (فودافون كاش / إنستاباي / ميزة)</span>
+              <span>🇪🇬 1050 جنيه (فودافون كاش / إنستاباي / ميزة)</span>
             </button>
           </div>
         </div>

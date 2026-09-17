@@ -96,12 +96,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <>
-      <nav className="sticky top-0 z-30 bg-white/80 dark:bg-[#030509]/60 backdrop-blur-2xl border-b border-slate-200/80 dark:border-amber-500/25 dark:shadow-[0_4px_30px_rgba(245,158,11,0.14)] transition-all font-cairo relative overflow-hidden">
-        {/* خط وميض كوني علوي عبر النافبار */}
-        <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-amber-500/60 to-transparent pointer-events-none hidden dark:block" />
-        {/* سحابة غبار كوني برتقالية خافتة في عمق النافبار */}
-        <div className="absolute -top-6 left-1/3 w-96 h-16 bg-gradient-to-r from-amber-500/15 via-orange-500/20 to-amber-500/10 blur-2xl pointer-events-none hidden dark:block" />
-
+      <nav className="sticky top-0 z-30 bg-transparent dark:bg-transparent transition-all font-cairo relative">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2 sm:gap-4 relative z-10">
           
           {/* الشعار واسم المنصة */}
@@ -109,16 +104,21 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={() => handleTabClick('home')}
             className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group shrink-0"
           >
-            <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl overflow-hidden shadow-sm group-hover:scale-105 transition-transform flex items-center justify-center bg-amber-500/10 dark:bg-[#060913]/90 border border-amber-500/40 dark:shadow-[0_0_15px_rgba(245,158,11,0.25)]">
+            <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl overflow-hidden shadow-md group-hover:scale-105 transition-transform flex items-center justify-center bg-gradient-to-b from-amber-400 to-amber-500 border border-amber-400/60 p-1 shrink-0 shadow-amber-500/20">
               <img 
-                src="/frame_000011.png" 
+                src="/frame_000012.png" 
                 alt="شعار طرقع" 
-                className="w-7 h-7 sm:w-8 sm:h-8 object-contain"
+                className="w-full h-full object-contain"
                 onError={(e) => {
-                  (e.target as HTMLElement).style.display = 'none';
+                  const el = e.target as HTMLElement;
+                  el.style.display = 'none';
+                  const fb = el.parentElement?.querySelector('.logo-nav-fallback') as HTMLElement;
+                  if (fb) fb.style.display = 'flex';
                 }}
               />
-              <span className="font-black text-amber-500 text-lg sm:text-xl font-cairo">ط</span>
+              <span className="logo-nav-fallback hidden font-black text-slate-950 text-xl font-cairo">
+                ط
+              </span>
             </div>
 
             <div>
@@ -256,11 +256,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               {darkMode ? <Sun className="w-4 h-4 text-amber-400 drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]" /> : <Moon className="w-4 h-4 text-slate-600" />}
             </button>
 
-            {/* شارة الهدف للشاشات المتوسطة والكبيرة */}
-            <div className="hidden sm:flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-300 bg-amber-500/10 border border-amber-500/30 dark:shadow-[0_0_15px_rgba(245,158,11,0.22)] px-2.5 py-1.5 rounded-xl">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>100 🎯</span>
-            </div>
 
             {/* حالة تسجيل الدخول */}
             {currentUser && roleBadge ? (

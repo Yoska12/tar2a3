@@ -216,6 +216,9 @@ export const initGlobalAntiHack = (
   const handleKeyDown = (e: KeyboardEvent) => {
     if (isMobile) return;
 
+    // فحص أمان للمفاتيح لمنع استثناءات الأحداث الاصطناعية أو لوحات المفاتيح اللمسية
+    if (!e || typeof e.key !== 'string') return;
+
     const settings = getAntiHackSettings();
     if (!settings.enabled || shouldBypass()) return;
 
@@ -291,7 +294,7 @@ export const initGlobalAntiHack = (
     if (!settings.enabled || !settings.blockCopyCut || shouldBypass()) return;
 
     const target = e.target as HTMLElement | null;
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
       return;
     }
 

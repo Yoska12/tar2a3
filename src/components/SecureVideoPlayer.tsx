@@ -408,6 +408,8 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
   // اختصارات لوحة المفاتيح
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (!e || typeof e.key !== 'string') return;
+
       // تجنب التدخل عند الكتابة في الحقول
       if (['input', 'textarea'].includes((document.activeElement?.tagName || '').toLowerCase())) {
         return;

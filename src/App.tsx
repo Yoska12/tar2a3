@@ -30,6 +30,7 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { LegalPoliciesModal, PolicyTab } from './components/LegalPoliciesModal';
 import { CookieConsentBanner } from './components/CookieConsentBanner';
 import { ThemeTransitionOrb } from './components/ThemeTransitionOrb';
+import { OrangeGalaxyBackground } from './components/OrangeGalaxyBackground';
 import { mockFoundationModules } from './data/foundationModules';
 import { mockCategories, mockQuestions } from './data/mockQuestions';
 import { QuizSettings, QuizResult, Category, Question, CourseModule, Lesson, UserRole, CourseFileItem } from './types';
@@ -770,7 +771,10 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-white dark:bg-[#0b101b] text-slate-900 dark:text-slate-100 flex flex-col font-cairo">
+    <div className="min-h-screen bg-white dark:bg-[#06070c] text-slate-900 dark:text-slate-100 flex flex-col font-cairo relative">
+      {/* خلفية مجرة طرقع الكونية البرتقالية */}
+      <OrangeGalaxyBackground />
+
       {/* دائرة انتقال الثيم */}
       {orbTarget !== null && (
           <ThemeTransitionOrb
@@ -1110,16 +1114,11 @@ export const App: React.FC = () => {
       {currentView === 'home' && (
         <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-10 sm:py-16 flex flex-col gap-12 sm:gap-16 pb-24 md:pb-12">
 
-          {/* قسم الهيرو (Hero Section) هادئ، واسع وبسيط */}
-          <section className="relative overflow-hidden rounded-3xl bg-white dark:bg-[#0c1324] border border-slate-200/90 dark:border-slate-800 p-8 sm:p-14 text-center sm:text-start shadow-sm">
+          {/* قسم الهيرو (Hero Section) حر بدون صندوق حابس مع بقاء العناصر في نفس مكانها */}
+          <section className="relative py-2 sm:py-6 text-center sm:text-start">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
               
               <div className="lg:col-span-8 flex flex-col items-center sm:items-start gap-4">
-                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs font-bold">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                  <span>تأسيس وتجميعات 1446 • القسم الكمي</span>
-                </div>
-
                 <h1 className="text-3xl sm:text-5xl font-black text-slate-900 dark:text-white leading-[1.25]">
                   تأسيس ذكي وسريع.. <br className="hidden sm:inline" />
                   <span className="text-transparent bg-clip-text bg-gradient-to-l from-amber-600 via-amber-500 to-yellow-500">
@@ -1190,11 +1189,6 @@ export const App: React.FC = () => {
                     أنت مسجل الآن وجاهز لاختبارات قدرات كمي • درجتك المستهدفة: {currentUser.targetScore || 100} 🎯
                   </p>
                 </div>
-              </div>
-
-              <div className="hidden sm:flex items-center gap-2 text-xs font-bold text-amber-600 dark:text-amber-400 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-xl border border-amber-500/20">
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>هدفنا 100 🎯</span>
               </div>
             </div>
           )}

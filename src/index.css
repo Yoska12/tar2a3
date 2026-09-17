@@ -131,3 +131,42 @@ html.theme-transitioning svg {
   transition-delay: 0s !important;
 }
 
+/* ==========================================================================
+   حركات وتأثيرات مجرة طرقع الكونية البرتقالية (Orange Galaxy Effects)
+   ========================================================================== */
+@keyframes galaxy-twinkle {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+@keyframes galaxy-nebula-float {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(15px, -10px, 0) scale(1.04);
+  }
+}
+
+.animate-galaxy-twinkle-fast {
+  animation: galaxy-twinkle 2.4s ease-in-out infinite;
+}
+
+.animate-galaxy-twinkle-medium {
+  animation: galaxy-twinkle 3.6s ease-in-out infinite;
+}
+
+.animate-galaxy-twinkle-slow {
+  animation: galaxy-twinkle 5.2s ease-in-out infinite;
+}
+
+.animate-nebula-float {
+  animation: galaxy-nebula-float 16s ease-in-out infinite;
+}
+

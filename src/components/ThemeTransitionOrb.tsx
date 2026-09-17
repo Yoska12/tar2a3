@@ -21,8 +21,8 @@ export const ThemeTransitionOrb: React.FC<ThemeTransitionOrbProps> = ({
   onMidpointRef.current = onMidpoint;
   onCompleteRef.current = onComplete;
 
-  // لون الدائرة يطابق ثيم الوجهة (أبيض ناصع أو كحلي عميق)
-  const orbColor = targetIsDark ? '#0b101b' : '#ffffff';
+  // لون الدائرة يطابق ثيم الوجهة (أبيض ناصع أو فضاء المجرة الكوني العميق)
+  const orbColor = targetIsDark ? '#06070c' : '#ffffff';
 
   // حجم الدائرة المتجاوب مع اللابتوب والجوال
   const [size, setSize] = useState<number>(130);

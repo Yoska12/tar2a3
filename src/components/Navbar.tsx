@@ -121,9 +121,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="text-lg sm:text-xl font-black tracking-tight text-slate-900 dark:text-white group-hover:text-amber-500 transition-colors">
                   طرقع
                 </span>
-                <span className="text-[10px] sm:text-xs font-bold px-1.5 sm:px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                  تأسيس كمي
-                </span>
               </div>
               <p className="text-[10px] text-slate-400 font-medium hidden sm:block">
                 التأسيس الذهني من الصفر حتى 100

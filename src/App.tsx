@@ -771,7 +771,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-white dark:bg-[#06070c] text-slate-900 dark:text-slate-100 flex flex-col font-cairo relative">
+    <div className="min-h-screen bg-[#f0f7ff] dark:bg-[#06070c] text-slate-900 dark:text-slate-100 flex flex-col font-cairo relative">
       {/* خلفية مجرة طرقع الكونية البرتقالية */}
       <OrangeGalaxyBackground />
 
@@ -1328,7 +1328,7 @@ export const App: React.FC = () => {
       )}
 
       {/* التذييل المؤسسي لمنصة طرقع */}
-      <footer className="border-t border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-[#070b14]/50 py-8 px-4 text-center text-xs text-slate-500 space-y-4">
+      <footer className="border-t border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-[#070b14]/50 backdrop-blur-xl py-8 px-4 text-center text-xs text-slate-500 space-y-4">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="text-center sm:text-start space-y-1">
             <div className="flex items-center justify-center sm:justify-start gap-2">

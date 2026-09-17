@@ -135,7 +135,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* روابط التنقل للشاشات الكبيرة والتابلت الواسع (Desktop & Tablet Links) */}
           {/* روابط التنقل للشاشات الكبيرة واللابتوب بشكل رايق ونظيف بدون أي تكدس */}
-          <div className="hidden lg:flex items-center gap-1.5 bg-slate-100/80 dark:bg-[#060913]/70 p-1.5 rounded-2xl border border-slate-200/70 dark:border-amber-500/25 text-xs shadow-sm flex-nowrap shrink-0 backdrop-blur-xl dark:shadow-[inset_0_0_15px_rgba(245,158,11,0.08)]">
+          <div className="hidden lg:flex items-center gap-1.5 bg-white/80 dark:bg-[#060913]/70 p-1.5 rounded-2xl border border-slate-200/80 dark:border-amber-500/25 text-xs shadow-sm flex-nowrap shrink-0 backdrop-blur-xl dark:shadow-[inset_0_0_15px_rgba(245,158,11,0.08)]">
             <button
               onClick={() => onSelectTab('home')}
               className={`px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 shrink-0 ${
@@ -249,7 +249,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* زر التبديل الليلي/النهاري */}
             <button
               onClick={onToggleDarkMode}
-              className="p-2 sm:p-2.5 rounded-xl text-slate-600 dark:text-amber-300 hover:bg-slate-100 dark:hover:bg-amber-500/15 border border-slate-200 dark:border-amber-500/30 dark:shadow-[0_0_12px_rgba(245,158,11,0.2)] transition-all hover:scale-105 active:scale-95"
+              className="p-2 sm:p-2.5 rounded-xl text-slate-600 dark:text-amber-300 bg-white/80 dark:bg-transparent hover:bg-slate-100 dark:hover:bg-amber-500/15 border border-slate-200/80 dark:border-amber-500/30 dark:shadow-[0_0_12px_rgba(245,158,11,0.2)] transition-all hover:scale-105 active:scale-95 shadow-sm"
               title={darkMode ? 'الوضع النهاري' : 'الوضع الليلي'}
               aria-label="تبديل الوضع الليلي"
             >
@@ -262,7 +262,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div className="flex items-center gap-1.5">
                 <div 
                   onClick={() => handleTabClick('dashboard')}
-                  className="cursor-pointer flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-[#060913]/90 border border-slate-200 dark:border-amber-500/30 dark:shadow-[0_0_15px_rgba(245,158,11,0.15)] text-xs font-bold hover:border-amber-500/60 transition-all"
+                  className="cursor-pointer flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white/80 dark:bg-[#060913]/90 border border-slate-200/80 dark:border-amber-500/30 dark:shadow-[0_0_15px_rgba(245,158,11,0.15)] text-xs font-bold hover:border-amber-500/60 transition-all shadow-sm"
                 >
                   <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-amber-500 to-amber-400 text-slate-950 flex items-center justify-center font-black text-xs shrink-0 shadow-sm">
                     {currentUser.fullName ? currentUser.fullName.trim().charAt(0) : 'ط'}

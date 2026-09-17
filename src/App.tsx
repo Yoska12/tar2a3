@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { flushSync } from 'react-dom';
 import {
   Zap,
   Layers,
@@ -634,23 +633,9 @@ export const App: React.FC = () => {
   const [orbAnimationId, setOrbAnimationId] = useState<number>(0);
 
   const toggleDarkMode = () => {
-    const newMode = !darkMode;
-
-    // 1. الدعم الأصيل في المتصفحات الحديثة عبر View Transitions API بدون أي ريفريش وبأعلى سلاسة 60-120fps
-    if (typeof document !== 'undefined' && 'startViewTransition' in document) {
-      (document as any).startViewTransition(() => {
-        document.documentElement.classList.toggle('dark', newMode);
-        localStorage.setItem('tarqa_theme', newMode ? 'dark' : 'light');
-        flushSync(() => {
-          setDarkMode(newMode);
-        });
-      });
-      return;
-    }
-
-    // 2. بديل للمتصفحات الأخرى
+    // منع الضغطات المتكررة أثناء عمل حركة الانتقال
     if (orbTarget !== null) return;
-    setOrbTarget(newMode);
+    setOrbTarget(!darkMode);
     setOrbAnimationId((prev) => prev + 1);
   };
 

@@ -245,6 +245,40 @@ html.theme-transitioning svg {
 }
 
 /* ==========================================================================
+   فئات البطاقات الزجاجية المحسنة لكلا الوضعين (Glass Cards Design System)
+   تضمن تباين لوني فائق الجودة وسواد عميق في الليلي وبياض كريستالي في النهاري
+   ========================================================================== */
+.tarqa-glass-card {
+  background-color: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(186, 230, 253, 0.85);
+}
+.dark .tarqa-glass-card {
+  background-color: #110b18 !important;
+  background-image: linear-gradient(180deg, #181108 0%, #110c1a 50%, #07050e 100%) !important;
+  border: 1px solid rgba(245, 158, 11, 0.3) !important;
+}
+
+.tarqa-glass-hero {
+  background-color: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(186, 230, 253, 0.9);
+}
+.dark .tarqa-glass-hero {
+  background-color: #140d1c !important;
+  background-image: linear-gradient(135deg, #1c130b 0%, #120c1f 50%, #07050e 100%) !important;
+  border: 1px solid rgba(245, 158, 11, 0.35) !important;
+}
+
+.tarqa-glass-metric {
+  background-color: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(186, 230, 253, 0.85);
+}
+.dark .tarqa-glass-metric {
+  background-color: #100a16 !important;
+  background-image: linear-gradient(180deg, #161021 0%, #100b18 50%, #090610 100%) !important;
+  border: 1px solid rgba(245, 158, 11, 0.25) !important;
+}
+
+/* ==========================================================================
    تحسينات الأداء الفائقة لشاشات الهواتف الذكية (Mobile Performance Boost)
    ========================================================================== */
 @media (max-width: 768px) {

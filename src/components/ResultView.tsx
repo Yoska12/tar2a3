@@ -109,7 +109,7 @@ export const ResultView: React.FC<ResultViewProps> = ({
       <div className="max-w-4xl mx-auto flex flex-col gap-8">
         
         {/* بطاقة النتيجة الرئيسية */}
-        <div className="relative overflow-hidden bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/92 dark:via-[#110c1a]/88 dark:to-[#07050e]/92 backdrop-blur-2xl rounded-3xl p-6 sm:p-10 border border-sky-200/80 dark:border-amber-500/35 shadow-[0_12px_40px_rgba(14,165,233,0.1)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.8),0_0_25px_rgba(245,158,11,0.15)] text-center">
+        <div className="relative overflow-hidden tarqa-glass-hero backdrop-blur-2xl rounded-3xl p-6 sm:p-10 shadow-[0_12px_40px_rgba(14,165,233,0.1)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.8),0_0_25px_rgba(245,158,11,0.15)] text-center">
           
           {/* زخرفة خلفية ذهبية */}
           <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -202,7 +202,7 @@ export const ResultView: React.FC<ResultViewProps> = ({
 
         {/* تحليل الأداء حسب أقسام الكمي */}
         {Object.keys(result.categoryPerformance).length > 0 && (
-          <div className="bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/92 dark:via-[#110c1a]/88 dark:to-[#07050e]/92 backdrop-blur-2xl rounded-3xl p-6 border border-sky-200/80 dark:border-amber-500/35 shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.12)]">
+          <div className="tarqa-glass-card backdrop-blur-2xl rounded-3xl p-6 shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.12)]">
             <h3 className="font-bold text-base text-slate-900 dark:text-white mb-4 flex items-center gap-2">
               <BarChart2 className="w-5 h-5 text-amber-500" />
               <span>تحليل الأداء حسب أقسام الكمي (لتحديد نقاط الضعف)</span>
@@ -237,7 +237,7 @@ export const ResultView: React.FC<ResultViewProps> = ({
         )}
 
         {/* استعراض ومراجعة الأسئلة والشروحات */}
-        <div className="bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/92 dark:via-[#110c1a]/88 dark:to-[#07050e]/92 backdrop-blur-2xl rounded-3xl p-6 border border-sky-200/80 dark:border-amber-500/35 shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.12)]">
+        <div className="tarqa-glass-card backdrop-blur-2xl rounded-3xl p-6 shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.12)]">
           
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 mb-6 border-b border-slate-100 dark:border-slate-800">
             <div>

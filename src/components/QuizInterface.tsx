@@ -470,7 +470,7 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
                 details: 'محاولة نسخ نص السؤال أو الخيارات أثناء الاختبار',
               });
             }}
-            className="bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/92 dark:via-[#110c1a]/88 dark:to-[#07050e]/92 backdrop-blur-2xl rounded-3xl p-5 sm:p-8 border border-sky-200/80 dark:border-amber-500/35 shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.12)] flex flex-col justify-between flex-1 relative overflow-hidden select-none"
+            className="tarqa-glass-card backdrop-blur-2xl rounded-3xl p-5 sm:p-8 shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.12)] flex flex-col justify-between flex-1 relative overflow-hidden select-none"
           >
             
             {/* رأس السؤال والتصنيف */}
@@ -642,7 +642,7 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
 
         {/* العمود الجانبي: لوحة التنقل السريع بين الأسئلة (Qiyas-Style Navigation Grid) */}
         <aside className="lg:col-span-4 xl:col-span-3">
-          <div className="bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/92 dark:via-[#110c1a]/88 dark:to-[#07050e]/92 rounded-3xl p-5 border border-sky-200/80 dark:border-amber-500/35 backdrop-blur-2xl shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.12)] sticky top-24">
+          <div className="tarqa-glass-card rounded-3xl p-5 backdrop-blur-2xl shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.12)] sticky top-24">
             
             <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100 dark:border-slate-800">
               <h3 className="font-bold text-sm text-slate-800 dark:text-slate-200 flex items-center gap-2">

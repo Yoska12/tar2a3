@@ -247,7 +247,7 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
       <div
-        className="relative w-full max-w-5xl h-[95vh] flex flex-col rounded-3xl bg-white/95 dark:bg-gradient-to-b dark:from-[#181108]/95 dark:via-[#110c1a]/92 dark:to-[#07050e]/95 backdrop-blur-2xl border border-sky-200/90 dark:border-amber-500/35 shadow-[0_20px_60px_rgba(14,165,233,0.15)] dark:shadow-[0_20px_60px_rgba(0,0,0,0.9),0_0_30px_rgba(245,158,11,0.2)] overflow-hidden transition-all"
+        className="relative w-full max-w-5xl h-[95vh] flex flex-col rounded-3xl tarqa-glass-hero backdrop-blur-2xl shadow-[0_20px_60px_rgba(14,165,233,0.15)] dark:shadow-[0_20px_60px_rgba(0,0,0,0.9),0_0_30px_rgba(245,158,11,0.2)] overflow-hidden transition-all"
         onClick={(e) => e.stopPropagation()}
         dir="rtl"
       >

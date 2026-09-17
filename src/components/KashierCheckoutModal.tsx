@@ -195,7 +195,7 @@ export const KashierCheckoutModal: React.FC<KashierCheckoutModalProps> = ({
   if (!IS_PAYMENT_ACTIVE) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in">
-        <div className="w-full max-w-md rounded-3xl bg-white/95 dark:bg-gradient-to-b dark:from-[#181108]/95 dark:via-[#110c1a]/92 dark:to-[#07050e]/95 backdrop-blur-2xl border-2 border-sky-200/90 dark:border-amber-500/40 p-6 shadow-[0_20px_60px_rgba(14,165,233,0.15)] dark:shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_25px_rgba(245,158,11,0.2)] relative text-center space-y-4">
+        <div className="w-full max-w-md rounded-3xl tarqa-glass-card backdrop-blur-2xl p-6 shadow-[0_20px_60px_rgba(14,165,233,0.15)] dark:shadow-[0_20px_60px_rgba(0,0,0,0.85),0_0_25px_rgba(245,158,11,0.2)] relative text-center space-y-4">
           <button
             onClick={onClose}
             className="absolute top-4 left-4 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition cursor-pointer"

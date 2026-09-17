@@ -649,7 +649,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
 
           {/* الجانب الأيسر: بطاقة الاشتراك (75 ريال / سنة) */}
           <div className="lg:col-span-5 flex justify-center">
-            <div className="w-full max-w-sm rounded-3xl bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/95 dark:via-[#110c1a]/90 dark:to-[#07050e]/95 backdrop-blur-2xl border-2 border-sky-200/90 dark:border-amber-500/40 p-6 shadow-[0_12px_40px_rgba(14,165,233,0.12)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.8),0_0_25px_rgba(245,158,11,0.18)] relative overflow-hidden">
+            <div className="w-full max-w-sm rounded-3xl tarqa-glass-hero backdrop-blur-2xl p-6 shadow-[0_12px_40px_rgba(14,165,233,0.12)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.8),0_0_25px_rgba(245,158,11,0.18)] relative overflow-hidden">
               <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-400" />
               
               <div className="flex items-center justify-between mb-4">
@@ -869,7 +869,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
 
             {/* بطاقة الملف الرئيسي البارزة (Hero File Card) أو بطاقة الحالة الفارغة */}
             {mainFile ? (
-              <div className="rounded-3xl bg-white/90 dark:bg-gradient-to-br dark:from-[#1c130b]/92 dark:via-[#120c1f]/88 dark:to-[#07050e]/92 border-2 border-sky-200/90 dark:border-amber-500/40 p-6 sm:p-8 backdrop-blur-2xl shadow-[0_10px_35px_rgba(14,165,233,0.1)] dark:shadow-[0_10px_35px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.15)] relative overflow-hidden">
+              <div className="rounded-3xl tarqa-glass-hero p-6 sm:p-8 backdrop-blur-2xl shadow-[0_10px_35px_rgba(14,165,233,0.1)] dark:shadow-[0_10px_35px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.15)] relative overflow-hidden">
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
                   <div className="lg:col-span-8 space-y-3">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -1039,7 +1039,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                   return (
                     <div
                       key={file.id}
-                      className="p-5 rounded-3xl bg-white/90 dark:bg-gradient-to-b dark:from-[#161021]/85 dark:to-[#0d0915]/85 border border-sky-200/80 dark:border-amber-500/25 backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex flex-col justify-between gap-4 hover:border-sky-300 dark:hover:border-amber-400/50 transition-all"
+                      className="p-5 rounded-3xl tarqa-glass-metric backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex flex-col justify-between gap-4 hover:border-sky-300 dark:hover:border-amber-400/50 transition-all"
                     >
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
@@ -1233,7 +1233,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
             </div>
 
             {/* قائمة المحاضرات داخل باب المحاضرات */}
-            <div className="rounded-3xl bg-white/90 dark:bg-gradient-to-b dark:from-[#140e1f]/90 dark:via-[#0f0a17]/90 dark:to-[#08050e]/90 backdrop-blur-2xl border border-sky-200/80 dark:border-amber-500/30 shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.7),0_0_20px_rgba(245,158,11,0.1)] overflow-hidden p-4 sm:p-6 space-y-3">
+            <div className="rounded-3xl tarqa-glass-card backdrop-blur-2xl shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.7),0_0_20px_rgba(245,158,11,0.1)] overflow-hidden p-4 sm:p-6 space-y-3">
               
               {currentModule.lessons.length === 0 ? (
                 <div className="py-12 text-center space-y-3">

@@ -1283,7 +1283,7 @@ export const App: React.FC = () => {
 
           {/* ترحيب بالمستخدم المسجل بتصميم مميز لكل نظام */}
           {currentUser && (
-            <div className="relative overflow-hidden flex items-center justify-between p-4 sm:p-5 rounded-2xl bg-white/90 dark:bg-gradient-to-r dark:from-[#1c1208]/90 dark:via-[#110c18]/80 dark:to-[#07050e]/90 backdrop-blur-2xl border border-sky-200/80 dark:border-amber-500/40 shadow-sm dark:shadow-[0_4px_30px_rgba(0,0,0,0.6),0_0_20px_rgba(245,158,11,0.15),inset_0_1px_0_rgba(245,158,11,0.35)] animate-in fade-in transition-all">
+            <div className="relative overflow-hidden flex items-center justify-between p-4 sm:p-5 rounded-2xl tarqa-glass-card backdrop-blur-2xl shadow-sm dark:shadow-[0_4px_30px_rgba(0,0,0,0.6),0_0_20px_rgba(245,158,11,0.15),inset_0_1px_0_rgba(245,158,11,0.35)] animate-in fade-in transition-all">
               {/* خط وميض علوي يتغير لونه حسب النظام */}
               <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-sky-400/50 dark:via-amber-400/70 to-transparent pointer-events-none" />
 
@@ -1321,7 +1321,7 @@ export const App: React.FC = () => {
               {/* البطاقة 1: دورة التأسيس الشاملة (نهاري: شمس ذهبية زجاجية / ليلي: سديم عنبري كوني متوهج) */}
               <div
                 onClick={() => handleTabSelect('courses')}
-                className="relative overflow-hidden p-6 rounded-2xl bg-white/90 hover:bg-white dark:bg-gradient-to-b dark:from-[#1c1208]/90 dark:via-[#110c18]/80 dark:to-[#07050e]/90 backdrop-blur-2xl border border-amber-200/80 hover:border-amber-400/90 dark:border-amber-500/35 hover:dark:border-amber-400/80 shadow-[0_10px_30px_rgba(245,158,11,0.08)] hover:shadow-[0_18px_40px_rgba(245,158,11,0.18)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_20px_rgba(245,158,11,0.12),inset_0_1px_0_rgba(245,158,11,0.3)] hover:dark:shadow-[0_16px_45px_rgba(0,0,0,0.7),0_0_35px_rgba(245,158,11,0.3),inset_0_1px_0_rgba(245,158,11,0.5)] hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
+                className="relative overflow-hidden p-6 rounded-2xl tarqa-glass-card hover:border-amber-400/90 hover:dark:border-amber-400/80 shadow-[0_10px_30px_rgba(245,158,11,0.08)] hover:shadow-[0_18px_40px_rgba(245,158,11,0.18)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_20px_rgba(245,158,11,0.12),inset_0_1px_0_rgba(245,158,11,0.3)] hover:dark:shadow-[0_16px_45px_rgba(0,0,0,0.7),0_0_35px_rgba(245,158,11,0.3),inset_0_1px_0_rgba(245,158,11,0.5)] hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
               >
                 {/* خط إضاءة علوي */}
                 <div className="absolute inset-x-0 top-0 h-[1.5px] bg-gradient-to-r from-transparent via-amber-400/80 to-transparent pointer-events-none" />
@@ -1352,7 +1352,7 @@ export const App: React.FC = () => {
               {/* البطاقة 2: المذكرات وبنك الملفات (نهاري: سماء زجاجية صافية / ليلي: شعلة برتقالية نيزكية) */}
               <div
                 onClick={() => handleTabSelect('courses')}
-                className="relative overflow-hidden p-6 rounded-2xl bg-white/90 hover:bg-white dark:bg-gradient-to-b dark:from-[#1c0e07]/90 dark:via-[#110c18]/80 dark:to-[#07050e]/90 backdrop-blur-2xl border border-sky-200/80 hover:border-sky-400/90 dark:border-orange-500/35 hover:dark:border-orange-400/80 shadow-[0_10px_30px_rgba(14,165,233,0.08)] hover:shadow-[0_18px_40px_rgba(14,165,233,0.18)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_20px_rgba(249,115,22,0.12),inset_0_1px_0_rgba(249,115,22,0.3)] hover:dark:shadow-[0_16px_45px_rgba(0,0,0,0.7),0_0_35px_rgba(249,115,22,0.3),inset_0_1px_0_rgba(249,115,22,0.5)] hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
+                className="relative overflow-hidden p-6 rounded-2xl tarqa-glass-card hover:border-sky-400/90 hover:dark:border-orange-400/80 shadow-[0_10px_30px_rgba(14,165,233,0.08)] hover:shadow-[0_18px_40px_rgba(14,165,233,0.18)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_20px_rgba(249,115,22,0.12),inset_0_1px_0_rgba(249,115,22,0.3)] hover:dark:shadow-[0_16px_45px_rgba(0,0,0,0.7),0_0_35px_rgba(249,115,22,0.3),inset_0_1px_0_rgba(249,115,22,0.5)] hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
               >
                 {/* خط إضاءة علوي */}
                 <div className="absolute inset-x-0 top-0 h-[1.5px] bg-gradient-to-r from-transparent via-sky-400/80 dark:via-orange-400/80 to-transparent pointer-events-none" />
@@ -1383,7 +1383,7 @@ export const App: React.FC = () => {
               {/* البطاقة 3: محاكي قياس الفعلي (نهاري: كريستال إنديجو أنيق / ليلي: سوبرنوفا ذهبية متلألئة) */}
               <div
                 onClick={startMockExam}
-                className="relative overflow-hidden p-6 rounded-2xl bg-white/90 hover:bg-white dark:bg-gradient-to-b dark:from-[#1a1108]/90 dark:via-[#110c18]/80 dark:to-[#07050e]/90 backdrop-blur-2xl border border-indigo-200/80 hover:border-indigo-400/90 dark:border-amber-400/35 hover:dark:border-yellow-300/80 shadow-[0_10px_30px_rgba(99,102,241,0.08)] hover:shadow-[0_18px_40px_rgba(99,102,241,0.18)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_20px_rgba(251,191,36,0.12),inset_0_1px_0_rgba(251,191,36,0.3)] hover:dark:shadow-[0_16px_45px_rgba(0,0,0,0.7),0_0_35px_rgba(251,191,36,0.3),inset_0_1px_0_rgba(251,191,36,0.5)] hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
+                className="relative overflow-hidden p-6 rounded-2xl tarqa-glass-card hover:border-indigo-400/90 hover:dark:border-yellow-300/80 shadow-[0_10px_30px_rgba(99,102,241,0.08)] hover:shadow-[0_18px_40px_rgba(99,102,241,0.18)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_20px_rgba(251,191,36,0.12),inset_0_1px_0_rgba(251,191,36,0.3)] hover:dark:shadow-[0_16px_45px_rgba(0,0,0,0.7),0_0_35px_rgba(251,191,36,0.3),inset_0_1px_0_rgba(251,191,36,0.5)] hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
               >
                 {/* خط إضاءة علوي */}
                 <div className="absolute inset-x-0 top-0 h-[1.5px] bg-gradient-to-r from-transparent via-indigo-400/80 dark:via-yellow-300/80 to-transparent pointer-events-none" />
@@ -1413,7 +1413,7 @@ export const App: React.FC = () => {
           {/* ======================================================================= */}
           {/* بطاقة "منهجية طرقع" (تصميم متناغم مخصص للنظامين) */}
           {/* ======================================================================= */}
-          <section className="p-6 sm:p-8 rounded-3xl bg-white/90 dark:bg-gradient-to-r dark:from-[#1a1107]/90 dark:via-[#110c18]/80 dark:to-[#07050e]/90 text-slate-900 dark:text-white border border-sky-200/80 dark:border-amber-500/35 flex flex-col md:flex-row items-center justify-between gap-6 shadow-[0_10px_30px_rgba(14,165,233,0.06)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_20px_rgba(245,158,11,0.12),inset_0_1px_0_rgba(245,158,11,0.3)] backdrop-blur-2xl">
+          <section className="p-6 sm:p-8 rounded-3xl tarqa-glass-card text-slate-900 dark:text-white flex flex-col md:flex-row items-center justify-between gap-6 shadow-[0_10px_30px_rgba(14,165,233,0.06)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_20px_rgba(245,158,11,0.12),inset_0_1px_0_rgba(245,158,11,0.3)] backdrop-blur-2xl">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-500 text-slate-950 flex items-center justify-center font-black text-xl shrink-0 shadow-md shadow-amber-500/30 dark:shadow-[0_0_20px_rgba(245,158,11,0.5)]">
                 ⚡

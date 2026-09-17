@@ -501,7 +501,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
           </div>
 
           {/* تبويبات ما بعد المحاضرة (المذكرات، الكويز، طريقة طرقع) - مسافات محسوبة ومضغوطة لتظهر كاملة على الموبايل */}
-          <div className="bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/92 dark:via-[#110c1a]/88 dark:to-[#07050e]/92 backdrop-blur-2xl border border-sky-200/80 dark:border-amber-500/35 rounded-2xl sm:rounded-3xl p-3 sm:p-6 shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.12)] overflow-hidden">
+          <div className="tarqa-glass-card backdrop-blur-2xl rounded-2xl sm:rounded-3xl p-3 sm:p-6 shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.12)] overflow-hidden">
             <div className="flex items-center gap-1 sm:gap-2 border-b border-slate-200 dark:border-slate-800 pb-2.5 mb-4 sm:mb-6 overflow-x-auto scrollbar-none flex-nowrap -mx-1 px-1">
               <button
                 type="button"
@@ -729,7 +729,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
 
         {/* القسم الجانبي (فهرس دروس الباب التأسيسي): 4 أعمدة */}
         <div className="lg:col-span-4 flex flex-col gap-4">
-          <div className="bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/92 dark:via-[#110c1a]/88 dark:to-[#07050e]/92 backdrop-blur-2xl border border-sky-200/80 dark:border-amber-500/35 rounded-3xl p-5 shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.12)] sticky top-20">
+          <div className="tarqa-glass-card backdrop-blur-2xl rounded-3xl p-5 shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.12)] sticky top-20">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
               <div>
                 <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">

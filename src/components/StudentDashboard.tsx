@@ -192,7 +192,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       {/* ======================================================================= */}
       {/* 1. الهيدر والبانر الترحيبي (Welcome & Goal Banner) */}
       {/* ======================================================================= */}
-      <section className="relative overflow-hidden rounded-3xl bg-white/90 dark:bg-gradient-to-br dark:from-[#1c130b]/92 dark:via-[#120c1f]/88 dark:to-[#07050e]/92 border border-sky-200/90 dark:border-amber-500/35 p-6 sm:p-8 backdrop-blur-2xl shadow-[0_10px_35px_rgba(14,165,233,0.08)] dark:shadow-[0_10px_35px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.15)]">
+      <section className="relative overflow-hidden rounded-3xl tarqa-glass-hero p-6 sm:p-8 backdrop-blur-2xl shadow-[0_10px_35px_rgba(14,165,233,0.08)] dark:shadow-[0_10px_35px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.15)]">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           
           <div className="flex flex-col gap-3">
@@ -264,7 +264,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         </div>
       )}
 
-      <section className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-white via-slate-50 to-amber-500/5 dark:from-[#0d1424] dark:via-[#090d16] dark:to-amber-500/5 border border-slate-200/80 dark:border-slate-800/80 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-5">
+      <section className="p-5 sm:p-6 rounded-3xl tarqa-glass-card shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-5">
         <div className="flex items-start sm:items-center gap-4">
           <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-md ${
             subscription.isManager
@@ -347,7 +347,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
         {/* الدقة الإجمالية */}
-        <div className="p-5 rounded-2xl bg-white/90 dark:bg-gradient-to-b dark:from-[#161021]/90 dark:via-[#100b18]/85 dark:to-[#090610]/90 border border-sky-200/80 dark:border-amber-500/25 backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex flex-col justify-between hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
+        <div className="p-5 rounded-2xl tarqa-glass-metric backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex flex-col justify-between hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-bold text-slate-500">معدل الدقة الإجمالي</span>
             <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
@@ -369,7 +369,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         </div>
 
         {/* سرعة الحل */}
-        <div className="p-5 rounded-2xl bg-white/90 dark:bg-gradient-to-b dark:from-[#161021]/90 dark:via-[#100b18]/85 dark:to-[#090610]/90 border border-sky-200/80 dark:border-amber-500/25 backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex flex-col justify-between hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
+        <div className="p-5 rounded-2xl tarqa-glass-metric backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex flex-col justify-between hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-bold text-slate-500">سرعة حل المسألة</span>
             <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
@@ -394,7 +394,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         </div>
 
         {/* الاختبارات المكتملة */}
-        <div className="p-5 rounded-2xl bg-white/90 dark:bg-gradient-to-b dark:from-[#161021]/90 dark:via-[#100b18]/85 dark:to-[#090610]/90 border border-sky-200/80 dark:border-amber-500/25 backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex flex-col justify-between hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
+        <div className="p-5 rounded-2xl tarqa-glass-metric backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex flex-col justify-between hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-bold text-slate-500">الاختبارات المكتملة</span>
             <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
@@ -413,7 +413,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         </div>
 
         {/* سلسلة الالتزام اليومي */}
-        <div className="p-5 rounded-2xl bg-white/90 dark:bg-gradient-to-b dark:from-[#161021]/90 dark:via-[#100b18]/85 dark:to-[#090610]/90 border border-sky-200/80 dark:border-amber-500/25 backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex flex-col justify-between hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
+        <div className="p-5 rounded-2xl tarqa-glass-metric backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex flex-col justify-between hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-bold text-slate-500">سلسلة الالتزام (Streak)</span>
             <div className="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center">
@@ -439,7 +439,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* مخطط الرادار (Radar Chart) */}
-        <div className="lg:col-span-6 p-6 rounded-3xl bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/92 dark:via-[#110c1a]/88 dark:to-[#07050e]/92 border border-sky-200/80 dark:border-amber-500/30 backdrop-blur-2xl shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.7),0_0_20px_rgba(245,158,11,0.12)] flex flex-col items-center justify-between">
+        <div className="lg:col-span-6 p-6 rounded-3xl tarqa-glass-card backdrop-blur-2xl shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.7),0_0_20px_rgba(245,158,11,0.12)] flex flex-col items-center justify-between">
           <div className="w-full flex items-center justify-between mb-4">
             <div>
               <h2 className="text-base font-bold text-slate-900 dark:text-white">
@@ -468,7 +468,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         {/* أشرطة الإتقان التفصيلية ونقطة الضعف */}
         <div className="lg:col-span-6 flex flex-col gap-4">
           
-          <div className="p-6 rounded-3xl bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/92 dark:via-[#110c1a]/88 dark:to-[#07050e]/92 border border-sky-200/80 dark:border-amber-500/30 backdrop-blur-2xl shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.7),0_0_20px_rgba(245,158,11,0.12)] flex-1 flex flex-col justify-between">
+          <div className="p-6 rounded-3xl tarqa-glass-card backdrop-blur-2xl shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.7),0_0_20px_rgba(245,158,11,0.12)] flex-1 flex flex-col justify-between">
             <div>
               <h2 className="text-base font-bold text-slate-900 dark:text-white mb-1">
                 تفاصيل إتقان الأقسام
@@ -564,7 +564,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       {/* ======================================================================= */}
       {/* 4. سجل الاختبارات الأخيرة (Recent Attempts Table) الحقيقي */}
       {/* ======================================================================= */}
-      <section className="p-6 rounded-3xl bg-white/90 dark:bg-gradient-to-b dark:from-[#181108]/92 dark:via-[#110c1a]/88 dark:to-[#07050e]/92 border border-sky-200/80 dark:border-amber-500/30 backdrop-blur-2xl shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.7),0_0_20px_rgba(245,158,11,0.12)]">
+      <section className="p-6 rounded-3xl tarqa-glass-card backdrop-blur-2xl shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.7),0_0_20px_rgba(245,158,11,0.12)]">
         <div className="flex items-center justify-between mb-5">
           <div>
             <h2 className="text-base font-bold text-slate-900 dark:text-white">
@@ -671,7 +671,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       {/* ======================================================================= */}
       {/* 5. الأسئلة المحفوظة للمراجعة (Bookmarked Questions) الحقيقية */}
       {/* ======================================================================= */}
-      <section className="p-6 rounded-3xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800/80 shadow-sm">
+      <section className="p-6 rounded-3xl tarqa-glass-card shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center">

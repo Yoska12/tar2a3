@@ -489,7 +489,7 @@ export const InteractiveLoginPage: React.FC<InteractiveLoginPageProps> = ({
 
       {/* بطاقة اللوجن الرئيسية */}
       <div 
-        className={`relative w-full max-w-4xl bg-white/95 dark:bg-gradient-to-b dark:from-[#181108]/95 dark:via-[#110c1a]/92 dark:to-[#07050e]/95 border border-sky-200/90 dark:border-amber-500/35 rounded-3xl sm:rounded-[2.5rem] shadow-2xl shadow-sky-500/10 dark:shadow-black/90 overflow-hidden transition-all duration-300 my-auto ${
+        className={`relative w-full max-w-4xl tarqa-glass-hero rounded-3xl sm:rounded-[2.5rem] shadow-2xl shadow-sky-500/10 dark:shadow-black/90 overflow-hidden transition-all duration-300 my-auto ${
           isShaking ? 'ring-4 ring-rose-500/60' : isCelebration ? 'ring-4 ring-amber-400/80 shadow-amber-500/40' : ''
         }`}
       >

@@ -38,7 +38,7 @@ import {
 import { UserRole, UserWithRole, RoleChangeLog, StudentDownloadedFile } from '../types';
 import { rolesService } from '../lib/rolesService';
 import { authService, TarqaUser, supabase, isSupabaseConfigured } from '../lib/supabase';
-import { isOwnerEmail } from '../lib/securityUtils';
+import { isOwnerEmail, canAccessAdmin, isSuperAdminRole } from '../lib/securityUtils';
 import { downloadTrackingService } from '../lib/downloadTrackingService';
 
 interface SuperAdminRolesPanelProps {
@@ -53,8 +53,8 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
   // استنتاج المستخدم الحالي وصلاحياته الموثوقة (مع أخذ السوبر أدمن والمالك بعين الاعتبار)
   const currentLoggedUser = currentUser || authService.getCurrentUser();
   const isOwner = isOwnerEmail(currentLoggedUser?.email);
-  const isSuperAdmin = currentLoggedUser?.role === 'super_admin' || isOwner;
-  const isAuthorizedAdmin = currentLoggedUser?.role === 'admin' || isSuperAdmin;
+  const isSuperAdmin = isSuperAdminRole(currentLoggedUser);
+  const isAuthorizedAdmin = canAccessAdmin(currentLoggedUser);
 
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [auditLogs, setAuditLogs] = useState<RoleChangeLog[]>([]);

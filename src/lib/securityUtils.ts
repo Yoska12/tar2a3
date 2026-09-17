@@ -96,3 +96,29 @@ export const isOwnerEmail = (email?: string | null): boolean => {
   const normalized = email.trim().toLowerCase();
   return OWNER_EMAILS.includes(normalized as any);
 };
+
+/**
+ * التحقق المركزي الموحد من صلاحيات لوحات التحكم والإدارة (Admin / Teacher / Super Admin / Owner)
+ */
+export const canAccessAdmin = (user?: { role?: string; email?: string | null } | null): boolean => {
+  if (!user) return false;
+  if (isOwnerEmail(user.email)) return true;
+  return user.role === 'admin' || user.role === 'teacher' || user.role === 'super_admin';
+};
+
+/**
+ * التحقق المركزي من صلاحيات السوبر أدمن حصراً لإدارة الرتب والأمان (Super Admin / Owner)
+ */
+export const isSuperAdminRole = (user?: { role?: string; email?: string | null } | null): boolean => {
+  if (!user) return false;
+  if (isOwnerEmail(user.email)) return true;
+  return user.role === 'super_admin';
+};
+
+/**
+ * التحقق المركزي من صلاحيات إدارة ونشر المحاضرات وبنك الأسئلة
+ */
+export const canManageLectures = (user?: { role?: string; email?: string | null } | null): boolean => {
+  return canAccessAdmin(user);
+};
+

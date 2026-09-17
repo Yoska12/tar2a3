@@ -35,8 +35,9 @@ import { mockFoundationModules } from './data/foundationModules';
 import { mockCategories, mockQuestions } from './data/mockQuestions';
 import { QuizSettings, QuizResult, Category, Question, CourseModule, Lesson, UserRole, CourseFileItem } from './types';
 import { localScoreStorage, authService, TarqaUser, supabase, isSupabaseConfigured, syncUserToMembersDashboard, isValidUuid, isOwnerEmail } from './lib/supabase';
+import { canAccessAdmin, isSuperAdminRole } from './lib/securityUtils';
 import { sendQuizCompletedNotification, TELEGRAM_BOT_URL, TELEGRAM_BOT_USERNAME } from './lib/telegram';
-import { coursesStorage, CLOUD_LECTURES_STORE_ID, CLOUD_LECTURES_STORE_EMAIL } from './lib/subscriptionService';
+import { coursesStorage, CLOUD_LECTURES_STORE_ID, CLOUD_LECTURES_STORE_EMAIL, isUserSubscribed } from './lib/subscriptionService';
 import { questionBankStorage, CLOUD_QUESTIONS_STORE_ID, CLOUD_QUESTIONS_STORE_EMAIL } from './lib/questionBankStorage';
 import { initGlobalAntiHack, logSecurityViolation } from './lib/antiHack';
 
@@ -164,22 +165,8 @@ export const App: React.FC = () => {
 
           const isOwner = isOwnerEmail(session.user.email);
           const verifiedRole: UserRole = isOwner ? 'super_admin' : role;
-          let isSubscribed = isOwner ? true : Boolean(profile?.is_subscribed);
-          let subscriptionExpiresAt = isOwner ? undefined : (profile?.subscription_expires_at || undefined);
-
-          if (!isSubscribed) {
-            try {
-              const subsRaw = localStorage.getItem('tarqa_subscriptions');
-              if (subsRaw) {
-                const subs = JSON.parse(subsRaw);
-                const sub = subs[session.user.id] || (session.user.email && subs[session.user.email.toLowerCase()]);
-                if (sub && (sub.active === true || sub.isActive === true)) {
-                  isSubscribed = true;
-                  subscriptionExpiresAt = sub.expiresAt || sub.expiresDate;
-                }
-              }
-            } catch {}
-          }
+          const initialSubscribed = isOwner ? true : Boolean(profile?.is_subscribed);
+          const subscriptionExpiresAt = isOwner ? undefined : (profile?.subscription_expires_at || undefined);
 
           const user: TarqaUser = {
             id: session.user.id,
@@ -190,10 +177,16 @@ export const App: React.FC = () => {
             telegramUsername,
             avatarUrl,
             isBanned: false,
-            isSubscribed,
+            isSubscribed: initialSubscribed,
             subscriptionExpiresAt,
           };
-          localStorage.setItem('tarqa_current_user', JSON.stringify(user));
+
+          // توحيد فحص الاشتراك عبر الخدمة المركزية
+          if (!isOwner && !user.isSubscribed) {
+            user.isSubscribed = isUserSubscribed(user);
+          }
+
+          authService.setCurrentUser(user);
           setCurrentUser(user);
           syncUserToMembersDashboard(user);
         } else {
@@ -237,23 +230,6 @@ export const App: React.FC = () => {
                   logSecurityViolation('role_tampering', 'تم رصد محاولة تزييف رتبة مدير في المتصفح وإرجاع الحساب إلى رتبة طالب');
                 }
 
-                let localSubscribed = isOwner ? true : (Boolean(profile.is_subscribed) || Boolean(localCur.isSubscribed));
-                let localExpires = isOwner ? undefined : (profile.subscription_expires_at || localCur.subscriptionExpiresAt);
-
-                if (!localSubscribed) {
-                  try {
-                    const subsRaw = localStorage.getItem('tarqa_subscriptions');
-                    if (subsRaw) {
-                      const subs = JSON.parse(subsRaw);
-                      const sub = subs[profile.id || localCur.id] || (localCur.email && subs[localCur.email.toLowerCase()]);
-                      if (sub && (sub.active === true || sub.isActive === true)) {
-                        localSubscribed = true;
-                        localExpires = sub.expiresAt || sub.expiresDate;
-                      }
-                    }
-                  } catch {}
-                }
-
                 const updatedUser: TarqaUser = {
                   ...localCur,
                   id: profile.id || localCur.id,
@@ -261,16 +237,21 @@ export const App: React.FC = () => {
                   fullName: isOwner ? 'Yoska' : (profile.full_name || localCur.fullName),
                   email: (profile.email && !profile.email.includes('@telegram.tarqa')) ? profile.email : localCur.email,
                   isBanned: Boolean(profile.is_banned),
-                  isSubscribed: localSubscribed,
-                  subscriptionExpiresAt: localExpires,
+                  isSubscribed: isOwner ? true : (Boolean(profile.is_subscribed) || Boolean(localCur.isSubscribed)),
+                  subscriptionExpiresAt: isOwner ? undefined : (profile.subscription_expires_at || localCur.subscriptionExpiresAt),
                 };
+
+                if (!isOwner && !updatedUser.isSubscribed) {
+                  updatedUser.isSubscribed = isUserSubscribed(updatedUser);
+                }
+
                 if (profile.is_banned) {
-                  localStorage.removeItem('tarqa_current_user');
+                  authService.clearCurrentUser();
                   setCurrentUser(null);
                   alert('تم حظر هذا الحساب من قبل إدارة المنصة.');
                   return;
                 }
-                localStorage.setItem('tarqa_current_user', JSON.stringify(updatedUser));
+                authService.setCurrentUser(updatedUser);
                 setCurrentUser(updatedUser);
                 syncUserToMembersDashboard(updatedUser);
                 return;
@@ -354,12 +335,12 @@ export const App: React.FC = () => {
             avatarUrl,
             isBanned: false,
           };
-          localStorage.setItem('tarqa_current_user', JSON.stringify(user));
+          authService.setCurrentUser(user);
           setCurrentUser(user);
           syncUserToMembersDashboard(user);
         } else if (event === 'SIGNED_OUT') {
           setCurrentUser(null);
-          localStorage.removeItem('tarqa_current_user');
+          authService.clearCurrentUser();
         }
       });
 
@@ -461,7 +442,7 @@ export const App: React.FC = () => {
                   isBanned: Boolean(updated.is_banned),
                 };
 
-                localStorage.setItem('tarqa_current_user', JSON.stringify(updatedUser));
+                authService.setCurrentUser(updatedUser);
                 setCurrentUser(updatedUser);
                 syncUserToMembersDashboard(updatedUser);
                 window.dispatchEvent(new Event('tarqa_user_changed'));
@@ -491,11 +472,13 @@ export const App: React.FC = () => {
 
     window.addEventListener('tarqa_user_changed', handleUserOrRoleChanged);
     window.addEventListener('tarqa_roles_changed', handleUserOrRoleChanged);
+    window.addEventListener('tarqa_subscription_changed', handleUserOrRoleChanged);
     window.addEventListener('storage', handleUserOrRoleChanged);
 
     return () => {
       window.removeEventListener('tarqa_user_changed', handleUserOrRoleChanged);
       window.removeEventListener('tarqa_roles_changed', handleUserOrRoleChanged);
+      window.removeEventListener('tarqa_subscription_changed', handleUserOrRoleChanged);
       window.removeEventListener('storage', handleUserOrRoleChanged);
     };
   }, []);
@@ -529,19 +512,6 @@ export const App: React.FC = () => {
   });
   const [quizTitle, setQuizTitle] = useState<string>('اختبار محاكي قياس للكمي');
   const [lastResult, setLastResult] = useState<QuizResult | null>(null);
-
-  // الاستماع لتغييرات المستخدم والأدوار والاشتراكات (RBAC & Subscription Updates)
-  useEffect(() => {
-    const handleUserChanged = () => {
-      setCurrentUser(authService.getCurrentUser());
-    };
-    window.addEventListener('tarqa_user_changed', handleUserChanged);
-    window.addEventListener('tarqa_subscription_changed', handleUserChanged);
-    return () => {
-      window.removeEventListener('tarqa_user_changed', handleUserChanged);
-      window.removeEventListener('tarqa_subscription_changed', handleUserChanged);
-    };
-  }, []);
 
   // الاستماع لتحديثات المحاضرات والدورات فورياً
   useEffect(() => {
@@ -739,21 +709,21 @@ export const App: React.FC = () => {
         setCurrentView('dashboard');
       }
     } else if (tab === 'admin') {
-      if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'teacher' && currentUser.role !== 'super_admin' && !isOwnerEmail(currentUser?.email))) {
+      if (!currentUser || !canAccessAdmin(currentUser)) {
         setAuthInitialTab('signin');
         setIsAuthOpen(true);
       } else {
         setCurrentView('admin');
       }
     } else if (tab === 'admin-lectures') {
-      if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'teacher' && currentUser.role !== 'super_admin' && !isOwnerEmail(currentUser?.email))) {
+      if (!currentUser || !canAccessAdmin(currentUser)) {
         setAuthInitialTab('signin');
         setIsAuthOpen(true);
       } else {
         setCurrentView('admin-lectures');
       }
     } else if (tab === 'admin-roles') {
-      if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'super_admin' && !isOwnerEmail(currentUser?.email))) {
+      if (!currentUser || !isSuperAdminRole(currentUser)) {
         setAuthInitialTab('signin');
         setIsAuthOpen(true);
       } else {
@@ -861,7 +831,7 @@ export const App: React.FC = () => {
       {/* ======================================================================= */}
       {currentView === 'admin' && (
         <main className="flex-1 w-full pb-24 md:pb-8">
-          {currentUser?.role === 'admin' || currentUser?.role === 'teacher' || currentUser?.role === 'super_admin' || isOwnerEmail(currentUser?.email) ? (
+          {canAccessAdmin(currentUser) ? (
             <AdminPanel
               questions={allQuestions}
               categories={mockCategories}
@@ -943,7 +913,7 @@ export const App: React.FC = () => {
       {/* ======================================================================= */}
       {currentView === 'admin-lectures' && (
         <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-8 pb-24 md:pb-8">
-          {currentUser?.role === 'admin' || currentUser?.role === 'teacher' || currentUser?.role === 'super_admin' || isOwnerEmail(currentUser?.email) ? (
+          {canAccessAdmin(currentUser) ? (
             <LecturesCMS
               modules={modules}
               files={courseFiles}
@@ -1026,7 +996,7 @@ export const App: React.FC = () => {
       {/* ======================================================================= */}
       {currentView === 'admin-roles' && (
         <main className="flex-1 w-full pb-24 md:pb-8">
-          {currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || isOwnerEmail(currentUser?.email) ? (
+          {isSuperAdminRole(currentUser) ? (
             <SuperAdminRolesPanel
               currentUser={currentUser}
               onNavigateBack={() => {

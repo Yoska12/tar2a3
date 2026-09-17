@@ -22,7 +22,7 @@ import {
   GraduationCap
 } from 'lucide-react';
 import { TarqaUser, authService } from '../lib/supabase';
-import { isOwnerEmail } from '../lib/securityUtils';
+import { isOwnerEmail, canAccessAdmin as checkCanAccessAdmin, isSuperAdminRole } from '../lib/securityUtils';
 import { UserRole } from '../types';
 import { TELEGRAM_BOT_USERNAME, TELEGRAM_BOT_URL } from '../lib/telegram';
 
@@ -51,13 +51,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [localMenuOpen, setLocalMenuOpen] = useState(false);
   const isMenuOpen = controlledMenuOpen !== undefined ? controlledMenuOpen : localMenuOpen;
-  const toggleMenu = () => {
-    if (onToggleMobileMenu) {
-      onToggleMobileMenu();
-    } else {
-      setLocalMenuOpen(!localMenuOpen);
-    }
-  };
 
   const closeMenu = () => {
     if (onToggleMobileMenu && isMenuOpen) {
@@ -67,18 +60,26 @@ export const Navbar: React.FC<NavbarProps> = ({
     }
   };
 
+  const toggleMenu = () => {
+    if (onToggleMobileMenu) {
+      onToggleMobileMenu();
+    } else {
+      setLocalMenuOpen(!localMenuOpen);
+    }
+  };
+
   const handleTabClick = (tab: any) => {
     onSelectTab(tab);
     closeMenu();
   };
 
   const isOwner = isOwnerEmail(currentUser?.email);
-  const isAdmin = Boolean(currentUser && ((currentUser.role === 'admin') || (currentUser.role === 'super_admin') || isOwner));
+  const isAdmin = Boolean(currentUser && (currentUser.role === 'admin' || isSuperAdminRole(currentUser)));
   const currentRole: UserRole | null = currentUser 
     ? (isOwner ? 'super_admin' : currentUser.role) 
     : null;
   const roleBadge = currentRole ? authService.getRoleBadge(currentRole) : null;
-  const canAccessAdmin = Boolean(currentUser && (currentRole === 'admin' || currentRole === 'teacher' || isAdmin));
+  const canAccessAdmin = checkCanAccessAdmin(currentUser);
 
   // القائمة المنسدلة لأدوات الإدارة لتوفير المساحة ومنع تداخل أزرار الشريط
   const [adminDropdownOpen, setAdminDropdownOpen] = useState(false);

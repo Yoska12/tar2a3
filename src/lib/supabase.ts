@@ -299,6 +299,28 @@ export const authService = {
     }
   },
 
+  // حفظ وتحديث بيانات المستخدم الحالي مركزياً في التخزين المحلي
+  setCurrentUser: (user: TarqaUser): void => {
+    try {
+      if (typeof window === 'undefined') return;
+      localStorage.setItem('tarqa_current_user', JSON.stringify(user));
+      window.dispatchEvent(new Event('tarqa_user_changed'));
+    } catch (e) {
+      console.warn('[authService] Failed to set current user:', e);
+    }
+  },
+
+  // مسح بيانات المستخدم الحالي عند تسجيل الخروج أو الحظر
+  clearCurrentUser: (): void => {
+    try {
+      if (typeof window === 'undefined') return;
+      localStorage.removeItem('tarqa_current_user');
+      window.dispatchEvent(new Event('tarqa_user_changed'));
+    } catch (e) {
+      console.warn('[authService] Failed to clear current user:', e);
+    }
+  },
+
   // تبديل الدور للاختبار المحلي السريع (Demo Role Switcher)
   switchRole: (newRole: UserRole): TarqaUser | null => {
     const current = authService.getCurrentUser();

@@ -10,6 +10,10 @@
   }
 }
 
+.font-baloo {
+  font-family: 'Baloo Bhaijaan 2', cursive, sans-serif;
+}
+
 /* Custom modern scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
@@ -49,4 +53,99 @@
 
 .animate-subtle {
   animation: subtle-pulse 3s infinite ease-in-out;
+}
+
+/* حركة الاهتزاز السريع عند كلمة المرور الخاطئة */
+@keyframes rapid-shake {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  10%, 30%, 50%, 70%, 90% { transform: translate3d(-10px, 0, 0) rotate(-4deg); }
+  20%, 40%, 60%, 80% { transform: translate3d(10px, 0, 0) rotate(4deg); }
+}
+
+.animate-rapid-shake {
+  animation: rapid-shake 0.65s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+/* حركة الاحتفال الحماسية عند نجاح التسجيل */
+@keyframes celebration-jump {
+  0%, 100% { transform: translateY(0) scale(1) rotate(0deg); }
+  25% { transform: translateY(-28px) scale(1.12) rotate(-8deg); }
+  50% { transform: translateY(-6px) scale(1.04) rotate(6deg); }
+  75% { transform: translateY(-18px) scale(1.08) rotate(-4deg); }
+}
+
+.animate-celebration-jump {
+  animation: celebration-jump 0.9s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+}
+
+/* حركة تمايل مرحة لطيفة */
+@keyframes happy-wiggle {
+  0%, 100% { transform: rotate(0deg) scale(1); }
+  25% { transform: rotate(-8deg) scale(1.06); }
+  50% { transform: rotate(6deg) scale(1.1); }
+  75% { transform: rotate(-5deg) scale(1.04); }
+}
+
+.animate-happy-wiggle {
+  animation: happy-wiggle 0.75s ease-in-out infinite;
+}
+
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 12s linear infinite;
+}
+
+/* ==========================================================================
+   Smooth Theme Circle Transition (View Transitions API)
+   دائرة اللون الصاعدة من أسفل الشاشة للمنتصف وتملأ الشاشة بنعومة تامة بدون ريفريش
+   ========================================================================== */
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 9999;
+  animation: theme-rise-and-fill 0.62s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes theme-rise-and-fill {
+  0% {
+    clip-path: circle(0px at 50% 100%);
+  }
+  38% {
+    clip-path: circle(70px at 50% 50%);
+  }
+  100% {
+    clip-path: circle(150vmax at 50% 50%);
+  }
+}
+
+@media (min-width: 768px) {
+  @keyframes theme-rise-and-fill {
+    0% {
+      clip-path: circle(0px at 50% 100%);
+    }
+    38% {
+      clip-path: circle(85px at 50% 50%);
+    }
+    100% {
+      clip-path: circle(150vmax at 50% 50%);
+    }
+  }
 }

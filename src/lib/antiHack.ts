@@ -167,6 +167,24 @@ export const initGlobalAntiHack = (
   // طباعة تحذير الكونسول فوراً
   displayConsoleSelfXssWarning();
 
+  // كشف أجهزة الموبايل والشاشات اللمسية
+  const isMobile = typeof window !== 'undefined' && (
+    'ontouchstart' in window ||
+    navigator.maxTouchPoints > 0 ||
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+    window.innerWidth < 768
+  );
+
+  // معدل أمان لمنع تكرار تنبيهات الحماية والتسبب في إعادة الرندر للواجهة
+  let lastAlertTime = 0;
+  const triggerSafeAlert = (msg: string) => {
+    const now = Date.now();
+    if (now - lastAlertTime > 4000) {
+      lastAlertTime = now;
+      onSecurityAlert?.(msg);
+    }
+  };
+
   // فحص ما إذا كان المستخدم مشرفاً ويحق له التجاوز
   const shouldBypass = () => {
     const settings = getAntiHackSettings();
@@ -176,8 +194,11 @@ export const initGlobalAntiHack = (
     return user?.role === 'super_admin' || user?.role === 'admin';
   };
 
-  // 1. اعتراض القائمة المنسدلة للزر الأيمن (Context Menu)
+  // 1. اعتراض القائمة المنسدلة للزر الأيمن (Context Menu) - مخصص لمتصفحات سطح المكتب فقط
   const handleContextMenu = (e: MouseEvent) => {
+    // عدم اعتراض اللمس المطول على الهواتف منعاً لتعليق إيماءات اللمس والتمرير
+    if (isMobile) return;
+
     const settings = getAntiHackSettings();
     if (!settings.enabled || !settings.blockContextMenu || shouldBypass()) return;
 
@@ -188,11 +209,13 @@ export const initGlobalAntiHack = (
     }
 
     e.preventDefault();
-    onSecurityAlert?.('🔒 تم تعطيل القائمة المنسدلة لحماية محتوى المنصة والأسئلة.');
+    triggerSafeAlert('🔒 تم تعطيل القائمة المنسدلة لحماية محتوى المنصة والأسئلة.');
   };
 
   // 2. اعتراض اختصارات لوحة المفاتيح المخصصة للفحص والسرقة
   const handleKeyDown = (e: KeyboardEvent) => {
+    if (isMobile) return;
+
     const settings = getAntiHackSettings();
     if (!settings.enabled || shouldBypass()) return;
 
@@ -209,7 +232,7 @@ export const initGlobalAntiHack = (
         type: 'devtools_attempt',
         details: 'محاولة فتح أدوات المطورين عبر مفتاح F12',
       });
-      onSecurityAlert?.('⚠️ تم تعطيل مفتاح F12 لحماية محتوى الاختبارات والشروحات.');
+      triggerSafeAlert('⚠️ تم تعطيل مفتاح F12 لحماية محتوى الاختبارات والشروحات.');
       return false;
     }
 
@@ -223,7 +246,7 @@ export const initGlobalAntiHack = (
         type: 'devtools_attempt',
         details: `محاولة فحص الصفحة عبر اختصار Ctrl+Shift+${key}`,
       });
-      onSecurityAlert?.('⚠️ تم حظر اختصارات فحص الصفحة لحماية حقوق الملكية الفكرية.');
+      triggerSafeAlert('⚠️ تم حظر اختصارات فحص الصفحة لحماية حقوق الملكية الفكرية.');
       return false;
     }
 
@@ -231,7 +254,7 @@ export const initGlobalAntiHack = (
     if (settings.blockDevTools && isCtrlOrCmd && key === 'U') {
       e.preventDefault();
       e.stopPropagation();
-      onSecurityAlert?.('🔒 تم حظر عرض المصدر لحماية أمان المنصة.');
+      triggerSafeAlert('🔒 تم حظر عرض المصدر لحماية أمان المنصة.');
       return false;
     }
 
@@ -239,7 +262,7 @@ export const initGlobalAntiHack = (
     if (settings.blockCopyCut && isCtrlOrCmd && key === 'S') {
       e.preventDefault();
       e.stopPropagation();
-      onSecurityAlert?.('🔒 تم حظر حفظ الصفحة دون إذن.');
+      triggerSafeAlert('🔒 تم حظر حفظ الصفحة دون إذن.');
       return false;
     }
 
@@ -256,17 +279,18 @@ export const initGlobalAntiHack = (
         type: 'screenshot_attempt',
         details: 'رصد ضغط زر التقاط الشاشة PrintScreen',
       });
-      onSecurityAlert?.('🛡️ تنبيه: محتوى بنك الأسئلة محمي من التصوير والتسريب.');
+      triggerSafeAlert('🛡️ تنبيه: محتوى بنك الأسئلة محمي من التصوير والتسريب.');
     }
   };
 
-  // 3. منع النسخ والقص للمحتوى المحمي
+  // 3. منع النسخ والقص للمحتوى المحمي على أجهزة سطح المكتب
   const handleCopyCut = (e: ClipboardEvent) => {
+    if (isMobile) return;
+
     const settings = getAntiHackSettings();
     if (!settings.enabled || !settings.blockCopyCut || shouldBypass()) return;
 
     const target = e.target as HTMLElement | null;
-    // السماح بالنسخ من حقول الإدخال العادية
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
       return;
     }
@@ -278,12 +302,12 @@ export const initGlobalAntiHack = (
       type: 'copy_attempt',
       details: 'محاولة نسخ محتوى من الصفحة المحمية',
     });
-    onSecurityAlert?.('🔒 نسخ نصوص الأسئلة والمذكرات غير مصرح به.');
+    triggerSafeAlert('🔒 نسخ نصوص الأسئلة والمذكرات غير مصرح به.');
   };
 
-  // 4. مراقبة فحص فتح الـ DevTools دورياً عبر نافذة المتصفح
+  // 4. مراقبة فحص فتح الـ DevTools دورياً عبر أبعاد النافذة (فقط لسطح المكتب لمنع الإنذار الكاذب على الهواتف)
   let devtoolsInterval: any = null;
-  if (getAntiHackSettings().blockDevTools) {
+  if (!isMobile && getAntiHackSettings().blockDevTools) {
     let devtoolsOpen = false;
     devtoolsInterval = setInterval(() => {
       if (shouldBypass()) return;
@@ -301,12 +325,12 @@ export const initGlobalAntiHack = (
             type: 'devtools_attempt',
             details: 'تم رصد نافذة أدوات المطورين مفتوحة بجانب الصفحة',
           });
-          onSecurityAlert?.('⚠️ تم رصد فتح أدوات الفحص للمتصفح! المحتوى مشفر ومراقب.');
+          triggerSafeAlert('⚠️ تم رصد فتح أدوات الفحص للمتصفح! المحتوى مشفر ومراقب.');
         }
       } else {
         devtoolsOpen = false;
       }
-    }, 2000);
+    }, 3000);
   }
 
   // إضافة المستمعات

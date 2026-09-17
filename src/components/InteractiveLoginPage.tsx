@@ -141,21 +141,14 @@ export const InteractiveLoginPage: React.FC<InteractiveLoginPageProps> = ({
       }
     };
 
-    const handleTouchMove = (e: TouchEvent) => {
-      if (e.touches[0]) {
-        latestPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-        if (rafId === null) {
-          rafId = requestAnimationFrame(updateEyesDOM);
-        }
-      }
-    };
+    const isTouchOnly = typeof window !== 'undefined' && ('ontouchstart' in window && window.innerWidth < 768);
 
-    window.addEventListener('mousemove', handleMouseMove, { passive: true });
-    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+    if (!isTouchOnly) {
+      window.addEventListener('mousemove', handleMouseMove, { passive: true });
+    }
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('touchmove', handleTouchMove);
       if (rafId !== null) cancelAnimationFrame(rafId);
     };
   }, [isOpen, isStandalonePage]);

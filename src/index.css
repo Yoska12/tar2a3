@@ -244,3 +244,28 @@ html.theme-transitioning svg {
   animation-delay: 8s;
 }
 
+/* ==========================================================================
+   تحسينات الأداء الفائقة لشاشات الهواتف الذكية (Mobile Performance Boost)
+   ========================================================================== */
+@media (max-width: 768px) {
+  /* خفض تكلفة gaussian blur على الموبايل لتوفير سلاسة 60fps فورية ومنع تعليق GPU */
+  .backdrop-blur-3xl,
+  .backdrop-blur-2xl,
+  .backdrop-blur-xl {
+    -webkit-backdrop-filter: blur(8px) !important;
+    backdrop-filter: blur(8px) !important;
+  }
+
+  /* تسريع اللمس الفوري بدون تأخير 300ms على الهواتف */
+  body, html {
+    touch-action: manipulation;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* إيقاف الحركات المجهدة للموبايل في وضع خفض الحركة أو الشاشات الصغيرة */
+  .animate-galaxy-spin-slow {
+    animation: none !important;
+  }
+}
+
+

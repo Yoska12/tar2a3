@@ -14,7 +14,10 @@ import {
   Lightbulb,
   GraduationCap,
   FileText,
-  X
+  X,
+  Mail,
+  Phone,
+  MessageSquare
 } from 'lucide-react';
 import { Navbar } from './components/Navbar';
 import { QuizInterface } from './components/QuizInterface';
@@ -40,6 +43,7 @@ import { sendQuizCompletedNotification, TELEGRAM_BOT_URL, TELEGRAM_BOT_USERNAME 
 import { coursesStorage, CLOUD_LECTURES_STORE_ID, CLOUD_LECTURES_STORE_EMAIL, isUserSubscribed } from './lib/subscriptionService';
 import { questionBankStorage, CLOUD_QUESTIONS_STORE_ID, CLOUD_QUESTIONS_STORE_EMAIL } from './lib/questionBankStorage';
 import { initGlobalAntiHack, logSecurityViolation } from './lib/antiHack';
+import { SUPPORT_EMAIL, SUPPORT_PHONE_EGYPT, SUPPORT_PHONE_EGYPT_FORMATTED, SUPPORT_WHATSAPP_URL } from './lib/constants';
 
 export const App: React.FC = () => {
   // وضع الشاشة: home | courses | quiz | result | dashboard | admin | classroom | admin-lectures | admin-roles
@@ -1347,6 +1351,45 @@ export const App: React.FC = () => {
             >
               سياسة الاسترجاع
             </button>
+          </div>
+        </div>
+
+        {/* بيانات الدعم الفني والتواصل المباشر */}
+        <div className="max-w-4xl mx-auto py-3 px-4 rounded-2xl bg-amber-500/5 dark:bg-amber-500/10 border border-amber-500/20 flex flex-wrap items-center justify-center sm:justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>الدعم الفني وخدمة المشتركين:</span>
+          </div>
+          <div className="flex items-center gap-4 flex-wrap justify-center font-medium">
+            <a
+              href={`mailto:${SUPPORT_EMAIL}`}
+              className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-300 hover:text-amber-500 transition font-mono font-bold"
+              title="مراسلة الدعم عبر البريد الإلكتروني"
+            >
+              <Mail className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <span>{SUPPORT_EMAIL}</span>
+            </a>
+            <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">•</span>
+            <a
+              href={`tel:${SUPPORT_PHONE_EGYPT}`}
+              className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-300 hover:text-emerald-500 transition font-mono font-bold"
+              dir="ltr"
+              title="اتصال هاتفي بالدعم الفني"
+            >
+              <Phone className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+              <span>{SUPPORT_PHONE_EGYPT_FORMATTED}</span>
+            </a>
+            <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">•</span>
+            <a
+              href={SUPPORT_WHATSAPP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold transition text-[11px]"
+              title="محادثة واتساب مباشرة"
+            >
+              <MessageSquare className="w-3 h-3" />
+              <span>واتساب الدعم (مصر)</span>
+            </a>
           </div>
         </div>
 

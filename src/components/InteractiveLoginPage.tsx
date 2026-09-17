@@ -13,9 +13,11 @@ import {
   Loader2, 
   Send, 
   ArrowRight,
-  KeyRound
+  KeyRound,
+  Phone
 } from 'lucide-react';
 import { authService, TarqaUser } from '../lib/supabase';
+import { SUPPORT_EMAIL, SUPPORT_PHONE_EGYPT, SUPPORT_PHONE_EGYPT_FORMATTED } from '../lib/constants';
 
 interface InteractiveLoginPageProps {
   isOpen?: boolean;
@@ -758,6 +760,29 @@ export const InteractiveLoginPage: React.FC<InteractiveLoginPageProps> = ({
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* خط المساعدة والدعم الفني */}
+            <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px] text-center space-y-1 mt-3">
+              <div className="text-slate-400 text-[10px]">تواجه مشكلة في الدخول أو تفعيل الحساب؟</div>
+              <div className="flex items-center justify-center gap-3 font-bold text-[11px]">
+                <a
+                  href={`tel:${SUPPORT_PHONE_EGYPT}`}
+                  dir="ltr"
+                  className="text-emerald-400 hover:underline flex items-center gap-1 font-mono"
+                >
+                  <Phone className="w-3 h-3 text-emerald-400" />
+                  <span>{SUPPORT_PHONE_EGYPT_FORMATTED}</span>
+                </a>
+                <span className="text-slate-600">•</span>
+                <a
+                  href={`mailto:${SUPPORT_EMAIL}`}
+                  className="text-amber-400 hover:underline flex items-center gap-1 font-mono"
+                >
+                  <Mail className="w-3 h-3 text-amber-400" />
+                  <span>{SUPPORT_EMAIL}</span>
+                </a>
               </div>
             </div>
 

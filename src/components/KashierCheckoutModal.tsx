@@ -11,6 +11,8 @@ import {
   Sparkles,
   Wallet,
   Clock,
+  Phone,
+  Mail
 } from 'lucide-react';
 import { TarqaUser } from '../lib/supabase';
 import {
@@ -19,6 +21,7 @@ import {
   logKashierTransaction,
   KashierTransaction,
 } from '../lib/kashierService';
+import { SUPPORT_EMAIL, SUPPORT_PHONE_EGYPT, SUPPORT_PHONE_EGYPT_FORMATTED } from '../lib/constants';
 
 interface KashierCheckoutModalProps {
   isOpen: boolean;
@@ -462,6 +465,33 @@ export const KashierCheckoutModal: React.FC<KashierCheckoutModalProps> = ({
                   />
                 </div>
               )}
+
+              {/* شريط مساعدة ودعم الدفع الفوري */}
+              <div className="flex flex-wrap items-center justify-center sm:justify-between gap-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-slate-600 dark:text-slate-300">
+                <span className="font-bold flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                  <Phone className="w-3.5 h-3.5" />
+                  <span>واجهتك مشكلة في الدفع؟ تواصل معنا:</span>
+                </span>
+                <div className="flex items-center gap-2.5 flex-wrap justify-center font-bold">
+                  <a
+                    href={`tel:${SUPPORT_PHONE_EGYPT}`}
+                    dir="ltr"
+                    className="font-mono text-emerald-600 dark:text-emerald-400 hover:underline"
+                    title="اتصال هاتفي مباشر"
+                  >
+                    {SUPPORT_PHONE_EGYPT_FORMATTED}
+                  </a>
+                  <span className="text-slate-400">•</span>
+                  <a
+                    href={`mailto:${SUPPORT_EMAIL}`}
+                    className="font-mono hover:text-amber-500 hover:underline flex items-center gap-1"
+                    title="مراسلة الدعم"
+                  >
+                    <Mail className="w-3 h-3 text-amber-500" />
+                    <span>{SUPPORT_EMAIL}</span>
+                  </a>
+                </div>
+              </div>
 
               {/* شريط التذييل والسياسات */}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 px-1 text-[11px] text-slate-400">

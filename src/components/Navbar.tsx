@@ -96,15 +96,20 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <>
-      <nav className="sticky top-0 z-30 bg-white/90 dark:bg-[#070b14]/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 transition-colors font-cairo">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2 sm:gap-4">
+      <nav className="sticky top-0 z-30 bg-white/80 dark:bg-[#030509]/60 backdrop-blur-2xl border-b border-slate-200/80 dark:border-amber-500/25 dark:shadow-[0_4px_30px_rgba(245,158,11,0.14)] transition-all font-cairo relative overflow-hidden">
+        {/* خط وميض كوني علوي عبر النافبار */}
+        <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-amber-500/60 to-transparent pointer-events-none hidden dark:block" />
+        {/* سحابة غبار كوني برتقالية خافتة في عمق النافبار */}
+        <div className="absolute -top-6 left-1/3 w-96 h-16 bg-gradient-to-r from-amber-500/15 via-orange-500/20 to-amber-500/10 blur-2xl pointer-events-none hidden dark:block" />
+
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2 sm:gap-4 relative z-10">
           
           {/* الشعار واسم المنصة */}
           <div 
             onClick={() => handleTabClick('home')}
             className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group shrink-0"
           >
-            <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl overflow-hidden shadow-sm group-hover:scale-105 transition-transform flex items-center justify-center bg-amber-500/10 dark:bg-slate-900 border border-amber-500/40">
+            <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl overflow-hidden shadow-sm group-hover:scale-105 transition-transform flex items-center justify-center bg-amber-500/10 dark:bg-[#060913]/90 border border-amber-500/40 dark:shadow-[0_0_15px_rgba(245,158,11,0.25)]">
               <img 
                 src="/frame_000011.png" 
                 alt="شعار طرقع" 
@@ -130,13 +135,13 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* روابط التنقل للشاشات الكبيرة والتابلت الواسع (Desktop & Tablet Links) */}
           {/* روابط التنقل للشاشات الكبيرة واللابتوب بشكل رايق ونظيف بدون أي تكدس */}
-          <div className="hidden lg:flex items-center gap-1.5 bg-slate-100/80 dark:bg-slate-900/90 p-1.5 rounded-2xl border border-slate-200/70 dark:border-slate-800 text-xs shadow-sm flex-nowrap shrink-0">
+          <div className="hidden lg:flex items-center gap-1.5 bg-slate-100/80 dark:bg-[#060913]/70 p-1.5 rounded-2xl border border-slate-200/70 dark:border-amber-500/25 text-xs shadow-sm flex-nowrap shrink-0 backdrop-blur-xl dark:shadow-[inset_0_0_15px_rgba(245,158,11,0.08)]">
             <button
               onClick={() => onSelectTab('home')}
               className={`px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 shrink-0 ${
                 activeTab === 'home' || activeTab === 'roadmap'
-                  ? 'bg-white dark:bg-slate-800 text-amber-500 shadow-sm font-black'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-black shadow-[0_0_15px_rgba(245,158,11,0.4)]'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-amber-500 dark:hover:text-amber-300 dark:hover:bg-amber-500/10'
               }`}
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
@@ -244,16 +249,16 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* زر التبديل الليلي/النهاري */}
             <button
               onClick={onToggleDarkMode}
-              className="p-2 sm:p-2.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 transition"
+              className="p-2 sm:p-2.5 rounded-xl text-slate-600 dark:text-amber-300 hover:bg-slate-100 dark:hover:bg-amber-500/15 border border-slate-200 dark:border-amber-500/30 dark:shadow-[0_0_12px_rgba(245,158,11,0.2)] transition-all hover:scale-105 active:scale-95"
               title={darkMode ? 'الوضع النهاري' : 'الوضع الليلي'}
               aria-label="تبديل الوضع الليلي"
             >
-              {darkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-600" />}
+              {darkMode ? <Sun className="w-4 h-4 text-amber-400 drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]" /> : <Moon className="w-4 h-4 text-slate-600" />}
             </button>
 
             {/* شارة الهدف للشاشات المتوسطة والكبيرة */}
-            <div className="hidden sm:flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1.5 rounded-xl">
-              <Sparkles className="w-3.5 h-3.5" />
+            <div className="hidden sm:flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-300 bg-amber-500/10 border border-amber-500/30 dark:shadow-[0_0_15px_rgba(245,158,11,0.22)] px-2.5 py-1.5 rounded-xl">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
               <span>100 🎯</span>
             </div>
 
@@ -262,9 +267,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div className="flex items-center gap-1.5">
                 <div 
                   onClick={() => handleTabClick('dashboard')}
-                  className="cursor-pointer flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-bold"
+                  className="cursor-pointer flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-[#060913]/90 border border-slate-200 dark:border-amber-500/30 dark:shadow-[0_0_15px_rgba(245,158,11,0.15)] text-xs font-bold hover:border-amber-500/60 transition-all"
                 >
-                  <div className="w-6 h-6 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center font-black text-xs shrink-0">
+                  <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-amber-500 to-amber-400 text-slate-950 flex items-center justify-center font-black text-xs shrink-0 shadow-sm">
                     {currentUser.fullName ? currentUser.fullName.trim().charAt(0) : 'ط'}
                   </div>
                   <span className="max-w-[70px] sm:max-w-[90px] truncate text-slate-900 dark:text-white hidden xs:inline-block">

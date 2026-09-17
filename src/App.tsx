@@ -1152,7 +1152,7 @@ export const App: React.FC = () => {
 
               {/* بطاقة الشعار البسيطة والأنيقة */}
               <div className="lg:col-span-4 flex justify-center">
-                <div className="w-56 h-56 sm:w-64 sm:h-64 rounded-3xl border border-amber-500/30 bg-gradient-to-b from-amber-400 to-amber-500 flex items-center justify-center p-6 shadow-xl relative overflow-hidden group">
+                <div className="w-56 h-56 sm:w-64 sm:h-64 rounded-3xl border border-amber-500/40 dark:border-amber-400/50 bg-gradient-to-b from-amber-400 to-amber-500 flex items-center justify-center p-6 shadow-xl dark:shadow-[0_0_50px_rgba(245,158,11,0.35)] relative overflow-hidden group">
                   <img
                     src="/frame_000012.png"
                     alt="شعار منصة طرقع"
@@ -1176,16 +1176,16 @@ export const App: React.FC = () => {
 
           {/* ترحيب بالمستخدم المسجل */}
           {currentUser && (
-            <div className="flex items-center justify-between p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 animate-in fade-in">
+            <div className="flex items-center justify-between p-4 rounded-2xl bg-amber-500/10 dark:bg-[#060a14]/60 backdrop-blur-xl border border-amber-500/25 dark:border-amber-500/35 dark:shadow-[0_0_20px_rgba(245,158,11,0.1)] animate-in fade-in">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-black text-sm">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-400 text-slate-950 flex items-center justify-center font-black text-sm shadow-sm">
                   {currentUser.fullName ? currentUser.fullName.trim().charAt(0) : 'ط'}
                 </div>
                 <div>
                   <h4 className="font-bold text-sm text-slate-900 dark:text-white">
                     مرحباً بك مجدداً، {currentUser.fullName}!
                   </h4>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     أنت مسجل الآن وجاهز لاختبارات قدرات كمي • درجتك المستهدفة: {currentUser.targetScore || 100} 🎯
                   </p>
                 </div>
@@ -1201,14 +1201,14 @@ export const App: React.FC = () => {
               <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
                 ابدأ رحلتك نحو الـ 100 🎯
               </h2>
-              <p className="text-xs text-slate-500 mt-1">اختر القسم المناسب لهدفك اليوم بدون تعقيد</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">اختر القسم المناسب لهدفك اليوم بدون تعقيد</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               {/* البطاقة 1: دورة التأسيس الشاملة */}
               <div
                 onClick={() => handleTabSelect('courses')}
-                className="p-6 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/90 dark:border-slate-800 hover:border-amber-500/60 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group"
+                className="p-6 rounded-2xl bg-white/90 dark:bg-[#060a14]/65 backdrop-blur-xl border border-slate-200/90 dark:border-amber-500/25 hover:border-amber-500/60 shadow-sm hover:shadow-md dark:hover:shadow-[0_0_25px_rgba(245,158,11,0.2)] transition-all cursor-pointer flex flex-col justify-between group"
               >
                 <div>
                   <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
@@ -1235,7 +1235,7 @@ export const App: React.FC = () => {
               {/* البطاقة 2: المذكرات وتجميعات PDF */}
               <div
                 onClick={() => handleTabSelect('courses')}
-                className="p-6 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/90 dark:border-slate-800 hover:border-blue-500/60 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group"
+                className="p-6 rounded-2xl bg-white/90 dark:bg-[#060a14]/65 backdrop-blur-xl border border-slate-200/90 dark:border-blue-500/25 hover:border-blue-500/60 shadow-sm hover:shadow-md dark:hover:shadow-[0_0_25px_rgba(59,130,246,0.2)] transition-all cursor-pointer flex flex-col justify-between group"
               >
                 <div>
                   <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
@@ -1262,7 +1262,7 @@ export const App: React.FC = () => {
               {/* البطاقة 3: محاكي قياس الفعلي */}
               <div
                 onClick={startMockExam}
-                className="p-6 rounded-2xl bg-white dark:bg-[#0d1424] border border-slate-200/90 dark:border-slate-800 hover:border-purple-500/60 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group"
+                className="p-6 rounded-2xl bg-white/90 dark:bg-[#060a14]/65 backdrop-blur-xl border border-slate-200/90 dark:border-purple-500/25 hover:border-purple-500/60 shadow-sm hover:shadow-md dark:hover:shadow-[0_0_25px_rgba(168,85,247,0.2)] transition-all cursor-pointer flex flex-col justify-between group"
               >
                 <div>
                   <div className="w-12 h-12 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">

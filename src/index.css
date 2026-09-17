@@ -170,3 +170,77 @@ html.theme-transitioning svg {
   animation: galaxy-nebula-float 16s ease-in-out infinite;
 }
 
+@keyframes galaxy-spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-galaxy-spin-slow {
+  animation: galaxy-spin-slow 160s linear infinite;
+}
+
+/* شهب كونية متوهجة بذيل برتقالي ذهبي */
+@keyframes shooting-star-1 {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(-38deg) scaleX(0);
+    opacity: 0;
+  }
+  5% {
+    opacity: 1;
+    transform: translate3d(-60px, 45px, 0) rotate(-38deg) scaleX(1);
+  }
+  25% {
+    opacity: 0.9;
+    transform: translate3d(-350px, 260px, 0) rotate(-38deg) scaleX(1.4);
+  }
+  38% {
+    opacity: 0;
+    transform: translate3d(-550px, 410px, 0) rotate(-38deg) scaleX(0.2);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(-550px, 410px, 0) rotate(-38deg) scaleX(0);
+  }
+}
+
+@keyframes shooting-star-2 {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(-32deg) scaleX(0);
+    opacity: 0;
+  }
+  6% {
+    opacity: 1;
+    transform: translate3d(-70px, 45px, 0) rotate(-32deg) scaleX(1);
+  }
+  28% {
+    opacity: 0.95;
+    transform: translate3d(-420px, 270px, 0) rotate(-32deg) scaleX(1.5);
+  }
+  42% {
+    opacity: 0;
+    transform: translate3d(-620px, 400px, 0) rotate(-32deg) scaleX(0.2);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(-620px, 400px, 0) rotate(-32deg) scaleX(0);
+  }
+}
+
+.animate-shooting-star-1 {
+  animation: shooting-star-1 9s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+}
+
+.animate-shooting-star-2 {
+  animation: shooting-star-2 13s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+  animation-delay: 4.5s;
+}
+
+.animate-shooting-star-3 {
+  animation: shooting-star-1 11s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+  animation-delay: 8s;
+}
+

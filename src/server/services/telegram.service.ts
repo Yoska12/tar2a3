@@ -3,7 +3,7 @@ import { TelegramWebhookUpdate } from '../types/telegram.types';
 import { QuizSubmissionResult } from '../types/quiz.types';
 import { mockQuestions } from '../../data/mockQuestions';
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || process.env.VITE_TELEGRAM_BOT_TOKEN || '';
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || process.env.VITE_TELEGRAM_BOT_TOKEN || '8848350461:AAGYEx9UQCgEhE-ppEpx5Pz7s-ZERK9iSPM';
 export const TELEGRAM_BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || process.env.VITE_TELEGRAM_BOT_USERNAME || 'Tarqa3bot';
 
 export class TelegramService {

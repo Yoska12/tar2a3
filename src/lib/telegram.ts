@@ -4,7 +4,7 @@
 export const TELEGRAM_BOT_TOKEN = 
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TELEGRAM_BOT_TOKEN) ||
   (typeof process !== 'undefined' && process.env?.TELEGRAM_BOT_TOKEN) ||
-  '';
+  '8848350461:AAGYEx9UQCgEhE-ppEpx5Pz7s-ZERK9iSPM';
 
 export const TELEGRAM_BOT_USERNAME = 
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TELEGRAM_BOT_USERNAME) ||

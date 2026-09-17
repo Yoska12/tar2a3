@@ -48,7 +48,7 @@ export const defaultKashierSettings: KashierSettings = {
   apiKey: (import.meta as any).env?.VITE_KASHIER_API_KEY || '',
   secretKey: (import.meta as any).env?.VITE_KASHIER_SECRET_KEY || '',
   currency: 'EGP',
-  amount: 1020.00, // 1020 جنيه مصري أو 75 ريال سعودي
+  amount: 1050.00, // 1050 جنيه مصري أو 75 ريال سعودي
   brandColor: '#f59e0b', // اللون البرتقالي المميز لمنصة طرقع
   allowedMethods: 'card,wallet',
   simulateMode: true, // تفعيل المحاكاة افتراضياً للتجربة الفورية حتى يدخل المالك مفاتيحه
@@ -62,9 +62,9 @@ export const getKashierSettings = (): KashierSettings => {
     const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (!raw) return { ...defaultKashierSettings };
     const parsed = JSON.parse(raw);
-    // تصحيح تلقائي إذا كانت العملة EGP والقيمة السابقة 75
-    if (parsed.currency === 'EGP' && parsed.amount === 75) {
-      parsed.amount = 1020;
+    // تصحيح تلقائي إذا كانت العملة EGP والقيمة السابقة 75 أو 1020
+    if (parsed.currency === 'EGP' && (parsed.amount === 75 || parsed.amount === 1020)) {
+      parsed.amount = 1050;
     }
     return { ...defaultKashierSettings, ...parsed };
   } catch {
@@ -155,13 +155,13 @@ export const createKashierPaymentSession = async (
   const settings = getKashierSettings();
   const currency = options?.currency ?? settings.currency;
   
-  // تحديد السعر الدقيق بناء على العملة: 1020 جنيه مصري أو 75 ريال سعودي
+  // تحديد السعر الدقيق بناء على العملة: 1050 جنيه مصري أو 75 ريال سعودي
   let amount = options?.amount;
   if (amount === undefined) {
     if (currency === 'SAR') {
       amount = settings.currency === 'SAR' ? settings.amount : 75;
     } else {
-      amount = settings.currency === 'EGP' ? settings.amount : 1020;
+      amount = settings.currency === 'EGP' ? settings.amount : 1050;
     }
   }
 

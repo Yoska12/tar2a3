@@ -96,6 +96,8 @@ export interface Lesson {
   lastWatchedSeconds?: number;
 }
 
+export type CourseEnrollmentStatus = 'active' | 'paused' | 'upcoming';
+
 export interface CourseModule {
   id: string;
   title: string;
@@ -104,6 +106,9 @@ export interface CourseModule {
   icon?: string;
   badgeColor?: string;
   isPublished: boolean;
+  status?: CourseEnrollmentStatus; // 'active' | 'paused' | 'upcoming'
+  availableDate?: string;          // e.g. "2026-10-01" or ISO timestamp
+  customStatusText?: string;       // e.g. "تفتح قريباً" or "مغلق مؤقتاً للتحديث"
   lessons: Lesson[];
   totalDurationMinutes?: number;
   completedLessonsCount?: number;

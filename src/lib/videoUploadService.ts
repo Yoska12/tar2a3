@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from './supabase';
+// إيقاف الرفع إلى Supabase Storage والاعتماد الكامل على استضافة هوستينجر (Hostinger Video Uploads)
 
 export interface VideoUploadResult {
   success: boolean;
@@ -165,7 +165,75 @@ const saveLocalVideoReference = (fileName: string, url: string, size: number) =>
 };
 
 /**
- * رفع فيديو المحاضرة إلى التخزين السحابي Supabase Storage مع دعم التخزين المحلي الآمن
+ * رفع ملف الفيديو مباشرة إلى استضافة هوستينجر عبر /api/upload.php
+ */
+export const uploadVideoToHostinger = (
+  file: File,
+  lessonId: string = 'lecture',
+  onProgress?: (percent: number) => void
+): Promise<{
+  success: boolean;
+  fileUrl: string;
+  absoluteUrl?: string;
+  fileName: string;
+  savedName?: string;
+  fileSize?: number;
+  fileSizeFormatted?: string;
+  fileType?: string;
+  error?: string;
+}> => {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const endpoint = '/api/upload.php';
+
+    xhr.open('POST', endpoint, true);
+
+    if (xhr.upload && onProgress) {
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100);
+          onProgress(percent);
+        }
+      };
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          if (data.success) {
+            resolve(data);
+          } else {
+            reject(new Error(data.error || 'فشل في رفع الفيديو إلى سيرفر هوستينجر'));
+          }
+        } catch {
+          reject(new Error('استجابة غير متوقعة من سيرفر هوستينجر'));
+        }
+      } else {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          reject(new Error(data.error || `خطأ سيرفر (${xhr.status})`));
+        } catch {
+          reject(new Error(`تعذر رفع الفيديو إلى هوستينجر (رمز الخطأ ${xhr.status})`));
+        }
+      }
+    };
+
+    xhr.onerror = () => {
+      reject(new Error('تعذر الاتصال بسيرفر هوستينجر لرفع الفيديو.'));
+    };
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('type', 'video');
+    formData.append('lessonId', lessonId);
+
+    xhr.send(formData);
+  });
+};
+
+/**
+ * رفع فيديو المحاضرة مباشرة إلى سيرفر استضافة هوستينجر مع دعم التخزين المحلي الآمن
  */
 export const uploadLessonVideo = async (
   file: File,
@@ -185,53 +253,27 @@ export const uploadLessonVideo = async (
   try {
     onProgress?.(15);
 
-    // 1. إذا كان Supabase متصلاً ومعداً
-    if (isSupabaseConfigured && supabase) {
-      onProgress?.(35);
-      
-      // محاولة الرفع إلى حاوية course-videos
-      const bucketName = 'course-videos';
-      let { data, error } = await supabase.storage
-        .from(bucketName)
-        .upload(storageFileName, file, {
-          cacheControl: '3600',
-          upsert: true,
-        });
+    // 1. الرفع السريع والمباشر إلى سيرفر هوستينجر (Hostinger Video Storage)
+    try {
+      onProgress?.(20);
+      const hostingerResult = await uploadVideoToHostinger(file, lessonId, (percent) => {
+        onProgress?.(20 + Math.round(percent * 0.7)); // 20% -> 90%
+      });
 
-      // إذا لم تكن الحاوية موجودة، نحاول في lecture-files
-      if (error && error.message?.toLowerCase().includes('bucket not found')) {
-        const fallbackBucket = 'lecture-files';
-        const res = await supabase.storage
-          .from(fallbackBucket)
-          .upload(storageFileName, file, {
-            cacheControl: '3600',
-            upsert: true,
-          });
-        data = res.data;
-        error = res.error;
-      }
-
-      onProgress?.(80);
-
-      if (!error && data?.path) {
-        const { data: publicUrlData } = supabase.storage
-          .from(bucketName)
-          .getPublicUrl(data.path);
-
-        const videoUrl = publicUrlData.publicUrl;
-        saveLocalVideoReference(cleanName, videoUrl, file.size);
+      if (hostingerResult && hostingerResult.success && hostingerResult.fileUrl) {
+        saveLocalVideoReference(cleanName, hostingerResult.fileUrl, file.size);
         onProgress?.(100);
 
         return {
           success: true,
-          videoUrl,
-          storagePath: data.path,
+          videoUrl: hostingerResult.fileUrl,
+          storagePath: hostingerResult.fileUrl,
           fileName: file.name,
-          fileSizeFormatted,
+          fileSizeFormatted: hostingerResult.fileSizeFormatted || fileSizeFormatted,
         };
       }
-
-      console.warn('Supabase upload notice, falling back to local persistent IndexedDB storage:', error?.message);
+    } catch (hostingerErr) {
+      console.warn('[Hostinger Storage] Video upload endpoint returned notice, falling back to IndexedDB vault:', hostingerErr);
     }
 
     // 2. وضع المعالجة السريع والاحتياطي الدائم عبر IndexedDB

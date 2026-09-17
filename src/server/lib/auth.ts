@@ -13,20 +13,7 @@ export interface AuthenticatedUser {
 
 export async function getAuthenticatedUser(req: NextRequest): Promise<AuthenticatedUser | null> {
   try {
-    // 1. فحص ترويسات الميدلوير المحقونة مسبقاً (Fast Path)
-    const forwardedUserId = req.headers.get('x-user-id');
-    const forwardedRole = req.headers.get('x-user-role') as UserRole;
-    if (forwardedUserId && forwardedRole) {
-      return {
-        id: forwardedUserId,
-        email: req.headers.get('x-user-email') || undefined,
-        fullName: req.headers.get('x-user-name') || 'طالب طرقع',
-        targetScore: 100,
-        role: forwardedRole,
-      };
-    }
-
-    // 2. فحص ترويسة Authorization
+    // 1. فحص ترويسة Authorization الصريحة (Bearer JWT Token)
     const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
     let token: string | null = null;
 
@@ -34,9 +21,22 @@ export async function getAuthenticatedUser(req: NextRequest): Promise<Authentica
       token = authHeader.substring(7).trim();
     }
 
-    // 3. فحص ملفات تعريف الارتباط (Cookies) كبديل
+    // 2. فحص ملفات تعريف الارتباط الآمنة (Cookies)
     if (!token && req.cookies) {
-      const cookieNames = ['sb-access-token', 'supabase-auth-token', 'sb-djkwgwdlygxqcateivbc-auth-token'];
+      let projectRef = '';
+      try {
+        const rawUrl = process.env.VITE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+        if (rawUrl) {
+          projectRef = new URL(rawUrl).hostname.split('.')[0];
+        }
+      } catch {
+        // ignore url parsing error
+      }
+      const cookieNames = [
+        'sb-access-token', 
+        'supabase-auth-token',
+        ...(projectRef ? [`sb-${projectRef}-auth-token`] : []),
+      ];
       for (const name of cookieNames) {
         const c = req.cookies.get(name);
         if (c?.value) {
@@ -46,17 +46,25 @@ export async function getAuthenticatedUser(req: NextRequest): Promise<Authentica
       }
     }
 
-    // 4. التحقق من التوكن عبر Supabase Auth
+    // 3. التحقق الأمني من التوكن المشفر عبر Supabase Auth (Cryptographically Verified)
     if (token) {
       const supabase = getSupabaseAdminClient();
       const { data, error } = await supabase.auth.getUser(token);
 
       if (!error && data.user) {
-        // قراءة الدور من Custom Claims (app_metadata) المشفرة بالـ JWT
-        const role: UserRole = 
-          (data.user.app_metadata?.role as UserRole) || 
-          (data.user.user_metadata?.role as UserRole) || 
-          'student';
+        // قراءة الدور المعتمد حصراً من Custom Claims المشفرة في app_metadata (Server-Controlled Only)
+        // تحذير أمني: لا نثق إطلاقاً في user_metadata لمنع التلاعب بالصلاحيات عبر /auth/v1/signup
+        let role: UserRole = (data.user.app_metadata?.role as UserRole);
+
+        // في حال لم تكن Claims محدثة في التوكن، نقرأ الرتبة الحقيقية الموثقة من جدول profiles عبر السيرفر
+        if (!role) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', data.user.id)
+            .maybeSingle();
+          role = (profile?.role as UserRole) || 'student';
+        }
 
         return {
           id: data.user.id,
@@ -66,18 +74,6 @@ export async function getAuthenticatedUser(req: NextRequest): Promise<Authentica
           role,
         };
       }
-    }
-
-    // 5. في بيئة التطوير والاختبار المحلي، دعم ترويسة x-user-id
-    const devUserId = req.headers.get('x-user-id');
-    if (devUserId) {
-      return {
-        id: devUserId,
-        email: `${devUserId}@tarqa.local`,
-        fullName: req.headers.get('x-user-name') || 'طالب طرقع التجريبي',
-        targetScore: 100,
-        role: (req.headers.get('x-user-role') as UserRole) || 'student',
-      };
     }
 
     return null;

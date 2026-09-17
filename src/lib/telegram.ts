@@ -4,7 +4,7 @@
 export const TELEGRAM_BOT_TOKEN = 
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TELEGRAM_BOT_TOKEN) ||
   (typeof process !== 'undefined' && process.env?.TELEGRAM_BOT_TOKEN) ||
-  '8848350461:AAGTM9m-RQpCmJ-MKLrUlbygXYUzEWhO-R4';
+  '';
 
 export const TELEGRAM_BOT_USERNAME = 
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TELEGRAM_BOT_USERNAME) ||
@@ -58,20 +58,11 @@ export async function sendTelegramMessage(
 export async function sendWelcomeTelegramMessage(
   chatId: string | number,
   fullName: string,
-  targetScore: number = 100
+  _targetScore: number = 100
 ) {
   const message = `
-🎉 <b>أهلاً بك يا ${fullName} في منصة طرقع للكمي!</b> 🎯
-
-لقد تم ربط حسابك ببوت <b>@${TELEGRAM_BOT_USERNAME}</b> بنجاح!
-درجتك المستهدفة في القدرات: <b>${targetScore} 🎯</b> بإذن الله.
-
-💡 <b>نصائح طرقع السريعة لانطلاقتك:</b>
-1. <b>ابدأ بالتدريب الفوري:</b> اكشف حيل التدرج المنتظم وطرق الحل السريع في ثوانٍ.
-2. <b>خض تحدي السرعة (45 ثانية):</b> لتعتاد على حل الأسئلة ذهنياً دون خطوات طويلة.
-3. <b>جرّب محاكي قياس الكامل:</b> لتعيش أجواء الاختبار الفعلي بدقة.
-
-🔥 <i>مع طرقع.. هدفنا الـ 100 وما فيه مسألة تعوق معك!</i>
+👋 أهلاً <b>${fullName}</b>، تم ربط حسابك في منصة طرقع بنجاح ✅
+🎯 فالك الـ 100 بإذن الله!
 `;
 
   return sendTelegramMessage(chatId, message.trim(), 'HTML');
@@ -85,29 +76,17 @@ export async function sendQuizCompletedNotification(
   fullName: string,
   quizTitle: string,
   scorePercentage: number,
-  totalQuestions: number,
+  _totalQuestions: number,
   timeSpentSeconds: number
 ) {
   const minutes = Math.floor(timeSpentSeconds / 60);
   const seconds = timeSpentSeconds % 60;
   const timeFormatted = `${minutes}د ${seconds}ث`;
 
-  let badge = '💪 استمر في التدريب!';
-  if (scorePercentage >= 90) badge = '🌟 مستوى أسطوري (100)! طرقعتها بجدارة!';
-  else if (scorePercentage >= 75) badge = '👏 أداء رائع جداً!';
-
   const message = `
-📊 <b>نتيجة اختبار جديدة - منصة طرقع</b>
-
-مرحباً <b>${fullName}</b>، لقد أنهيت للتو:
-📝 <i>${quizTitle}</i>
-
-🏆 <b>الدرجة المحققة:</b> <code>${scorePercentage}%</code>
-⏱️ <b>الوقت المستغرق:</b> <code>${timeFormatted}</code>
-📌 <b>عدد الأسئلة:</b> <code>${totalQuestions}</code>
-
-${badge}
-🔍 يمكنك الدخول إلى المنصة لمراجعة الأسئلة وحيل الحل السريع.
+📊 <b>نتيجة: ${quizTitle}</b>
+👤 <b>${fullName}</b> | الدرجة: <b>${scorePercentage}%</b> | الوقت: <b>${timeFormatted}</b>
+🎯 فالك الـ 100!
 `;
 
   return sendTelegramMessage(chatId, message.trim(), 'HTML');

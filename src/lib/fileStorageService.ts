@@ -1,4 +1,74 @@
-import { supabase, isSupabaseConfigured } from './supabase';
+// إيقاف الرفع إلى Supabase Storage والاعتماد الكامل على استضافة هوستينجر (Hostinger Uploads)
+export interface HostingerUploadResponse {
+  success: boolean;
+  fileUrl: string;
+  absoluteUrl?: string;
+  fileName: string;
+  savedName?: string;
+  fileSize?: number;
+  fileSizeFormatted?: string;
+  fileType?: string;
+  error?: string;
+}
+
+/**
+ * رفع الملف مباشرة إلى سيرفر هوستينجر مع إمكانية متابعة نسبة التقدم بدقة
+ */
+export const uploadFileToHostinger = (
+  file: File,
+  type: string = 'pdf',
+  onProgress?: (percent: number) => void
+): Promise<HostingerUploadResponse> => {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    // مسار الرفع على هوستينجر
+    const endpoint = '/api/upload.php';
+
+    xhr.open('POST', endpoint, true);
+
+    if (xhr.upload && onProgress) {
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100);
+          onProgress(percent);
+        }
+      };
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          if (data.success) {
+            resolve(data);
+          } else {
+            reject(new Error(data.error || 'فشل في رفع الملف إلى سيرفر هوستينجر'));
+          }
+        } catch {
+          reject(new Error('استجابة غير صحيحة من سيرفر الرفع'));
+        }
+      } else {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          reject(new Error(data.error || `خطأ استجابة السيرفر (${xhr.status})`));
+        } catch {
+          reject(new Error(`تعذر الرفع إلى هوستينجر (كود الخطأ: ${xhr.status})`));
+        }
+      }
+    };
+
+    xhr.onerror = () => {
+      reject(new Error('تعذر الاتصال بسيرفر هوستينجر لرفع الملف.'));
+    };
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('type', type);
+
+    xhr.send(formData);
+  });
+};
+
 
 export interface FileStorageResult {
   success: boolean;
@@ -86,6 +156,11 @@ const readFileAsDataUrl = (file: File): Promise<string> => {
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 
 /**
+ * ذاكرة مؤقتة للعلامات المائية لتسريع التوليد والتحميل الفوري
+ */
+const watermarkCache = new Map<string, Uint8Array>();
+
+/**
  * إنشاء شريط وعلامة مائية أمنية مخصصة للطالب عبر Canvas لضمان دعم كامل للخطوط العربية والحماية من التسريب
  */
 export const createStudentWatermarkPng = (
@@ -93,106 +168,76 @@ export const createStudentWatermarkPng = (
   studentId: string,
   trackingCode: string
 ): Uint8Array => {
-  if (typeof document === 'undefined') {
+  try {
+    if (typeof document === 'undefined') {
+      return new Uint8Array();
+    }
+
+    const cacheKey = `${studentName}_${studentId}_${trackingCode}`;
+    if (watermarkCache.has(cacheKey)) {
+      return watermarkCache.get(cacheKey)!;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 750;
+    canvas.height = 1060; // قياس A4 عالي الدقة وسريع المعالجة
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return new Uint8Array();
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // العلامات المائية المائلة عبر الصفحة فقط دون أي أشرطة علوية أو سفلية
+    ctx.save();
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate((-32 * Math.PI) / 180);
+
+    // خط مائي أول علوي
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.05)';
+    ctx.font = 'bold 30px "Cairo", "Tajawal", "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`منصة طرقع التعليمية - قدرات محوسب وورقي 2025/2026`, 0, -140);
+
+    // خط مائي رئيسي في المنتصف
+    ctx.fillStyle = 'rgba(185, 28, 28, 0.13)';
+    ctx.font = '900 34px "Cairo", "Tajawal", "Segoe UI", sans-serif';
+    ctx.fillText(`نسخة مرخصة حصرياً للطالب: ${studentName}`, 0, 0);
+
+    // خط مائي فرعي بالكود الأمني
+    ctx.fillStyle = 'rgba(71, 85, 105, 0.12)';
+    ctx.font = 'bold 20px "Segoe UI", Tahoma, sans-serif';
+    ctx.fillText(`${studentId} • كود التحقق الأمني: ${trackingCode}`, 0, 48);
+
+    // خط مائي سفلي مكرر
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.06)';
+    ctx.font = 'bold 24px "Cairo", "Tajawal", "Segoe UI", sans-serif';
+    ctx.fillText(`يمنع النشر أو التداول تحت طائلة المساءلة القانونية`, 0, 170);
+    ctx.restore();
+
+    // تحويل الرسم إلى بيانات ثنائية
+    const dataUrl = canvas.toDataURL('image/png');
+    const base64 = dataUrl.split(',')[1];
+    if (!base64) return new Uint8Array();
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    watermarkCache.set(cacheKey, bytes);
+    return bytes;
+  } catch (err) {
+    console.warn('Canvas watermark rendering fallback:', err);
     return new Uint8Array();
   }
+};
 
-  const canvas = document.createElement('canvas');
-  canvas.width = 1240;
-  canvas.height = 1754; // A4 قياسي بدقة 150 DPI
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return new Uint8Array();
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  const timestamp = new Date().toLocaleString('ar-SA', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-
-  // 1. الشريط الأمني العلوي (Header Bar)
-  ctx.fillStyle = 'rgba(241, 245, 249, 0.94)';
-  ctx.fillRect(0, 0, canvas.width, 54);
-  ctx.strokeStyle = '#cbd5e1';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(0, 54);
-  ctx.lineTo(canvas.width, 54);
-  ctx.stroke();
-
-  // نص الهيدر باللغة العربية
-  ctx.fillStyle = '#b91c1c'; // لون التنبيه الأمني
-  ctx.font = 'bold 20px "Cairo", "Tajawal", "Segoe UI", Tahoma, sans-serif';
-  ctx.textAlign = 'right';
-  ctx.fillText(
-    `منصة طرقع 🛡️ • وثيقة رقمية مرخصة ومحمية باسم الطالب: ${studentName}`,
-    canvas.width - 25,
-    35
-  );
-
-  ctx.fillStyle = '#475569';
-  ctx.font = 'bold 15px "Segoe UI", Tahoma, sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText(`ID: ${studentId} | CODE: ${trackingCode}`, 25, 35);
-
-  // 2. العلامات المائية المائلة عبر الصفحة (Diagonal Security Watermarks)
-  ctx.save();
-  ctx.translate(canvas.width / 2, canvas.height / 2);
-  ctx.rotate((-32 * Math.PI) / 180);
-
-  // خط مائي أول علوي
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.07)';
-  ctx.font = '900 44px "Cairo", "Tajawal", "Segoe UI", sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(`منصة طرقع التعليمية - قدرات محوسب وورقي 2025/2026`, 0, -180);
-
-  // خط مائي رئيسي في المنتصف
-  ctx.fillStyle = 'rgba(185, 28, 28, 0.13)';
-  ctx.font = '900 48px "Cairo", "Tajawal", "Segoe UI", sans-serif';
-  ctx.fillText(`نسخة مرخصة حصرياً للطالب: ${studentName}`, 0, 0);
-
-  // خط مائي فرعي بالكود الأمني
-  ctx.fillStyle = 'rgba(71, 85, 105, 0.11)';
-  ctx.font = 'bold 28px "Segoe UI", Tahoma, sans-serif';
-  ctx.fillText(`${studentId} • كود التحقق الأمني: ${trackingCode}`, 0, 60);
-
-  // خط مائي سفلي مكرر
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.06)';
-  ctx.font = 'bold 36px "Cairo", "Tajawal", "Segoe UI", sans-serif';
-  ctx.fillText(`يمنع النشر أو التداول تحت طائلة المساءلة القانونية`, 0, 220);
-  ctx.restore();
-
-  // 3. الشريط الأمني السفلي (Footer Bar)
-  ctx.fillStyle = 'rgba(241, 245, 249, 0.94)';
-  ctx.fillRect(0, canvas.height - 48, canvas.width, 48);
-  ctx.strokeStyle = '#cbd5e1';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(0, canvas.height - 48);
-  ctx.lineTo(canvas.width, canvas.height - 48);
-  ctx.stroke();
-
-  ctx.fillStyle = '#b91c1c';
-  ctx.font = 'bold 15px "Cairo", "Tajawal", "Segoe UI", Tahoma, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(
-    `⚠️ تنبيه أمني: هذه النسخة مشفرة ومسجلة نظاماً باسم الطالب [${studentName}] (${studentId}) بتاريخ ${timestamp} • يمنع نشرها أو نسخها أو تداولها`,
-    canvas.width / 2,
-    canvas.height - 18
-  );
-
-  // تحويل الرسم إلى بيانات ثنائية
-  const dataUrl = canvas.toDataURL('image/png');
-  const base64 = dataUrl.split(',')[1];
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes;
+/**
+ * دالة أمان صارمة تضمن أن النص الممرر لخطوط pdf-lib هو ASCII فقط لمنع استثناء WinAnsi نهائياً
+ */
+const toAsciiSafe = (val?: string, fallback: string = ''): string => {
+  if (!val) return fallback;
+  // استبدال أي محرف خارج نطاق 0x20 إلى 0x7E بمسافة
+  const cleaned = val.replace(/[^\x20-\x7E]/g, ' ').replace(/\s+/g, ' ').trim();
+  return cleaned || fallback;
 };
 
 /**
@@ -201,15 +246,29 @@ export const createStudentWatermarkPng = (
 export const createMultiPageTarqaPdf = async (
   title?: string,
   description?: string,
-  pagesCount?: string
+  pagesCount?: string,
+  studentInfo?: { name: string; id: string; code: string }
 ): Promise<Uint8Array> => {
   const doc = await PDFDocument.create();
   const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
   const fontRegular = await doc.embedFont(StandardFonts.Helvetica);
 
-  const cleanTitle = (title || 'TARQA QUDURAT STUDY GUIDE 2025/2026').replace(/[^\x20-\x7E]/g, ' ');
-  const cleanDesc = (description || 'Comprehensive Foundation Guide, Gold Rules & Speed Strategies').replace(/[^\x20-\x7E]/g, ' ');
-  const pagesTotal = pagesCount || '185 Pages';
+  // استخراج أرقام الصفحات فقط لمنع وجود أي حروف عربية مثل "صفحة" تسبب خطأ WinAnsi
+  const pagesNums = (pagesCount || '').replace(/[^\d]/g, '');
+  const pagesTotal = pagesNums ? `${pagesNums} Pages` : toAsciiSafe(pagesCount, '185 Pages');
+
+  const cleanTitle = toAsciiSafe(title, 'TARQA QUDURAT STUDY GUIDE 2025/2026');
+  const cleanDesc = toAsciiSafe(description, 'Comprehensive Foundation Guide, Gold Rules & Speed Strategies');
+
+  // غلاف أمان لمنع أي استثناء في الكتابة النصية
+  const safeDrawText = (page: any, text: string, options: any) => {
+    try {
+      const asciiOnly = toAsciiSafe(text, 'Tarqa Platform Document');
+      page.drawText(asciiOnly, options);
+    } catch (e) {
+      console.warn('drawText prevented an encoding error:', e);
+    }
+  };
 
   // --- PAGE 1: الغلاف الرسمي المعتمد والمقدمة ---
   const page1 = doc.addPage([595.28, 841.89]);
@@ -222,42 +281,86 @@ export const createMultiPageTarqaPdf = async (
     color: rgb(0.96, 0.97, 0.99),
   });
 
-  page1.drawText('TARQA ACADEMY - OFFICIAL QUDURAT FOUNDATION', {
+  // رسم لافتة عربية فاخرة عبر Canvas لدعم الحروف العربية بالكامل
+  try {
+    if (typeof document !== 'undefined') {
+      const bannerCanvas = document.createElement('canvas');
+      bannerCanvas.width = 1000;
+      bannerCanvas.height = 260;
+      const bCtx = bannerCanvas.getContext('2d');
+      if (bCtx) {
+        bCtx.fillStyle = '#0f172a';
+        bCtx.fillRect(0, 0, 1000, 260);
+
+        bCtx.fillStyle = '#f59e0b';
+        bCtx.font = 'bold 28px "Cairo", "Tajawal", "Segoe UI", sans-serif';
+        bCtx.textAlign = 'right';
+        bCtx.fillText('منصة طرقع التعليمية 🛡️ • الحقيبة التأسيسية الشاملة للقدرات', 960, 55);
+
+        bCtx.fillStyle = '#ffffff';
+        bCtx.font = '900 36px "Cairo", "Tajawal", "Segoe UI", sans-serif';
+        bCtx.fillText((title || 'مذكرة طرقع الشاملة لاختبار القدرات').slice(0, 50), 960, 125);
+
+        bCtx.fillStyle = '#94a3b8';
+        bCtx.font = 'bold 22px "Cairo", "Tajawal", "Segoe UI", sans-serif';
+        bCtx.fillText((description || 'تأسيس من الصفر، قوانين ذهبية، واستراتيجيات الحل الخاطف في 30 ثانية').slice(0, 60), 960, 190);
+
+        const bannerData = bannerCanvas.toDataURL('image/png');
+        const b64 = bannerData.split(',')[1];
+        if (b64) {
+          const bin = atob(b64);
+          const bBytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bBytes[i] = bin.charCodeAt(i);
+          const bannerImg = await doc.embedPng(bBytes);
+          page1.drawImage(bannerImg, {
+            x: 40,
+            y: 690,
+            width: 515.28,
+            height: 133.9,
+          });
+        }
+      }
+    }
+  } catch (canvasErr) {
+    console.warn('Canvas banner rendering fallback:', canvasErr);
+  }
+
+  safeDrawText(page1, 'TARQA ACADEMY - OFFICIAL QUDURAT FOUNDATION', {
     x: 60,
-    y: 760,
-    size: 16,
+    y: 660,
+    size: 14,
     font: fontBold,
     color: rgb(0.9, 0.5, 0.1),
   });
 
-  page1.drawText(cleanTitle, {
+  safeDrawText(page1, cleanTitle, {
     x: 60,
-    y: 730,
-    size: 13,
+    y: 635,
+    size: 12,
     font: fontBold,
     color: rgb(0.1, 0.15, 0.25),
   });
 
-  page1.drawText(cleanDesc, {
+  safeDrawText(page1, cleanDesc, {
     x: 60,
-    y: 660,
-    size: 11,
+    y: 610,
+    size: 10,
     font: fontRegular,
     color: rgb(0.35, 0.4, 0.45),
   });
 
-  page1.drawText(`Document Pages: ${pagesTotal} | Edition: 1446-1447H / 2025-2026 | Format: PDF Secure`, {
+  safeDrawText(page1, `Document Pages: ${pagesTotal} | Edition: 1446-1447H / 2025-2026 | Format: PDF Secure`, {
     x: 60,
-    y: 635,
-    size: 10,
+    y: 585,
+    size: 9.5,
     font: fontRegular,
     color: rgb(0.2, 0.5, 0.3),
   });
 
-  page1.drawText('TABLE OF CONTENTS & CHAPTER OVERVIEW:', {
+  safeDrawText(page1, 'TABLE OF CONTENTS & CHAPTER OVERVIEW:', {
     x: 60,
-    y: 590,
-    size: 12,
+    y: 550,
+    size: 11,
     font: fontBold,
     color: rgb(0.1, 0.15, 0.25),
   });
@@ -271,16 +374,16 @@ export const createMultiPageTarqaPdf = async (
   ];
 
   chapters.forEach((chap, idx) => {
-    page1.drawText(`[Part ${idx + 1}] ${chap}`, {
+    safeDrawText(page1, `[Part ${idx + 1}] ${chap}`, {
       x: 70,
-      y: 555 - idx * 30,
-      size: 10,
+      y: 515 - idx * 28,
+      size: 9.5,
       font: fontRegular,
       color: rgb(0.2, 0.25, 0.3),
     });
   });
 
-  page1.drawText('TARQA PLATFORM VERIFIED - OFFICIAL ENCRYPTED STUDENT COPY', {
+  safeDrawText(page1, 'TARQA PLATFORM VERIFIED - OFFICIAL ENCRYPTED STUDENT COPY', {
     x: 60,
     y: 120,
     size: 9,
@@ -290,7 +393,7 @@ export const createMultiPageTarqaPdf = async (
 
   // --- PAGE 2: القوانين الذهبية الأساسية ---
   const page2 = doc.addPage([595.28, 841.89]);
-  page2.drawText('PART 1 & 2: ARITHMETIC AND ALGEBRA GOLDEN LAWS', {
+  safeDrawText(page2, 'PART 1 & 2: ARITHMETIC AND ALGEBRA GOLDEN LAWS', {
     x: 60,
     y: 770,
     size: 14,
@@ -311,7 +414,7 @@ export const createMultiPageTarqaPdf = async (
   ];
 
   rulesPage2.forEach((rule, idx) => {
-    page2.drawText(rule, {
+    safeDrawText(page2, rule, {
       x: 60,
       y: 730 - idx * 45,
       size: 10,
@@ -322,7 +425,7 @@ export const createMultiPageTarqaPdf = async (
 
   // --- PAGE 3: الهندسة والمقارنات والإحصاء ---
   const page3 = doc.addPage([595.28, 841.89]);
-  page3.drawText('PART 3 & 4: GEOMETRY AND SPEED COMPARISON TACTICS', {
+  safeDrawText(page3, 'PART 3 & 4: GEOMETRY AND SPEED COMPARISON TACTICS', {
     x: 60,
     y: 770,
     size: 14,
@@ -342,7 +445,7 @@ export const createMultiPageTarqaPdf = async (
   ];
 
   rulesPage3.forEach((rule, idx) => {
-    page3.drawText(rule, {
+    safeDrawText(page3, rule, {
       x: 60,
       y: 730 - idx * 50,
       size: 10,
@@ -350,6 +453,28 @@ export const createMultiPageTarqaPdf = async (
       color: rgb(0.2, 0.25, 0.3),
     });
   });
+
+  if (studentInfo && typeof document !== 'undefined') {
+    try {
+      const watermarkBytes = createStudentWatermarkPng(studentInfo.name, studentInfo.id, studentInfo.code);
+      if (watermarkBytes.length > 0) {
+        const watermarkImg = await doc.embedPng(watermarkBytes);
+        const pages = doc.getPages();
+        for (const p of pages) {
+          const { width, height } = p.getSize();
+          p.drawImage(watermarkImg, {
+            x: 0,
+            y: 0,
+            width,
+            height,
+            opacity: 0.95,
+          });
+        }
+      }
+    } catch (wmErr) {
+      console.warn('Failed to embed watermark directly:', wmErr);
+    }
+  }
 
   return await doc.save();
 };
@@ -365,36 +490,34 @@ export const stampPdfWithWatermark = async (
 ): Promise<Uint8Array> => {
   try {
     const doc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
-    const watermarkBytes = createStudentWatermarkPng(studentName, studentId, trackingCode);
     
+    let watermarkBytes: Uint8Array = new Uint8Array();
+    try {
+      watermarkBytes = createStudentWatermarkPng(studentName, studentId, trackingCode);
+    } catch (e) {}
+
     if (watermarkBytes.length > 0) {
-      const watermarkImg = await doc.embedPng(watermarkBytes);
-      const pages = doc.getPages();
-      for (const page of pages) {
-        const { width, height } = page.getSize();
-        page.drawImage(watermarkImg, {
-          x: 0,
-          y: 0,
-          width,
-          height,
-          opacity: 0.95,
-        });
+      try {
+        const watermarkImg = await doc.embedPng(watermarkBytes);
+        const pages = doc.getPages();
+        for (const page of pages) {
+          const { width, height } = page.getSize();
+          page.drawImage(watermarkImg, {
+            x: 0,
+            y: 0,
+            width,
+            height,
+            opacity: 0.95,
+          });
+        }
+      } catch (embedErr) {
+        console.warn('Could not embed PNG watermark, proceeding with un-watermarked PDF:', embedErr);
       }
     }
     return await doc.save();
   } catch (err) {
-    console.warn('Could not stamp existing PDF, generating fresh watermarked document:', err);
-    const freshDocBytes = await createMultiPageTarqaPdf();
-    const doc = await PDFDocument.load(freshDocBytes);
-    const watermarkBytes = createStudentWatermarkPng(studentName, studentId, trackingCode);
-    if (watermarkBytes.length > 0) {
-      const watermarkImg = await doc.embedPng(watermarkBytes);
-      for (const page of doc.getPages()) {
-        const { width, height } = page.getSize();
-        page.drawImage(watermarkImg, { x: 0, y: 0, width, height, opacity: 0.95 });
-      }
-    }
-    return await doc.save();
+    console.warn('Could not load existing PDF for watermark stamping, returning original bytes:', err);
+    return pdfBytes;
   }
 };
 
@@ -422,7 +545,7 @@ export const getWatermarkedPdfBlob = async (
 
   let rawBytes: Uint8Array | null = null;
 
-  // 1. قراءة الملف من خزانة IndexedDB المحلية
+  // 1. قراءة الملف من خزانة IndexedDB المحلية إذا كان موجوداً
   if (url && url.startsWith('vault://')) {
     const key = url.replace('vault://', '');
     const blob = await getPdfFromIndexedDB(key);
@@ -439,7 +562,7 @@ export const getWatermarkedPdfBlob = async (
         rawBytes[i] = binary.charCodeAt(i);
       }
     } catch (e) {}
-  } else if (url && (url.startsWith('http://') || url.startsWith('https://')) && !url.includes('tarqa.app/files/')) {
+  } else if (url && (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:') || url.startsWith('/') || url.startsWith('./')) && !url.includes('tarqa.app/files/')) {
     try {
       const res = await fetch(url);
       if (res.ok) {
@@ -449,78 +572,130 @@ export const getWatermarkedPdfBlob = async (
     } catch (e) {}
   }
 
-  // 2. إذا لم يكن الملف الأصلي متوفراً يتم توليد المذكرة النموذجية
-  if (!rawBytes || rawBytes.length === 0) {
-    rawBytes = await createMultiPageTarqaPdf(fileInfo.title, fileInfo.description, fileInfo.pagesCount);
+  // 2. إذا كان الملف الأصلي متوفراً يتم ختمه ببيانات الطالب
+  if (rawBytes && rawBytes.length > 0) {
+    try {
+      const stamped = await stampPdfWithWatermark(rawBytes, studentName, studentId, trackingCode);
+      return new Blob([stamped as any], { type: 'application/pdf' });
+    } catch (e) {
+      return new Blob([rawBytes as any], { type: 'application/pdf' });
+    }
   }
 
-  // 3. تطبيق التشفير المائي ببيانات الطالب على كافة الصفحات
-  const watermarkedBytes = await stampPdfWithWatermark(rawBytes, studentName, studentId, trackingCode);
-
-  return new Blob([watermarkedBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
+  // 3. إذا لم يتوفر ملف خام يتم توليد المذكرة التأسيسية الشاملة في خطوة واحدة فائقة السرعة
+  try {
+    const generatedBytes = await createMultiPageTarqaPdf(
+      fileInfo.title,
+      fileInfo.description,
+      fileInfo.pagesCount,
+      { name: studentName, id: studentId, code: trackingCode }
+    );
+    return new Blob([generatedBytes as any], { type: 'application/pdf' });
+  } catch (genErr) {
+    console.warn('PDF generation fallback triggered:', genErr);
+    const emergencyDoc = await PDFDocument.create();
+    emergencyDoc.addPage([595.28, 841.89]);
+    const emergencyBytes = await emergencyDoc.save();
+    return new Blob([emergencyBytes as any], { type: 'application/pdf' });
+  }
 };
+
+export interface BrowserDownloadResult {
+  url: string;
+  fileName: string;
+  success: boolean;
+}
+
+export const isMobileDevice = (): boolean => {
+  if (typeof navigator === 'undefined') return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1);
+};
+
+export const isIOSDevice = (): boolean => {
+  if (typeof navigator === 'undefined') return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1);
+};
+
+const activeBlobUrls: string[] = [];
 
 /**
  * مشغل التنزيل الحقيقي على ذاكرة جهاز الطالب متوافق مع كافة المتصفحات (كمبيوتر وهاتف)
  */
-export const triggerBrowserDownload = (blob: Blob, rawFileName: string): void => {
-  // 1. تنظيف اسم الملف من أي رموز قد تمنع أنظمة التشغيل من حفظه
+export const triggerBrowserDownload = (blob: Blob, rawFileName: string): BrowserDownloadResult => {
+  // 1. تنظيف اسم الملف من أي رموز غير مسموحة في أنظمة التشغيل (ويندوز / ماك / أندرويد / آيفون)
   const cleanBase = (rawFileName || 'مذكرة_طرقع_التعليمية')
     .replace(/[/\\?%*:|"<>#]/g, '-')
     .replace(/\s+/g, ' ')
     .trim();
   const safeName = cleanBase.toLowerCase().endsWith('.pdf') ? cleanBase : `${cleanBase}.pdf`;
 
-  // 2. لأنظمة إنترنت إكسبلورر / ويندوز القديمة
-  if (typeof (window.navigator as any)?.msSaveOrOpenBlob === 'function') {
-    (window.navigator as any).msSaveOrOpenBlob(blob, safeName);
-    return;
+  // ضمان نوع MIME بصيغة application/pdf ليتعرف عليها المتصفح فوراً كملف مستند
+  const pdfBlob = blob.type === 'application/pdf' ? blob : new Blob([blob], { type: 'application/pdf' });
+  const objectUrl = URL.createObjectURL(pdfBlob);
+
+  const isMobile = isMobileDevice();
+  const isIOS = isIOSDevice();
+
+  // تنظيف الروابط السابقة لمنع تسريب الذاكرة
+  activeBlobUrls.push(objectUrl);
+  if (activeBlobUrls.length > 20) {
+    const old = activeBlobUrls.shift();
+    if (old) {
+      try { URL.revokeObjectURL(old); } catch (e) {}
+    }
   }
 
-  // 3. طريقة HTML5 الرابط المباشر
-  const objectUrl = URL.createObjectURL(blob);
+  // 2. لأنظمة إنترنت إكسبلورر القديمة إن وجدت
+  if (typeof (window.navigator as any)?.msSaveOrOpenBlob === 'function') {
+    (window.navigator as any).msSaveOrOpenBlob(pdfBlob, safeName);
+    return { url: objectUrl, fileName: safeName, success: true };
+  }
+
+  // 3. التنزيل المباشر الموثوق عبر عنصر <a>
+  // تنويه حاسم: لا نضع target="_blank" أبداً لأنه يمنع التنزيل على أندرويد ويسبّب حجب النوافذ المنبثقة!
   const a = document.createElement('a');
-  a.style.position = 'fixed';
-  a.style.left = '-9999px';
-  a.style.top = '-9999px';
-  a.style.opacity = '0';
+  a.style.display = 'none';
   a.href = objectUrl;
   a.download = safeName;
-  a.rel = 'noopener';
-  // هام جداً: عدم استخدام target="_blank" حتى لا يقوم كروم بحظر التنزيل التلقائي!
-
+  a.setAttribute('download', safeName);
   document.body.appendChild(a);
 
   try {
     a.click();
   } catch (err) {
-    console.warn('Direct click failed, dispatching synthetic MouseEvent:', err);
-    const evt = new MouseEvent('click', {
-      bubbles: true,
-      cancelable: true,
-      view: window,
-    });
-    a.dispatchEvent(evt);
+    try {
+      const evt = new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+      });
+      a.dispatchEvent(evt);
+    } catch (syntheticErr) {
+      console.warn('Programmatic click failed:', syntheticErr);
+    }
   }
 
-  // 4. إبقاء الرابط فعالاً لثوانٍ ثم تنظيفه
+  // إزالة الرابط بعد إتمام النقرة
   setTimeout(() => {
     try {
       if (document.body.contains(a)) {
         document.body.removeChild(a);
       }
-      URL.revokeObjectURL(objectUrl);
     } catch (e) {}
-  }, 60000);
+  }, 1200);
 
-  // إرسال إشعار للموقع
+  // إرسال إشعار للموقع مع الرابط المباشر
   if (typeof window !== 'undefined') {
     window.dispatchEvent(
       new CustomEvent('tarqa_download_notice', {
-        detail: { fileName: safeName, success: true },
+        detail: { fileName: safeName, success: true, url: objectUrl, isMobile, isIOS },
       })
     );
   }
+
+  return { url: objectUrl, fileName: safeName, success: true };
 };
 
 /**
@@ -529,18 +704,19 @@ export const triggerBrowserDownload = (blob: Blob, rawFileName: string): void =>
 export const downloadWatermarkedFile = async (
   file: { title: string; fileUrl: string; description?: string; pagesCount?: string },
   currentUser?: any
-): Promise<void> => {
+): Promise<BrowserDownloadResult> => {
   try {
     const blob = await getWatermarkedPdfBlob(file.fileUrl, file, currentUser);
-    triggerBrowserDownload(blob, file.title);
+    return triggerBrowserDownload(blob, file.title);
   } catch (err) {
     console.error('Watermark stamping failed during download, activating direct fallback:', err);
     try {
       const fallbackBytes = await createMultiPageTarqaPdf(file.title, file.description, file.pagesCount);
-      const fallbackBlob = new Blob([fallbackBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
-      triggerBrowserDownload(fallbackBlob, file.title);
+      const fallbackBlob = new Blob([fallbackBytes as any], { type: 'application/pdf' });
+      return triggerBrowserDownload(fallbackBlob, file.title);
     } catch (fallbackErr) {
       console.error('Fatal download fallback error:', fallbackErr);
+      return { url: '', fileName: file.title, success: false };
     }
   }
 };
@@ -558,7 +734,7 @@ export const getWatermarkedPdfBlobUrl = async (
   } catch (err) {
     console.error('Failed to get watermarked preview, falling back to base PDF:', err);
     const fallbackBytes = await createMultiPageTarqaPdf(file.title, file.description, file.pagesCount);
-    const fallbackBlob = new Blob([fallbackBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
+    const fallbackBlob = new Blob([fallbackBytes as any], { type: 'application/pdf' });
     return URL.createObjectURL(fallbackBlob);
   }
 };
@@ -589,12 +765,12 @@ export const downloadOrPreviewFile = async (
   title?: string,
   description?: string,
   currentUser?: any
-): Promise<void> => {
+): Promise<BrowserDownloadResult | void> => {
   if (isPreview) {
     const resolved = await resolvePdfUrl(url, title || fileName, description, undefined, currentUser);
     window.open(resolved, '_blank', 'noopener,noreferrer');
   } else {
-    await downloadWatermarkedFile(
+    return await downloadWatermarkedFile(
       {
         title: title || fileName,
         fileUrl: url,
@@ -618,6 +794,7 @@ export const fileStorageService = {
   getWatermarkedPdfBlob,
   createStudentWatermarkPng,
   stampPdfWithWatermark,
+  uploadFileToHostinger,
 
   uploadPdf: async (
     file: File,
@@ -631,38 +808,28 @@ export const fileStorageService = {
 
     onProgress?.(25);
 
-    // 1. المحاولة السحابية الأولى عبر Supabase Storage إذا كانت مهيأة
-    if (isSupabaseConfigured && supabase) {
-      try {
-        onProgress?.(45);
-        const { data, error } = await supabase.storage
-          .from('lecture-files')
-          .upload(storagePath, file, {
-            cacheControl: '3600',
-            upsert: true,
-          });
+    // 1. الرفع السحابي الحقيقي المباشر إلى استضافة هوستينجر (Hostinger Uploads)
+    try {
+      onProgress?.(35);
+      const hostingerRes = await uploadFileToHostinger(file, 'pdf', (percent) => {
+        // تدريج النسبة من 35% حتى 90%
+        onProgress?.(35 + Math.round(percent * 0.55));
+      });
 
-        if (!error && data?.path) {
-          const { data: urlData } = supabase.storage
-            .from('lecture-files')
-            .getPublicUrl(data.path);
-
-          if (urlData?.publicUrl) {
-            onProgress?.(100);
-            return {
-              success: true,
-              fileUrl: urlData.publicUrl,
-              fileName: file.name,
-              fileSizeFormatted,
-            };
-          }
-        }
-      } catch (cloudErr) {
-        console.warn('Supabase storage bucket missing, using local vault:', cloudErr);
+      if (hostingerRes && hostingerRes.success && hostingerRes.fileUrl) {
+        onProgress?.(100);
+        return {
+          success: true,
+          fileUrl: hostingerRes.fileUrl,
+          fileName: hostingerRes.fileName || file.name,
+          fileSizeFormatted: hostingerRes.fileSizeFormatted || fileSizeFormatted,
+        };
       }
+    } catch (hostingerErr) {
+      console.warn('[Hostinger Upload] Upload endpoint returned notice, falling back to secure IndexedDB vault:', hostingerErr);
     }
 
-    onProgress?.(65);
+    onProgress?.(85);
 
     // 2. الحفظ المباشر والدائم في خزانة IndexedDB المحلية (تسع مئات الميجابايت بأمان تام)
     await savePdfToIndexedDB(vaultKey, file);

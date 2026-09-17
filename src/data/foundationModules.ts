@@ -13,6 +13,9 @@ export const mockFoundationModules: CourseModule[] = [
     icon: 'Video',
     badgeColor: 'amber',
     isPublished: true,
+    status: 'paused',
+    customStatusText: 'الاشتراك متاح قريباً ⏳',
+    availableDate: '',
     totalDurationMinutes: 185,
     completedLessonsCount: 2,
     lessons: [
@@ -156,7 +159,7 @@ export const mockCourseFiles: CourseFileItem[] = [
     fileSize: '14.8 MB',
     pagesCount: '185 صفحة',
     fileType: 'pdf',
-    isFreePreview: true,
+    isFreePreview: false,
     downloadCount: 1420,
     uploadedAt: '1446/02/15',
   },

@@ -1,15 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = 
-  process.env.NEXT_PUBLIC_SUPABASE_URL || 
   process.env.VITE_SUPABASE_URL || 
-  'https://djkwgwdlygxqcateivbc.supabase.co';
+  process.env.NEXT_PUBLIC_SUPABASE_URL || 
+  'https://placeholder.supabase.co';
 
 const supabaseAnonKey = 
+  process.env.VITE_SUPABASE_ANON_KEY || 
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 
-  process.env.VITE_SUPABASE_ANON_KEY || 
-  'sb_publishable_kC-Ok9GoiYyg3ffh0rpyXg_mS8fY8Gm';
+  'placeholder-anon-key';
 
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey;
 

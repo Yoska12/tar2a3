@@ -1,0 +1,174 @@
+# ==============================================================================
+# منصة طرقع - ملف إعدادات أباتشي و لايت سبيد (Apache / LiteSpeed Web Server)
+# Tarqa Platform - Production .htaccess (SPA Routing, CORS, Security & Caching)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+<IfModule mod_negotiation.c>
+  Options -MultiViews
+</IfModule>
+<IfModule mod_autoindex.c>
+  Options -Indexes
+</IfModule>
+ServerSignature Off
+
+# ------------------------------------------------------------------------------
+# 2. ضبط أنواع الملفات (MIME Types) للمتصفحات الحديثة و Vite Chunks
+# ------------------------------------------------------------------------------
+<IfModule mod_mime.c>
+  AddType application/javascript              .js .mjs
+  AddType application/json                    .json .map
+  AddType application/wasm                    .wasm
+  AddType application/manifest+json           .webmanifest
+  AddType image/svg+xml                       .svg .svgz
+  AddType font/woff                           .woff
+  AddType font/woff2                          .woff2
+  AddType application/pdf                     .pdf
+  AddCharset UTF-8                            .html .css .js .json .svg .xml
+</IfModule>
+
+# ------------------------------------------------------------------------------
+# 3. إعدادات مشاركة الموارد عبر النطاقات (CORS - Cross-Origin Resource Sharing)
+# ------------------------------------------------------------------------------
+<IfModule mod_headers.c>
+  # السماح بالوصول عبر النطاقات مع دعم الـ Preflight OPTIONS
+  Header always set Access-Control-Allow-Origin "*"
+  Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD"
+  Header always set Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Authorization, Range, X-CSRF-Token, api-key, Cache-Control"
+  Header always set Access-Control-Expose-Headers "Content-Length, Content-Range, Content-Disposition, Content-Type"
+  Header always set Access-Control-Max-Age "86400"
+
+  # ----------------------------------------------------------------------------
+  # 4. ترويسات الحماية والأمان المتقدمة (Security Headers)
+  # ----------------------------------------------------------------------------
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set X-XSS-Protection "1; mode=block"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(self 'https://checkout.kashier.io' 'https://payments.kashier.io')"
+</IfModule>
+
+# ------------------------------------------------------------------------------
+# 5. ضغط الملفات لتسريع التحميل بنسبة تصل إلى 70% (Gzip / Deflate Compression)
+# ------------------------------------------------------------------------------
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html
+  AddOutputFilterByType DEFLATE text/plain
+  AddOutputFilterByType DEFLATE text/xml
+  AddOutputFilterByType DEFLATE text/css
+  AddOutputFilterByType DEFLATE text/javascript
+  AddOutputFilterByType DEFLATE application/javascript
+  AddOutputFilterByType DEFLATE application/x-javascript
+  AddOutputFilterByType DEFLATE application/json
+  AddOutputFilterByType DEFLATE application/xml
+  AddOutputFilterByType DEFLATE application/xhtml+xml
+  AddOutputFilterByType DEFLATE application/rss+xml
+  AddOutputFilterByType DEFLATE application/atom+xml
+  AddOutputFilterByType DEFLATE image/svg+xml
+  AddOutputFilterByType DEFLATE font/woff2
+</IfModule>
+
+# ------------------------------------------------------------------------------
+# 6. إدارة التخزين المؤقت (Caching Policy)
+# ------------------------------------------------------------------------------
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresDefault "access plus 1 month"
+
+  # ملف index.html لا يُخزن أبداً لضمان استلام الزائر لأحدث نسخة فور النشر
+  ExpiresByType text/html "access plus 0 seconds"
+
+  # ملفات الـ Assets المخرجة من Vite (تحتوي على هاش في أسمائها وتُخزن لسنة كاملة)
+  ExpiresByType text/css "access plus 1 year"
+  ExpiresByType application/javascript "access plus 1 year"
+  ExpiresByType application/x-javascript "access plus 1 year"
+  ExpiresByType font/woff2 "access plus 1 year"
+  ExpiresByType font/woff "access plus 1 year"
+  ExpiresByType image/svg+xml "access plus 1 year"
+  ExpiresByType image/png "access plus 1 year"
+  ExpiresByType image/jpeg "access plus 1 year"
+  ExpiresByType image/webp "access plus 1 year"
+  ExpiresByType image/x-icon "access plus 1 year"
+</IfModule>
+
+# منع كاش المتصفح لصفحة index.html حصراً
+<Files "index.html">
+  <IfModule mod_headers.c>
+    Header set Cache-Control "no-cache, no-store, must-revalidate, max-age=0"
+    Header set Pragma "no-cache"
+    Header set Expires "0"
+  </IfModule>
+</Files>
+
+# ------------------------------------------------------------------------------
+# 7. حماية الملفات الحساسة وبيانات الاعتماد (Protect Sensitive Files)
+# ------------------------------------------------------------------------------
+<FilesMatch "^(\.env|\.git|\.htaccess|\.config|package\.json|package-lock\.json|tsconfig\.json|vite\.config\.ts|\.sql)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+# ------------------------------------------------------------------------------
+# 8. إعادة توجيه الروابط وتوجيه تطبيق الصفحة الواحدة (SPA Routing & Rewrites)
+# ------------------------------------------------------------------------------
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # أ. معالجة طلبات الـ Preflight OPTIONS برمز 204 فوري
+  RewriteCond %{REQUEST_METHOD} OPTIONS
+  RewriteRule ^(.*)$ $1 [R=204,L]
+
+  # ب. تحويل الاتصال تلقائياً إلى بروتوكول HTTPS الآمن وتوحيد النطاق لـ tarqa3.net
+  RewriteCond %{HTTP_HOST} ^www\.tarqa3\.net$ [NC]
+  RewriteRule ^(.*)$ https://tarqa3.net/$1 [L,R=301]
+
+  RewriteCond %{HTTPS} off
+  RewriteCond %{HTTP:X-Forwarded-Proto} !https [NC]
+  RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+  # ج. استثناء الملفات والمجلدات الحقيقية الموجودة بالفعل على السيرفر
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # د. استثناء مسارات الـ API ومجلد التخزين المباشر (uploads) على هوستينجر
+  RewriteRule ^api/ - [L]
+  RewriteRule ^uploads/ - [L]
+
+  # هـ. توجيه جميع المسارات الأخرى إلى index.html ليعمل راوتر التطبيق (React Router / SPA)
+  RewriteRule ^ index.html [L]
+</IfModule>
+
+# ------------------------------------------------------------------------------
+# 9. إعدادات رفع الملفات والذاكرة لسيرفر هوستينجر (Hostinger Upload & Memory Limits)
+# ------------------------------------------------------------------------------
+<IfModule mod_php.c>
+  php_value upload_max_filesize 512M
+  php_value post_max_size 512M
+  php_value memory_limit 512M
+  php_value max_execution_time 600
+  php_value max_input_time 600
+</IfModule>
+
+<IfModule mod_php7.c>
+  php_value upload_max_filesize 512M
+  php_value post_max_size 512M
+  php_value memory_limit 512M
+  php_value max_execution_time 600
+  php_value max_input_time 600
+</IfModule>
+
+<IfModule mod_php8.c>
+  php_value upload_max_filesize 512M
+  php_value post_max_size 512M
+  php_value memory_limit 512M
+  php_value max_execution_time 600
+  php_value max_input_time 600
+</IfModule>
+

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>Logo Vector Overlay & Comparison</title>
+  <style>
+    body {
+      background: #0b101b;
+      color: #fff;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 30px;
+    }
+    .comparison-container {
+      position: relative;
+      width: 844px;
+      height: 558px;
+      border: 2px dashed #475569;
+      border-radius: 16px;
+      background: #0f172a;
+      margin-bottom: 30px;
+    }
+    .bg-logo {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.5;
+    }
+    .svg-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+  <h2>مطابقة مسارات الحروف المتجهة (Vector SVG) فوق الشعار الأصلي تماماً</h2>
+  <div class="comparison-container">
+    <img src="/tarqa_clean_logo.png" class="bg-logo" alt="Original Logo">
+    <svg viewBox="0 0 844 558" class="svg-overlay" id="overlay">
+      <!-- 1. حرف ط -->
+      <path id="taa-stem" d="M 680 18 C 650 90, 608 190, 580 340" fill="none" stroke="#22c55e" stroke-width="70" stroke-linecap="round" opacity="0.8"/>
+      <path id="taa-loop" d="M 580 270 C 650 200, 770 190, 810 250 C 850 310, 780 390, 660 380 C 600 375, 560 345, 545 320" fill="none" stroke="#3b82f6" stroke-width="68" stroke-linecap="round" stroke-linejoin="round" opacity="0.8"/>
+
+      <!-- 2. نقطتا القاف -->
+      <circle cx="316" cy="62" r="30" fill="#ec4899" opacity="0.8"/>
+      <circle cx="380" cy="58" r="30" fill="#ec4899" opacity="0.8"/>
+
+      <!-- 3. رأس القاف -->
+      <circle cx="355" cy="205" r="75" fill="none" stroke="#eab308" stroke-width="68" opacity="0.8"/>
+      <path d="M 415 240 C 420 300, 390 350, 320 360" fill="none" stroke="#eab308" stroke-width="68" stroke-linecap="round" opacity="0.8"/>
+
+      <!-- 4. حرف الراء -->
+      <path d="M 530 365 C 500 440, 420 480, 320 460" fill="none" stroke="#a855f7" stroke-width="68" stroke-linecap="round" opacity="0.8"/>
+
+      <!-- 5. حرف العين -->
+      <path d="M 90 170 C 130 110, 220 110, 250 160 C 265 185, 235 225, 180 225" fill="none" stroke="#06b6d4" stroke-width="68" stroke-linecap="round" opacity="0.8"/>
+      <path d="M 180 225 C 260 250, 300 330, 260 430 C 220 520, 100 520, 45 440 C 15 390, 25 320, 65 285" fill="none" stroke="#06b6d4" stroke-width="68" stroke-linecap="round" opacity="0.8"/>
+    </svg>
+  </div>
+</body>
+</html>

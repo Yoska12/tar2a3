@@ -236,15 +236,19 @@ export const FileUploadZone: React.FC<FileUploadZoneProps> = ({
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <a
-                    href={sanitizeUrl(att.fileUrl)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-amber-500 hover:bg-amber-500/10 transition"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      fileStorageService.downloadWatermarkedFile({
+                        title: att.title,
+                        fileUrl: att.fileUrl,
+                      });
+                    }}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-amber-500 hover:bg-amber-500/10 transition cursor-pointer"
                     title="تحميل المذكرة"
                   >
                     <Download className="w-4 h-4" />
-                  </a>
+                  </button>
                   <button
                     type="button"
                     onClick={() => onRemoveAttachment(att.id)}

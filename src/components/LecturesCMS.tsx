@@ -30,7 +30,7 @@ import {
   BookOpen,
   FolderOpen
 } from 'lucide-react';
-import { CourseModule, Lesson, LessonAttachment, VideoProvider, CourseFileItem, AttachmentType } from '../types';
+import { CourseModule, Lesson, LessonAttachment, VideoProvider, CourseFileItem, AttachmentType, CourseEnrollmentStatus } from '../types';
 import { FileUploadZone } from './FileUploadZone';
 import { uploadLessonVideo } from '../lib/videoUploadService';
 import { fileStorageService } from '../lib/fileStorageService';
@@ -723,26 +723,64 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                 className="bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm"
               >
                 {/* رأس الباب */}
-                <div className="p-5 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-4">
+                <div className="p-5 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center font-black text-sm">
                       {mod.orderIndex}
                     </div>
                     <div>
-                      <h3 className="font-bold text-base text-slate-900 dark:text-white">
-                        {mod.title}
-                      </h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-base text-slate-900 dark:text-white">
+                          {mod.title}
+                        </h3>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-black border ${
+                          mod.status === 'active'
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                            : mod.status === 'upcoming'
+                            ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30'
+                            : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30'
+                        }`}>
+                          {mod.status === 'active'
+                            ? 'متاح للتسجيل ✅'
+                            : mod.status === 'upcoming'
+                            ? 'قادم قريباً ⏳'
+                            : 'التسجيل مغلق مؤقتاً ⏸️'}
+                        </span>
+                      </div>
                       <p className="text-xs text-slate-400 mt-0.5">{mod.description}</p>
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => openAddModal(mod.id)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-700 dark:text-slate-200 font-bold text-xs transition cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>إضافة درس لهذا الباب</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {/* محول حالة التسجيل المباشر من لوحة المعلم */}
+                    <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
+                      <span className="text-[11px] font-bold text-slate-500 px-1">التسجيل:</span>
+                      <select
+                        value={mod.status || 'paused'}
+                        onChange={(e) => {
+                          const newStatus = e.target.value as CourseEnrollmentStatus;
+                          coursesStorage.updateModuleStatus(mod.id, newStatus);
+                          setToast({
+                            text: `تم تغيير حالة التسجيل إلى (${newStatus === 'active' ? 'متاح للتسجيل' : newStatus === 'paused' ? 'مغلق مؤقتاً / قريباً' : 'قادمة قريباً'}) بنجاح!`,
+                            type: 'success',
+                          });
+                        }}
+                        className="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer"
+                      >
+                        <option value="active">🟢 متاح للجميع (Active)</option>
+                        <option value="paused">⏸️ مغلق مؤقتاً (Paused)</option>
+                        <option value="upcoming">⏳ قادمة قريباً (Upcoming)</option>
+                      </select>
+                    </div>
+
+                    <button
+                      onClick={() => openAddModal(mod.id)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-700 dark:text-slate-200 font-bold text-xs transition cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>إضافة درس لهذا الباب</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* جدول الدروس في الباب */}
@@ -1658,15 +1696,19 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <a
-                          href={sanitizeUrl(att.fileUrl)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-500/10 transition"
+                        <button
+                          type="button"
+                          onClick={() => {
+                            fileStorageService.downloadWatermarkedFile({
+                              title: att.title,
+                              fileUrl: att.fileUrl,
+                            });
+                          }}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-500/10 transition cursor-pointer"
                           title="تحميل المذكرة"
                         >
                           <Download className="w-4 h-4" />
-                        </a>
+                        </button>
                         <button
                           type="button"
                           onClick={() => {

@@ -211,7 +211,7 @@ export const LegalPoliciesModal: React.FC<LegalPoliciesModalProps> = ({
                     🇸🇦 75 ريال سعودي سنوياً (مدى / فيزا / ماستركارد)
                   </div>
                   <div className="p-3 rounded-2xl bg-blue-500/10 border border-blue-500/30 font-bold text-center">
-                    🇪🇬 1020 جنيه مصري سنوياً (فودافون كاش / إنستاباي / ميزة)
+                    🇪🇬 1050 جنيه مصري سنوياً (فودافون كاش / إنستاباي / ميزة)
                   </div>
                 </div>
               </section>

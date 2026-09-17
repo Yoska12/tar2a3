@@ -1,0 +1,25 @@
+# ==============================================================================
+# منصة طرقع - تأمين مجلد المرفقات (Hostinger Uploads Security)
+# ==============================================================================
+
+# منع تشغيل أي سكريبت برمجي مرفوع داخل المجلد نهائياً
+<FilesMatch "\.(php|phtml|php3|php4|php5|php7|php8|phps|cgi|pl|sh|bash|py|rb)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+Options -ExecCGI -Indexes
+
+# السماح للزوار بتنزيل وعرض ملفات الوسائط والمستندات بدون عوائق
+<IfModule mod_headers.c>
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, HEAD, OPTIONS"
+    Header set Access-Control-Allow-Headers "Range, Accept, Content-Type, Content-Range"
+    Header set Access-Control-Expose-Headers "Content-Length, Content-Range, Content-Disposition"
+    Header set Accept-Ranges "bytes"
+</IfModule>

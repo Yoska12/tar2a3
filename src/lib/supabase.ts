@@ -2,6 +2,12 @@ import { createClient } from '@supabase/supabase-js';
 import { UserRole } from '../types';
 import { sendWelcomeTelegramMessage } from './telegram';
 import { isOwnerEmail } from './securityUtils';
+import { 
+  saveCurrentUserToIDB, 
+  clearCurrentUserFromIDB, 
+  saveRegisteredUserToIDB,
+  saveQuizAttemptToIDB
+} from './indexedDbService';
 
 export { isOwnerEmail } from './securityUtils';
 
@@ -299,22 +305,24 @@ export const authService = {
     }
   },
 
-  // حفظ وتحديث بيانات المستخدم الحالي مركزياً في التخزين المحلي
+  // حفظ وتحديث بيانات المستخدم الحالي مركزياً في التخزين المحلي وقاعدة IndexedDB
   setCurrentUser: (user: TarqaUser): void => {
     try {
       if (typeof window === 'undefined') return;
       localStorage.setItem('tarqa_current_user', JSON.stringify(user));
+      saveCurrentUserToIDB(user).catch(() => {});
       window.dispatchEvent(new Event('tarqa_user_changed'));
     } catch (e) {
       console.warn('[authService] Failed to set current user:', e);
     }
   },
 
-  // مسح بيانات المستخدم الحالي عند تسجيل الخروج أو الحظر
+  // مسح بيانات المستخدم الحالي عند تسجيل الخروج أو الحظر من التخزين وقاعدة IndexedDB
   clearCurrentUser: (): void => {
     try {
       if (typeof window === 'undefined') return;
       localStorage.removeItem('tarqa_current_user');
+      clearCurrentUserFromIDB().catch(() => {});
       window.dispatchEvent(new Event('tarqa_user_changed'));
     } catch (e) {
       console.warn('[authService] Failed to clear current user:', e);
@@ -452,6 +460,7 @@ export const authService = {
         };
 
         localStorage.setItem('tarqa_current_user', JSON.stringify(user));
+        saveCurrentUserToIDB(user).catch(() => {});
         syncUserToMembersDashboard(user);
         window.dispatchEvent(new Event('tarqa_user_changed'));
         return { user, isDemo: false };
@@ -544,6 +553,7 @@ export const authService = {
         subscriptionExpiresAt: demoExpires,
       };
       localStorage.setItem('tarqa_current_user', JSON.stringify(user));
+      saveCurrentUserToIDB(user).catch(() => {});
       syncUserToMembersDashboard(user);
       window.dispatchEvent(new Event('tarqa_user_changed'));
       return { user, isDemo: true };
@@ -570,6 +580,8 @@ export const authService = {
     users.push({ ...newUser, password: params.password });
     localStorage.setItem('tarqa_registered_users', JSON.stringify(users));
     localStorage.setItem('tarqa_current_user', JSON.stringify(newUser));
+    saveRegisteredUserToIDB({ ...newUser, password: params.password }).catch(() => {});
+    saveCurrentUserToIDB(newUser).catch(() => {});
     syncUserToMembersDashboard(newUser);
     window.dispatchEvent(new Event('tarqa_user_changed'));
 
@@ -649,6 +661,7 @@ export const authService = {
         const needsConfirmation = !data.session;
         if (!needsConfirmation) {
           localStorage.setItem('tarqa_current_user', JSON.stringify(user));
+          saveCurrentUserToIDB(user).catch(() => {});
           syncUserToMembersDashboard(user);
           window.dispatchEvent(new Event('tarqa_user_changed'));
           window.dispatchEvent(new Event('tarqa_roles_changed'));
@@ -679,6 +692,8 @@ export const authService = {
     users.push({ ...newUser, password: params.password });
     localStorage.setItem('tarqa_registered_users', JSON.stringify(users));
     localStorage.setItem('tarqa_current_user', JSON.stringify(newUser));
+    saveRegisteredUserToIDB({ ...newUser, password: params.password }).catch(() => {});
+    saveCurrentUserToIDB(newUser).catch(() => {});
     syncUserToMembersDashboard(newUser);
     window.dispatchEvent(new Event('tarqa_user_changed'));
     window.dispatchEvent(new Event('tarqa_roles_changed'));
@@ -859,6 +874,7 @@ export const authService = {
     };
 
     localStorage.setItem('tarqa_current_user', JSON.stringify(user));
+    saveCurrentUserToIDB(user).catch(() => {});
     syncUserToMembersDashboard(user);
     window.dispatchEvent(new Event('tarqa_user_changed'));
 
@@ -877,6 +893,7 @@ export const authService = {
     try {
       localStorage.removeItem('tarqa_current_user');
       localStorage.removeItem('tarqa_session');
+      clearCurrentUserFromIDB().catch(() => {});
       // مسح كافة الكوكيز الممكنة في المتصفح
       if (typeof document !== 'undefined') {
         const cookies = document.cookie.split(';');
@@ -905,14 +922,16 @@ export const localScoreStorage = {
   saveAttempt: (attempt: any) => {
     try {
       const existing = JSON.parse(localStorage.getItem('tarqa_attempts') || '[]');
-      existing.unshift({
+      const newAttempt = {
         ...attempt,
         id: 'local-' + Date.now(),
-        completed_at: new Date().toISOString(),
-      });
-      localStorage.setItem('tarqa_attempts', JSON.stringify(existing.slice(0, 30)));
+        createdAt: new Date().toISOString(),
+      };
+      existing.unshift(newAttempt);
+      localStorage.setItem('tarqa_attempts', JSON.stringify(existing.slice(0, 50)));
+      saveQuizAttemptToIDB(newAttempt).catch(() => {});
     } catch (e) {
-      console.warn('Could not save to localStorage', e);
+      console.warn('Failed to save attempt to localStorage:', e);
     }
   },
   getAttempts: () => {

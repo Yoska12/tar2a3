@@ -44,15 +44,75 @@ import { coursesStorage, CLOUD_LECTURES_STORE_ID, CLOUD_LECTURES_STORE_EMAIL, is
 import { questionBankStorage, CLOUD_QUESTIONS_STORE_ID, CLOUD_QUESTIONS_STORE_EMAIL } from './lib/questionBankStorage';
 import { initGlobalAntiHack, logSecurityViolation } from './lib/antiHack';
 import { SUPPORT_EMAIL, SUPPORT_PHONE_EGYPT, SUPPORT_PHONE_EGYPT_FORMATTED, SUPPORT_WHATSAPP_URL } from './lib/constants';
+import {
+  persistViewState,
+  getPersistedViewState,
+  autoSyncLocalStorageToIndexedDB,
+  saveLessonProgressToIDB,
+} from './lib/indexedDbService';
+
+const getInitialNavigationState = (): {
+  view: 'home' | 'courses' | 'quiz' | 'result' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles';
+  tab: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles';
+} => {
+  if (typeof window === 'undefined') {
+    return { view: 'home', tab: 'home' };
+  }
+
+  const hash = window.location.hash.toLowerCase().replace(/^#\/?/, '');
+
+  if (hash === 'courses') return { view: 'courses', tab: 'courses' };
+  if (hash === 'dashboard') return { view: 'dashboard', tab: 'dashboard' };
+  if (hash === 'admin') return { view: 'admin', tab: 'admin' };
+  if (hash === 'admin-lectures') return { view: 'admin-lectures', tab: 'admin-lectures' };
+  if (hash === 'admin-roles') return { view: 'admin-roles', tab: 'admin-roles' };
+  if (hash === 'classroom') return { view: 'classroom', tab: 'courses' };
+  if (hash === 'categories') return { view: 'home', tab: 'categories' };
+  if (hash === 'roadmap') return { view: 'home', tab: 'roadmap' };
+  if (hash === 'home') return { view: 'home', tab: 'home' };
+
+  // إذا لم يكن هناك hash في الرابط، نقرأ من التخزين المحفوظ في المتصفح لمنع الرجوع للرئيسية عند الريفرش (F5)
+  try {
+    const savedView = localStorage.getItem('tarqa_current_view') as any;
+    const savedTab = localStorage.getItem('tarqa_active_tab') as any;
+    if (savedView && ['home', 'courses', 'dashboard', 'admin', 'classroom', 'admin-lectures', 'admin-roles'].includes(savedView)) {
+      return {
+        view: savedView,
+        tab: savedTab || (savedView === 'classroom' ? 'courses' : savedView),
+      };
+    }
+  } catch {}
+
+  return { view: 'home', tab: 'home' };
+};
 
 export const App: React.FC = () => {
-  // وضع الشاشة: home | courses | quiz | result | dashboard | admin | classroom | admin-lectures | admin-roles
-  const [currentView, setCurrentView] = useState<'home' | 'courses' | 'quiz' | 'result' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles'>('home');
-  const [activeTab, setActiveTab] = useState<'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles'>('home');
+  // وضع الشاشة النشطة مع استرجاع تلقائي لحالة الدورات أو لوحة التحكم لمنع فقدان الصفحة عند التحديث
+  const initialNav = getInitialNavigationState();
+  const [currentView, setCurrentView] = useState<'home' | 'courses' | 'quiz' | 'result' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles'>(initialNav.view);
+  const [activeTab, setActiveTab] = useState<'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles'>(initialNav.tab);
   const [modules, setModules] = useState<CourseModule[]>(() => coursesStorage.getModules());
   const [courseFiles, setCourseFiles] = useState<CourseFileItem[]>(() => coursesStorage.getFiles());
-  const [activeModule, setActiveModule] = useState<CourseModule>(() => coursesStorage.getModules()[0] || mockFoundationModules[0]);
-  const [activeLesson, setActiveLesson] = useState<Lesson>(() => coursesStorage.getModules()[0]?.lessons?.[0] || mockFoundationModules[0].lessons[0]);
+  const [activeModule, setActiveModule] = useState<CourseModule>(() => {
+    const allMods = coursesStorage.getModules();
+    const savedModId = typeof window !== 'undefined' ? localStorage.getItem('tarqa_active_module_id') : null;
+    if (savedModId) {
+      const found = allMods.find((m) => m.id === savedModId);
+      if (found) return found;
+    }
+    return allMods[0] || mockFoundationModules[0];
+  });
+  const [activeLesson, setActiveLesson] = useState<Lesson>(() => {
+    const allMods = coursesStorage.getModules();
+    const savedModId = typeof window !== 'undefined' ? localStorage.getItem('tarqa_active_module_id') : null;
+    const savedLessonId = typeof window !== 'undefined' ? localStorage.getItem('tarqa_active_lesson_id') : null;
+    const targetMod = (savedModId && allMods.find((m) => m.id === savedModId)) || allMods[0] || mockFoundationModules[0];
+    if (savedLessonId && targetMod.lessons) {
+      const foundL = targetMod.lessons.find((l) => l.id === savedLessonId);
+      if (foundL) return foundL;
+    }
+    return targetMod?.lessons?.[0] || mockFoundationModules[0].lessons[0];
+  });
   const [isAuthOpen, setIsAuthOpen] = useState<boolean>(false);
   const [authInitialTab, setAuthInitialTab] = useState<'signin' | 'signup'>('signin');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
@@ -60,6 +120,33 @@ export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<TarqaUser | null>(() => {
     return authService.getCurrentUser();
   });
+
+  // دالة مركزية للتنقل بين الشاشات والتبويبات مع حفظ الحالة في IndexedDB والتخزين ومزامنة الرابط
+  const navigateToView = (
+    view: 'home' | 'courses' | 'quiz' | 'result' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles',
+    tab?: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles',
+    extra?: { moduleId?: string; lessonId?: string }
+  ) => {
+    const targetTab = tab || (view === 'classroom' ? 'courses' : (view as any));
+    setCurrentView(view);
+    setActiveTab(targetTab);
+
+    // مزامنة الـ URL Hash بدون إعادة تحميل الصفحة لضمان عمل أزرار المتصفح (Back/Forward) والريفرش
+    if (typeof window !== 'undefined') {
+      const targetHash = view === 'home' ? '' : `#${view}`;
+      if (window.location.hash !== targetHash && !window.location.hash.includes('login') && !window.location.hash.includes('signup')) {
+        window.history.replaceState(null, '', targetHash || window.location.pathname);
+      }
+    }
+
+    // حفظ الحالة في IndexedDB والتخزين المحلي لاستعادتها دائماً عند الضغط على F5
+    persistViewState({
+      currentView: view,
+      activeTab: targetTab,
+      activeModuleId: extra?.moduleId,
+      activeLessonId: extra?.lessonId,
+    }).catch(() => {});
+  };
 
   // تبويب الصفحة الرئيسية التفاعلي لتوزيع المحتوى وتخفيف الزحام
   const [homeTab, setHomeTab] = useState<'modes' | 'roadmap' | 'method'>('modes');
@@ -82,21 +169,74 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('tarqa_open_policies', handleGlobalOpenPolicies);
   }, []);
 
-  // دعم الدخول المباشر لصفحة اللوجن التفاعلية عبر الرابط #login أو #signup
+  // مزامنة IndexedDB واستعادة الجلسة والمسار عند بداية تشغيل الموقع
   useEffect(() => {
-    const checkAuthRoute = () => {
-      const hash = window.location.hash;
-      if (hash === '#login' || hash === '#signin') {
+    autoSyncLocalStorageToIndexedDB().catch(() => {});
+
+    getPersistedViewState().then((persisted) => {
+      if (persisted?.currentView && persisted.currentView !== 'home') {
+        const hash = window.location.hash.toLowerCase().replace(/^#\/?/, '');
+        if (!hash || hash === persisted.currentView) {
+          setCurrentView(persisted.currentView);
+          setActiveTab(persisted.activeTab || (persisted.currentView as any));
+          if (!window.location.hash) {
+            window.history.replaceState(null, '', `#${persisted.currentView}`);
+          }
+        }
+      }
+    }).catch(() => {});
+  }, []);
+
+  // الاستماع للروابط وأزرار الرجوع والتقدم بالمتصفح ودعم الدخول المباشر
+  useEffect(() => {
+    const checkRouteAndAuth = () => {
+      const rawHash = window.location.hash.toLowerCase();
+      const hash = rawHash.replace(/^#\/?/, '');
+
+      if (hash === 'login' || hash === 'signin') {
         setAuthInitialTab('signin');
         setIsAuthOpen(true);
-      } else if (hash === '#signup' || hash === '#register') {
+      } else if (hash === 'signup' || hash === 'register') {
         setAuthInitialTab('signup');
         setIsAuthOpen(true);
+      } else if (hash === 'courses') {
+        setCurrentView('courses');
+        setActiveTab('courses');
+        persistViewState({ currentView: 'courses', activeTab: 'courses' }).catch(() => {});
+      } else if (hash === 'dashboard') {
+        setCurrentView('dashboard');
+        setActiveTab('dashboard');
+        persistViewState({ currentView: 'dashboard', activeTab: 'dashboard' }).catch(() => {});
+      } else if (hash === 'admin') {
+        setCurrentView('admin');
+        setActiveTab('admin');
+        persistViewState({ currentView: 'admin', activeTab: 'admin' }).catch(() => {});
+      } else if (hash === 'admin-lectures') {
+        setCurrentView('admin-lectures');
+        setActiveTab('admin-lectures');
+        persistViewState({ currentView: 'admin-lectures', activeTab: 'admin-lectures' }).catch(() => {});
+      } else if (hash === 'admin-roles') {
+        setCurrentView('admin-roles');
+        setActiveTab('admin-roles');
+        persistViewState({ currentView: 'admin-roles', activeTab: 'admin-roles' }).catch(() => {});
+      } else if (hash === 'classroom') {
+        setCurrentView('classroom');
+        setActiveTab('courses');
+        persistViewState({ currentView: 'classroom', activeTab: 'courses' }).catch(() => {});
+      } else if (hash === 'home') {
+        setCurrentView('home');
+        setActiveTab('home');
+        persistViewState({ currentView: 'home', activeTab: 'home' }).catch(() => {});
       }
     };
-    checkAuthRoute();
-    window.addEventListener('hashchange', checkAuthRoute);
-    return () => window.removeEventListener('hashchange', checkAuthRoute);
+
+    checkRouteAndAuth();
+    window.addEventListener('hashchange', checkRouteAndAuth);
+    window.addEventListener('popstate', checkRouteAndAuth);
+    return () => {
+      window.removeEventListener('hashchange', checkRouteAndAuth);
+      window.removeEventListener('popstate', checkRouteAndAuth);
+    };
   }, []);
 
   // تفعيل درع طرقع الأمني ومكافحة الاختراق والفحص (Global Anti-Hack Shield Core)
@@ -678,15 +818,16 @@ export const App: React.FC = () => {
     setCurrentView('result');
   };
 
-  // فتح غرفة المحاضرة
+  // فتح غرفة المحاضرة مع حفظ الدرس والموديول في IndexedDB
   const openLessonClassroom = (mod: CourseModule, lesson: Lesson) => {
     setActiveModule(mod);
     setActiveLesson(lesson);
-    setCurrentView('classroom');
+    navigateToView('classroom', 'courses', { moduleId: mod.id, lessonId: lesson.id });
   };
 
-  // إكمال المحاضرة
+  // إكمال المحاضرة وحفظ تقدم الدرس في IndexedDB
   const handleCompleteLesson = (lessonId: string) => {
+    saveLessonProgressToIDB(lessonId, true).catch(() => {});
     const cur = coursesStorage.getModules();
     const updated = cur.map((mod) => ({
       ...mod,
@@ -698,11 +839,10 @@ export const App: React.FC = () => {
     setModules([...updated]);
   };
 
-  // دالة موحدة للتنقل بين التبويبات والشاشات
+  // دالة موحدة للتنقل بين التبويبات والشاشات مع حفظ الحالة في IndexedDB والتخزين
   const handleTabSelect = (tab: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles') => {
-    setActiveTab(tab);
     if (tab === 'courses') {
-      setCurrentView('courses');
+      navigateToView('courses', 'courses');
     } else if (tab === 'speed') {
       startSpeedChallenge();
     } else if (tab === 'dashboard') {
@@ -710,31 +850,31 @@ export const App: React.FC = () => {
         setAuthInitialTab('signin');
         setIsAuthOpen(true);
       } else {
-        setCurrentView('dashboard');
+        navigateToView('dashboard', 'dashboard');
       }
     } else if (tab === 'admin') {
       if (!currentUser || !canAccessAdmin(currentUser)) {
         setAuthInitialTab('signin');
         setIsAuthOpen(true);
       } else {
-        setCurrentView('admin');
+        navigateToView('admin', 'admin');
       }
     } else if (tab === 'admin-lectures') {
       if (!currentUser || !canAccessAdmin(currentUser)) {
         setAuthInitialTab('signin');
         setIsAuthOpen(true);
       } else {
-        setCurrentView('admin-lectures');
+        navigateToView('admin-lectures', 'admin-lectures');
       }
     } else if (tab === 'admin-roles') {
       if (!currentUser || !isSuperAdminRole(currentUser)) {
         setAuthInitialTab('signin');
         setIsAuthOpen(true);
       } else {
-        setCurrentView('admin-roles');
+        navigateToView('admin-roles', 'admin-roles');
       }
     } else {
-      setCurrentView('home');
+      navigateToView('home', tab);
       if (tab === 'categories') {
         setTimeout(() => {
           const el = document.getElementById('categories');
@@ -772,8 +912,7 @@ export const App: React.FC = () => {
         onLogout={async () => {
           await authService.signOut();
           setCurrentUser(null);
-          setCurrentView('home');
-          setActiveTab('home');
+          navigateToView('home', 'home');
         }}
         isMobileMenuOpen={isMobileMenuOpen}
         onToggleMobileMenu={() => setIsMobileMenuOpen((prev) => !prev)}
@@ -800,7 +939,7 @@ export const App: React.FC = () => {
           settings={quizSettings}
           quizTitle={quizTitle}
           onFinish={handleQuizFinish}
-          onExit={() => setCurrentView('home')}
+          onExit={() => navigateToView('home', 'home')}
         />
       )}
 
@@ -811,7 +950,7 @@ export const App: React.FC = () => {
         <ResultView
           result={lastResult}
           onRetake={() => setCurrentView('quiz')}
-          onHome={() => setCurrentView('home')}
+          onHome={() => navigateToView('home', 'home')}
         />
       )}
 
@@ -825,7 +964,7 @@ export const App: React.FC = () => {
             onStartMock={startMockExam}
             onStartPractice={(cat) => startPracticeMode(cat)}
             onOpenAuth={() => setIsAuthOpen(true)}
-            onNavigateCourses={() => setCurrentView('courses')}
+            onNavigateCourses={() => navigateToView('courses', 'courses')}
           />
         </main>
       )}
@@ -899,8 +1038,7 @@ export const App: React.FC = () => {
               <div className="flex justify-center pt-2">
                 <button
                   onClick={() => {
-                    setCurrentView('dashboard');
-                    setActiveTab('dashboard');
+                    navigateToView('dashboard', 'dashboard');
                   }}
                   className="px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm transition shadow-lg shadow-amber-500/20 active:scale-95"
                 >
@@ -983,8 +1121,7 @@ export const App: React.FC = () => {
               </p>
               <button
                 onClick={() => {
-                  setCurrentView('home');
-                  setActiveTab('home');
+                  navigateToView('home', 'home');
                 }}
                 className="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs"
               >
@@ -1004,8 +1141,7 @@ export const App: React.FC = () => {
             <SuperAdminRolesPanel
               currentUser={currentUser}
               onNavigateBack={() => {
-                setCurrentView('home');
-                setActiveTab('home');
+                navigateToView('home', 'home');
               }}
             />
           ) : (
@@ -1025,8 +1161,7 @@ export const App: React.FC = () => {
               <div className="flex justify-center pt-2">
                 <button
                   onClick={() => {
-                    setCurrentView('home');
-                    setActiveTab('home');
+                    navigateToView('home', 'home');
                   }}
                   className="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs"
                 >
@@ -1051,8 +1186,7 @@ export const App: React.FC = () => {
             onCompleteLesson={handleCompleteLesson}
             onStartQuiz={() => startMockExam()}
             onBackToRoadmap={() => {
-              setCurrentView('courses');
-              setActiveTab('courses');
+              navigateToView('courses', 'courses');
             }}
           />
         </main>
@@ -1068,11 +1202,10 @@ export const App: React.FC = () => {
             onOpenClassroom={(module, lesson) => {
               setActiveModule(module);
               setActiveLesson(lesson);
-              setCurrentView('classroom');
+              navigateToView('classroom', 'courses', { moduleId: module.id, lessonId: lesson.id });
             }}
             onBackToHome={() => {
-              setCurrentView('home');
-              setActiveTab('home');
+              navigateToView('home', 'home');
             }}
             onOpenAuth={() => {
               setAuthInitialTab('signin');

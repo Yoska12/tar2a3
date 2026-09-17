@@ -640,7 +640,8 @@ export const App: React.FC = () => {
   };
 
   const handleOrbMidpoint = () => {
-    // تطبيق الثيم الجديد الفعلي بدقة لحظة تغطية الشاشة بالكامل
+    // تفعيل فئة الانتقال الانسيابي لتبديل الألوان في الخلفية بنعومة فائقة
+    document.documentElement.classList.add('theme-transitioning');
     if (orbTarget !== null) {
       setDarkMode(orbTarget);
     } else {
@@ -651,6 +652,10 @@ export const App: React.FC = () => {
   const handleOrbComplete = () => {
     // الأنيميشن انتهى - ازل الدائرة
     setOrbTarget(null);
+    // إزالة كلاس الانتقال بعد اكتمال انسياب الألوان بثبات
+    setTimeout(() => {
+      document.documentElement.classList.remove('theme-transitioning');
+    }, 250);
   };
 
   // حالة الإشعار التفاعلي لميزات "قريباً"

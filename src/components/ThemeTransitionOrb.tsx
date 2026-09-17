@@ -7,7 +7,7 @@ interface ThemeTransitionOrbProps {
   onComplete: () => void;
 }
 
-type Phase = 'idle' | 'rising' | 'expanding' | 'fading';
+type Phase = 'idle' | 'rising' | 'pulsing' | 'fading';
 
 export const ThemeTransitionOrb: React.FC<ThemeTransitionOrbProps> = ({
   targetIsDark,
@@ -16,16 +16,15 @@ export const ThemeTransitionOrb: React.FC<ThemeTransitionOrbProps> = ({
 }) => {
   const [phase, setPhase] = useState<Phase>('idle');
 
-  // تخزين الـ callbacks في refs لضمان استقرار الاستدعاء
   const onMidpointRef = useRef(onMidpoint);
   const onCompleteRef = useRef(onComplete);
   onMidpointRef.current = onMidpoint;
   onCompleteRef.current = onComplete;
 
-  // لون الدائرة يطابق خلفية الثيم المستهدف بدقة (أبيض ناصع أو كحلي عميق)
+  // لون الدائرة يطابق ثيم الوجهة (أبيض ناصع أو كحلي عميق)
   const orbColor = targetIsDark ? '#0b101b' : '#ffffff';
 
-  // حجم الدائرة المتوسط متجاوب بدقة بين اللابتوب والجوال
+  // حجم الدائرة المتجاوب مع اللابتوب والجوال
   const [size, setSize] = useState<number>(130);
 
   useEffect(() => {
@@ -34,65 +33,57 @@ export const ThemeTransitionOrb: React.FC<ThemeTransitionOrbProps> = ({
       setSize(isLaptopOrDesktop ? 140 : 115);
     }
 
-    // 1. بدء صعود الدائرة من أسفل الشاشة فوراً
+    // 1. بدء صعود الدائرة من أسفل الشاشة للأعلى
     const tRise = setTimeout(() => {
       setPhase('rising');
     }, 20);
 
-    // 2. وصول الدائرة لمنتصف الشاشة وبدء التمدد فوراً لملء الشاشة بلونها (420ms)
-    const tExpand = setTimeout(() => {
-      setPhase('expanding');
-    }, 420);
-
-    // 3. تطبيق الثيم فور تغطية الدائرة للشاشة دون أي وقفة أو انتظار (570ms)
+    // 2. وصول الدائرة إلى منتصف الشاشة والبدء في تغيير لون الموقع من الخلف بنعومة فائقة (400ms)
     const tMidpoint = setTimeout(() => {
+      setPhase('pulsing');
       onMidpointRef.current();
-    }, 570);
+    }, 400);
 
-    // 4. تلاشي الغطاء بنعومة فور اكتمال التمدد مباشرة لمنع أي شعور بالريفرش أو الجمود (660ms)
+    // 3. تلاشي الدائرة بنعومة في منتصف الشاشة بينما اللون الجديد مستقر في الخلفية (660ms)
     const tFade = setTimeout(() => {
       setPhase('fading');
     }, 660);
 
-    // 5. إنهاء الأنيميشن بالكامل وإزالة الدائرة من الشاشة (880ms)
+    // 4. انتهاء الحركة وإزالة الكومبوننت بالكامل (880ms)
     const tComplete = setTimeout(() => {
       onCompleteRef.current();
     }, 880);
 
     return () => {
       clearTimeout(tRise);
-      clearTimeout(tExpand);
       clearTimeout(tMidpoint);
       clearTimeout(tFade);
       clearTimeout(tComplete);
     };
   }, []);
 
-  // حساب التحول (Transform) لكل مرحلة عبر الـ GPU بسرعة 60-120fps
+  // حساب التحول الفيزيائي للدائرة (صعود -> نبض خفيف في المنتصف -> تلاشي)
   let transform = 'translate3d(-50%, -50%, 0) translateY(75vh) scale(0.85)';
   let transition = 'none';
 
   if (phase === 'rising') {
     transform = 'translate3d(-50%, -50%, 0) translateY(0) scale(1)';
-    transition = 'transform 400ms cubic-bezier(0.16, 1, 0.3, 1)';
-  } else if (phase === 'expanding' || phase === 'fading') {
-    transform = 'translate3d(-50%, -50%, 0) translateY(0) scale(55)';
-    transition = 'transform 360ms cubic-bezier(0.2, 1, 0.3, 1)';
+    transition = 'transform 380ms cubic-bezier(0.16, 1, 0.3, 1)';
+  } else if (phase === 'pulsing') {
+    transform = 'translate3d(-50%, -50%, 0) translateY(0) scale(1.1)';
+    transition = 'transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1)';
+  } else if (phase === 'fading') {
+    transform = 'translate3d(-50%, -50%, 0) translateY(0) scale(1.22)';
+    transition = 'transform 220ms ease-out, opacity 220ms ease-out';
   }
-
-  const isExpandingOrFading = phase === 'expanding' || phase === 'fading';
 
   return (
     <div
       className="fixed inset-0 pointer-events-none overflow-hidden"
-      style={{
-        zIndex: 99999,
-        opacity: phase === 'fading' ? 0 : 1,
-        transition: phase === 'fading' ? 'opacity 220ms cubic-bezier(0.4, 0, 0.2, 1)' : 'none',
-      }}
+      style={{ zIndex: 99999 }}
       aria-hidden="true"
     >
-      {/* الدائرة الرئيسية الصاعدة من الأسفل والمتمددة لملء الشاشة بالألوان */}
+      {/* الدائرة الأصلية الصاعدة من الأسفل حتى منتصف الشاشة دون أي تغطية للشاشة أو إخفاء للعناصر */}
       <div
         style={{
           position: 'fixed',
@@ -104,28 +95,22 @@ export const ThemeTransitionOrb: React.FC<ThemeTransitionOrbProps> = ({
           backgroundColor: orbColor,
           transform,
           transition,
-          willChange: 'transform',
-          boxShadow: isExpandingOrFading
-            ? 'none'
-            : targetIsDark
-            ? '0 0 50px 6px rgba(245, 158, 11, 0.35), 0 20px 45px -10px rgba(0, 0, 0, 0.8), inset 0 0 25px rgba(245, 158, 11, 0.2)'
-            : '0 0 50px 8px rgba(245, 158, 11, 0.4), 0 20px 45px -10px rgba(0, 0, 0, 0.15), inset 0 0 25px rgba(251, 191, 36, 0.25)',
-          border: isExpandingOrFading
-            ? 'none'
-            : targetIsDark
-            ? '2.5px solid rgba(245, 158, 11, 0.55)'
-            : '2.5px solid rgba(245, 158, 11, 0.65)',
+          opacity: phase === 'fading' ? 0 : 1,
+          willChange: 'transform, opacity',
+          boxShadow: targetIsDark
+            ? '0 0 55px 8px rgba(245, 158, 11, 0.45), 0 20px 45px -10px rgba(0, 0, 0, 0.8), inset 0 0 25px rgba(245, 158, 11, 0.25)'
+            : '0 0 55px 10px rgba(245, 158, 11, 0.45), 0 20px 45px -10px rgba(0, 0, 0, 0.15), inset 0 0 25px rgba(251, 191, 36, 0.3)',
+          border: targetIsDark
+            ? '2.5px solid rgba(245, 158, 11, 0.65)'
+            : '2.5px solid rgba(245, 158, 11, 0.75)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
         }}
       >
-        {/* الأيقونة والتوهج الداخلي مع حركة دوران للشمس وهالة للقمر */}
+        {/* الشارة الأصلية (شمس دوارة للنهاري، وقمر مضيء لليلي) */}
         <div
           style={{
-            opacity: isExpandingOrFading ? 0 : 1,
-            transform: `scale(${phase === 'rising' ? 1 : isExpandingOrFading ? 1.3 : 0.85})`,
-            transition: 'opacity 180ms ease-out, transform 280ms ease-out',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -133,15 +118,15 @@ export const ThemeTransitionOrb: React.FC<ThemeTransitionOrbProps> = ({
         >
           {targetIsDark ? (
             <div className="relative flex items-center justify-center">
-              <div className="absolute inset-0 rounded-full bg-amber-500/25 blur-lg" />
+              <div className="absolute inset-0 rounded-full bg-amber-500/30 blur-lg" />
               <Moon
-                className="w-10 h-10 md:w-12 md:h-12 text-amber-300 drop-shadow-[0_0_15px_rgba(245,158,11,0.8)] fill-amber-300/40 relative z-10"
+                className="w-10 h-10 md:w-12 md:h-12 text-amber-300 drop-shadow-[0_0_15px_rgba(245,158,11,0.85)] fill-amber-300/40 relative z-10"
                 strokeWidth={2.2}
               />
             </div>
           ) : (
             <div className="relative flex items-center justify-center">
-              <div className="absolute inset-0 rounded-full bg-amber-400/30 blur-lg" />
+              <div className="absolute inset-0 rounded-full bg-amber-400/35 blur-lg" />
               <Sun
                 className="w-10 h-10 md:w-12 md:h-12 text-amber-500 animate-spin-slow drop-shadow-[0_0_18px_rgba(245,158,11,0.9)] relative z-10"
                 strokeWidth={2.2}

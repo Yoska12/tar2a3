@@ -17,10 +17,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-// توكن ومعلومات البوت
-$botToken = '8848350461:AAH5unU325h5n5vwPIWdNVyMyG8RxnZ2wIU';
-$botUsername = 'Tarqa3bot';
-$telegramApi = "https://api.telegram.org/bot{$botToken}";
+// توكن ومعلومات البوت - يتم جلبه من متغيرات البيئة في السيرفر لأمان المنصة
+$botToken = getenv('TELEGRAM_BOT_TOKEN') ?: ($_SERVER['TELEGRAM_BOT_TOKEN'] ?? '');
+$botUsername = getenv('TELEGRAM_BOT_USERNAME') ?: ($_SERVER['TELEGRAM_BOT_USERNAME'] ?? 'Tarqa3bot');
+$telegramApi = !empty($botToken) ? "https://api.telegram.org/bot{$botToken}" : "";
 
 // فحص الحالة المباشر (Health Check عبر المتصفح)
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {

@@ -19,7 +19,8 @@ import {
   ChevronDown,
   Send,
   ExternalLink,
-  GraduationCap
+  GraduationCap,
+  CreditCard
 } from 'lucide-react';
 import { TarqaUser, authService } from '../lib/supabase';
 import { isOwnerEmail, canAccessAdmin as checkCanAccessAdmin, isSuperAdminRole } from '../lib/securityUtils';
@@ -29,7 +30,7 @@ import { TELEGRAM_BOT_USERNAME, TELEGRAM_BOT_URL } from '../lib/telegram';
 interface NavbarProps {
   darkMode: boolean;
   onToggleDarkMode: () => void;
-  onSelectTab: (tab: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles') => void;
+  onSelectTab: (tab: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles' | 'leaderboard' | 'admin-kashier' | 'admin-security' | 'kashier' | 'security') => void;
   activeTab: string;
   onOpenAuth?: (initialTab?: 'signin' | 'signup') => void;
   currentUser?: TarqaUser | null;
@@ -81,9 +82,25 @@ export const Navbar: React.FC<NavbarProps> = ({
   const roleBadge = currentRole ? authService.getRoleBadge(currentRole) : null;
   const canAccessAdmin = checkCanAccessAdmin(currentUser);
 
-  // القائمة المنسدلة لأدوات الإدارة لتوفير المساحة ومنع تداخل أزرار الشريط
   const [adminDropdownOpen, setAdminDropdownOpen] = useState(false);
   const adminDropdownRef = useRef<HTMLDivElement>(null);
+  const [userPoints, setUserPoints] = useState(() => {
+    try {
+      const stored = localStorage.getItem('tarqa_student_points_v1');
+      return stored ? parseInt(stored, 10) || 0 : 0;
+    } catch {
+      return 0;
+    }
+  });
+
+  useEffect(() => {
+    const handlePointsUpdate = (e: any) => {
+      const newPts = e?.detail?.points !== undefined ? e.detail.points : 0;
+      setUserPoints(newPts);
+    };
+    window.addEventListener('tarqa_points_updated', handlePointsUpdate);
+    return () => window.removeEventListener('tarqa_points_updated', handlePointsUpdate);
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -107,19 +124,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl overflow-hidden shadow-md group-hover:scale-105 transition-transform flex items-center justify-center bg-gradient-to-b from-amber-400 to-amber-500 border border-amber-400/60 p-1 shrink-0 shadow-amber-500/20">
               <img 
-                src="/frame_000012.png" 
+                src="/frame_00012.png" 
                 alt="شعار طرقع" 
-                className="w-full h-full object-contain"
-                onError={(e) => {
-                  const el = e.target as HTMLElement;
-                  el.style.display = 'none';
-                  const fb = el.parentElement?.querySelector('.logo-nav-fallback') as HTMLElement;
-                  if (fb) fb.style.display = 'flex';
-                }}
+                className="w-full h-full object-contain drop-shadow-sm"
               />
-              <span className="logo-nav-fallback hidden font-black text-slate-950 text-xl font-cairo">
-                ط
-              </span>
             </div>
 
             <div>
@@ -174,6 +182,18 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             <button
+              onClick={() => onSelectTab('leaderboard')}
+              className={`px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+                activeTab === 'leaderboard'
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/25 font-black'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Trophy className="w-3.5 h-3.5 text-amber-500" />
+              <span>المتصدرون 🏆</span>
+            </button>
+
+            <button
               onClick={() => onSelectTab('dashboard')}
               className={`px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 shrink-0 ${
                 activeTab === 'dashboard'
@@ -192,52 +212,105 @@ export const Navbar: React.FC<NavbarProps> = ({
                   type="button"
                   onClick={() => setAdminDropdownOpen(!adminDropdownOpen)}
                   className={`px-3 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 ${
-                    activeTab === 'admin' || activeTab === 'admin-lectures' || activeTab === 'admin-roles'
+                    activeTab === 'admin' || activeTab === 'admin-lectures' || activeTab === 'admin-roles' || activeTab === 'admin-kashier' || activeTab === 'admin-security' || activeTab === 'kashier' || activeTab === 'security'
                       ? 'bg-purple-600 text-white shadow-sm font-black'
                       : 'text-purple-600 dark:text-purple-400 hover:bg-purple-500/10'
                   }`}
                 >
                   <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>الإدارة</span>
+                  <span>لوحة الإدارة</span>
                   <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${adminDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
 
                 {adminDropdownOpen && (
-                  <div className="absolute left-0 mt-2 w-52 p-2 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 z-50 space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="absolute left-0 mt-2 w-64 p-2 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 z-50 space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
+                    
+                    {/* بوابة كاشير والمدفوعات */}
                     <button
                       type="button"
-                      onClick={() => { onSelectTab('admin-lectures'); setAdminDropdownOpen(false); }}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition text-right ${
-                        activeTab === 'admin-lectures' ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 font-black' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      onClick={() => { onSelectTab('admin-kashier' as any); setAdminDropdownOpen(false); }}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition text-right ${
+                        activeTab === 'admin-kashier' || activeTab === 'kashier' ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-black' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                       }`}
                     >
-                      <Video className="w-4 h-4 text-amber-500" />
-                      <span>إدارة المحاضرات (CMS)</span>
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0">
+                        <CreditCard className="w-4 h-4" />
+                      </div>
+                      <div className="flex flex-col text-start">
+                        <span>بوابة كاشير والمدفوعات</span>
+                        <span className="text-[10px] text-slate-400 font-normal">إعدادات الدفع والسجلات 💳</span>
+                      </div>
                     </button>
 
+                    {/* درع الأمان وسجل المخالفات */}
                     <button
                       type="button"
-                      onClick={() => { onSelectTab('admin'); setAdminDropdownOpen(false); }}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition text-right ${
-                        activeTab === 'admin' ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 font-black' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      onClick={() => { onSelectTab('admin-security' as any); setAdminDropdownOpen(false); }}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition text-right ${
+                        activeTab === 'admin-security' || activeTab === 'security' ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 font-black' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                       }`}
                     >
-                      <ShieldCheck className="w-4 h-4 text-amber-500" />
-                      <span>بنك الأسئلة</span>
+                      <div className="w-7 h-7 rounded-lg bg-rose-500/10 text-rose-500 flex items-center justify-center shrink-0">
+                        <ShieldCheck className="w-4 h-4" />
+                      </div>
+                      <div className="flex flex-col text-start">
+                        <span>درع الأمان والمخالفات</span>
+                        <span className="text-[10px] text-slate-400 font-normal">سجل محاولات الغش والقرصنة 🛡️</span>
+                      </div>
                     </button>
 
+                    {/* إدارة الرتب والمشتركين */}
                     {isAdmin && (
                       <button
                         type="button"
                         onClick={() => { onSelectTab('admin-roles'); setAdminDropdownOpen(false); }}
-                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition text-right ${
+                        className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition text-right ${
                           activeTab === 'admin-roles' ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 font-black' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                         }`}
                       >
-                        <Crown className="w-4 h-4 text-amber-500" />
-                        <span>إدارة الرتب 👑</span>
+                        <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
+                          <Crown className="w-4 h-4" />
+                        </div>
+                        <div className="flex flex-col text-start">
+                          <span>إدارة الأعضاء والاشتراكات</span>
+                          <span className="text-[10px] text-slate-400 font-normal">الرتب وتصفير الحسابات 👑</span>
+                        </div>
                       </button>
                     )}
+
+                    {/* إدارة المحاضرات */}
+                    <button
+                      type="button"
+                      onClick={() => { onSelectTab('admin-lectures'); setAdminDropdownOpen(false); }}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition text-right ${
+                        activeTab === 'admin-lectures' ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 font-black' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
+                        <Video className="w-4 h-4" />
+                      </div>
+                      <div className="flex flex-col text-start">
+                        <span>إدارة المحاضرات (CMS)</span>
+                        <span className="text-[10px] text-slate-400 font-normal">الفيديوهات والمذكرات 🎬</span>
+                      </div>
+                    </button>
+
+                    {/* بنك الأسئلة والاختبارات */}
+                    <button
+                      type="button"
+                      onClick={() => { onSelectTab('admin'); setAdminDropdownOpen(false); }}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition text-right ${
+                        activeTab === 'admin' ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400 font-black' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-purple-500/10 text-purple-500 flex items-center justify-center shrink-0">
+                        <Layers className="w-4 h-4" />
+                      </div>
+                      <div className="flex flex-col text-start">
+                        <span>بنك الأسئلة والاختبارات</span>
+                        <span className="text-[10px] text-slate-400 font-normal">إضافة وحذف وتعديل الأسئلة 📝</span>
+                      </div>
+                    </button>
                   </div>
                 )}
               </div>
@@ -257,6 +330,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               {darkMode ? <Sun className="w-4 h-4 text-amber-400 drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]" /> : <Moon className="w-4 h-4 text-slate-600" />}
             </button>
 
+
+            {/* زر رصيد النقاط ولوحة الأبطال السريع */}
+            <div 
+              onClick={() => handleTabClick('leaderboard')}
+              className="cursor-pointer flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs font-black text-amber-600 dark:text-amber-400 transition-all shadow-sm shrink-0"
+              title="رصيدك من نقاط طرقع (XP) - اضغط لفتح لوحة الأبطال"
+            >
+              <Zap className="w-3.5 h-3.5 fill-current text-amber-500" />
+              <span>{userPoints.toLocaleString()}</span>
+              <span className="text-[10px] hidden xs:inline">XP</span>
+            </div>
 
             {/* حالة تسجيل الدخول */}
             {currentUser && roleBadge ? (
@@ -442,7 +526,24 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <span>الدورات التأسيسية 🎓</span>
                   </div>
                   <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                    قريباً
+                    متاح
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => handleTabClick('leaderboard')}
+                  className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-bold transition ${
+                    activeTab === 'leaderboard'
+                      ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 font-black'
+                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Trophy className="w-4 h-4 text-amber-500" />
+                    <span>لوحة المتصدرين والأبطال 🏆</span>
+                  </div>
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                    {userPoints} XP
                   </span>
                 </button>
 
@@ -468,19 +569,49 @@ export const Navbar: React.FC<NavbarProps> = ({
               {canAccessAdmin && (
                 <div className="space-y-1 pt-2 border-t border-slate-200/80 dark:border-slate-800/80">
                   <p className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider px-2 mb-1">
-                    أدوات المشرف والمعلم
+                    أدوات المشرف والإدارة
                   </p>
+
+                  <button
+                    onClick={() => handleTabClick('admin-kashier' as any)}
+                    className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-bold transition ${
+                      activeTab === 'admin-kashier' || activeTab === 'kashier'
+                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-black'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <CreditCard className="w-4 h-4 text-emerald-500" />
+                      <span>بوابة كاشير والمدفوعات 💳</span>
+                    </div>
+                    <ChevronLeft className="w-4 h-4 opacity-50" />
+                  </button>
+
+                  <button
+                    onClick={() => handleTabClick('admin-security' as any)}
+                    className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-bold transition ${
+                      activeTab === 'admin-security' || activeTab === 'security'
+                        ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 font-black'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <ShieldCheck className="w-4 h-4 text-rose-500" />
+                      <span>درع الأمان وسجل المخالفات 🛡️</span>
+                    </div>
+                    <ChevronLeft className="w-4 h-4 opacity-50" />
+                  </button>
 
                   <button
                     onClick={() => handleTabClick('admin-lectures')}
                     className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-bold transition ${
                       activeTab === 'admin-lectures'
-                        ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400 font-black'
+                        ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 font-black'
                         : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60'
                     }`}
                   >
                     <div className="flex items-center gap-2.5">
-                      <Video className="w-4 h-4 text-purple-500" />
+                      <Video className="w-4 h-4 text-blue-500" />
                       <span>إدارة المحاضرات (CMS)</span>
                     </div>
                     <ChevronLeft className="w-4 h-4 opacity-50" />
@@ -495,7 +626,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     }`}
                   >
                     <div className="flex items-center gap-2.5">
-                      <ShieldCheck className="w-4 h-4 text-purple-500" />
+                      <Layers className="w-4 h-4 text-purple-500" />
                       <span>بنك الأسئلة والاختبارات</span>
                     </div>
                     <ChevronLeft className="w-4 h-4 opacity-50" />
@@ -512,7 +643,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     >
                       <div className="flex items-center gap-2.5">
                         <Crown className="w-4 h-4 text-amber-500" />
-                        <span>إدارة الرتب والصلاحيات 👑</span>
+                        <span>إدارة الأعضاء والاشتراكات 👑</span>
                       </div>
                       <ChevronLeft className="w-4 h-4 opacity-70" />
                     </button>

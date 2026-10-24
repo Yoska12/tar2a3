@@ -28,7 +28,7 @@ import { SecureVideoPlayer } from './SecureVideoPlayer';
 import { downloadTrackingService } from '../lib/downloadTrackingService';
 import { fileStorageService, isMobileDevice } from '../lib/fileStorageService';
 import { PdfPreviewModal } from './PdfPreviewModal';
-import { isUserSubscribed } from '../lib/subscriptionService';
+import { isUserSubscribed, coursesStorage } from '../lib/subscriptionService';
 
 interface ClassroomViewProps {
   currentModule: CourseModule;
@@ -49,14 +49,40 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
   onStartQuiz,
   onBackToRoadmap,
 }) => {
+  // حماية آمنة وشاشة بديلة في حال كان الدرس أو الباب غير محدد لمنع أي خطأ في واجهة React
+  if (!currentLesson || !currentModule) {
+    return (
+      <div className="min-h-[70vh] flex flex-col items-center justify-center p-6 text-center font-cairo">
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center text-3xl font-black mb-4">
+          🎓
+        </div>
+        <h2 className="text-xl font-black text-slate-900 dark:text-white mb-2">لم يتم تحديد المحاضرة المطلوبة</h2>
+        <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-6 leading-relaxed">
+          يرجى الرجوع إلى صفحة الدورات والمحاضرات واختيار أي درس ترغب في مشاهدته.
+        </p>
+        <button
+          onClick={onBackToRoadmap}
+          className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-black text-xs shadow-md hover:scale-105 transition cursor-pointer"
+        >
+          الرجوع للمحاضرات والدورات ⬅️
+        </button>
+      </div>
+    );
+  }
+
   const [activeTab, setActiveTab] = useState<'attachments' | 'quiz' | 'tarqa_tips'>('attachments');
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
-  const [isCompleted, setIsCompleted] = useState<boolean>(currentLesson.isCompleted || false);
+  const [isCompleted, setIsCompleted] = useState<boolean>(Boolean(currentLesson?.isCompleted));
   const [isPlayerFullscreen, setIsPlayerFullscreen] = useState<boolean>(false);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const youtubeIframeRef = useRef<HTMLIFrameElement>(null);
   const vimeoIframeRef = useRef<HTMLIFrameElement>(null);
+
+  // تحديث حالة الإكمال تلقائياً عند تغيير الدرس المختار
+  useEffect(() => {
+    setIsCompleted(Boolean(currentLesson?.isCompleted));
+  }, [currentLesson?.id, currentLesson?.isCompleted]);
 
   // حالة معاينة ملف الـ PDF المرفق
   const [previewFile, setPreviewFile] = useState<CourseFileItem | null>(null);
@@ -278,15 +304,16 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
   const handleToggleCompleted = () => {
     const nextState = !isCompleted;
     setIsCompleted(nextState);
-    if (nextState) {
+    if (nextState && currentLesson?.id) {
       onCompleteLesson(currentLesson.id);
     }
   };
 
-  // إيجاد الدرس التالي والسابق
-  const currentIndex = currentModule.lessons.findIndex((l) => l.id === currentLesson.id);
-  const prevLesson = currentIndex > 0 ? currentModule.lessons[currentIndex - 1] : null;
-  const nextLesson = currentIndex < currentModule.lessons.length - 1 ? currentModule.lessons[currentIndex + 1] : null;
+  // إيجاد الدرس التالي والسابق بأمان تام
+  const lessonsList = currentModule?.lessons || [];
+  const currentIndex = lessonsList.findIndex((l) => l?.id === currentLesson?.id);
+  const prevLesson = currentIndex > 0 ? lessonsList[currentIndex - 1] : null;
+  const nextLesson = currentIndex >= 0 && currentIndex < lessonsList.length - 1 ? lessonsList[currentIndex + 1] : null;
 
   return (
     <div className="min-h-screen bg-transparent text-slate-900 dark:text-slate-100 flex flex-col font-cairo">
@@ -309,6 +336,22 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
           <div className="flex items-center gap-1.5 text-xs min-w-0">
             <span className="text-slate-400 hidden md:inline-block truncate">{currentModule.title}</span>
             <span className="text-slate-400 hidden md:inline-block">•</span>
+            {(() => {
+              const currentInstructors = coursesStorage.getInstructors();
+              const instructor = currentInstructors.find((i) => i.id === (currentLesson.teacherId || 'teacher_1'));
+              const isT2 = currentLesson.teacherId === 'teacher_2';
+              const name = instructor?.fullName || instructor?.name || currentLesson.teacherName || (isT2 ? 'مدرس 2' : 'مدرس 1');
+              const icon = instructor?.avatarIcon || (isT2 ? '⚡' : '👨‍🏫');
+              return (
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
+                  isT2
+                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                    : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30'
+                }`}>
+                  {icon} {name}
+                </span>
+              );
+            })()}
             <span className="font-bold text-slate-900 dark:text-white truncate max-w-[110px] xs:max-w-[190px] sm:max-w-md text-[11px] sm:text-xs">
               {currentLesson.title}
             </span>
@@ -696,7 +739,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                     جاهز لتطبيق ما تعلمته في المحاضرة؟
                   </h4>
                   <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto mt-1">
-                    كويز سريع من 5 إلى 10 أسئلة مخصصة تماماً لأفكار هذا الدرس، لضمان استيعاب القواعد الذهنية قبل المتابعة.
+                    كويز تطبيقي مخصص لأفكار هذا الدرس للتأكد من فهم الشرح قبل المتابعة.
                   </p>
                 </div>
 
@@ -790,6 +833,10 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                         <span className="flex items-center gap-1">
                           <Clock className="w-3 h-3" />
                           <span>{lesson.durationMinutes} دقيقة</span>
+                        </span>
+                        <span>•</span>
+                        <span className={lesson.teacherId === 'teacher_2' ? 'text-emerald-500 font-bold' : 'text-amber-500 font-bold'}>
+                          {lesson.teacherId === 'teacher_2' ? '⚡ مدرس 2' : '👨‍🏫 مدرس 1'}
                         </span>
                         {lesson.attachments && lesson.attachments.length > 0 && (
                           <span>• {lesson.attachments.length} مذكرات</span>

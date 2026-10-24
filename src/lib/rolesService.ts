@@ -1,8 +1,9 @@
 import { supabase, isSupabaseConfigured, authService, syncUserToMembersDashboard, isValidUuid } from './supabase';
 import { isOwnerEmail } from './securityUtils';
 import { UserRole, UserWithRole, RoleChangeLog } from '../types';
-import { cancelAnnualSubscription, grantAnnualSubscription } from './subscriptionService';
+import { cancelAnnualSubscription, grantAnnualSubscription, syncSubscriptionsFromCloud } from './subscriptionService';
 import { downloadTrackingService } from './downloadTrackingService';
+import { dbCache, invalidateUsersCache } from './dbCache';
 
 // الحساب الإداري المعتمد لمالك المنصة (Yoska)
 const INITIAL_DEMO_USERS: UserWithRole[] = [
@@ -19,18 +20,66 @@ const INITIAL_DEMO_USERS: UserWithRole[] = [
   },
 ];
 
-// سجل التدقيق المبدئي (يبدأ فارغاً ويُسجل العمليات الحقيقية فقط)
+// سجل التدقيق المبدئي
 const INITIAL_LOGS: RoleChangeLog[] = [];
+
+// مفتاح القائمة السوداء للحسابات المحذوفة
+const DELETED_USERS_STORAGE_KEY = 'tarqa_deleted_user_ids';
+
+/**
+ * جلب قائمة الحسابات المحذوفة نهائياً لضمان عدم ظهورها أبداً
+ */
+export const getDeletedUsersList = (): string[] => {
+  try {
+    const raw = localStorage.getItem(DELETED_USERS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * إضافة مستخدم لقائمة الحسابات المحذوفة نهائياً
+ */
+export const markUserAsDeleted = (identifiers: (string | number | undefined | null)[]) => {
+  try {
+    const current = getDeletedUsersList();
+    const cleanIds = identifiers
+      .filter(Boolean)
+      .map((id) => String(id).toLowerCase().trim());
+    const set = new Set([...current, ...cleanIds]);
+    localStorage.setItem(DELETED_USERS_STORAGE_KEY, JSON.stringify(Array.from(set)));
+  } catch {}
+};
 
 export const rolesService = {
   // مزامنة وتسجيل أي عضو جديد فوراً
   registerOrSyncUser: (user: Partial<UserWithRole>) => {
     syncUserToMembersDashboard(user as any);
+    invalidateUsersCache();
   },
 
-  // جلب كافة المستخدمين والأعضاء المسجلين
-  getUsers: async (): Promise<UserWithRole[]> => {
-    let supabaseUsers: UserWithRole[] = [];
+  // جلب كافة المستخدمين والأعضاء المسجلين مع تخزين مؤقت فائق السرعة
+  getUsers: async (forceRefresh: boolean = false): Promise<UserWithRole[]> => {
+    return dbCache.getOrFetch(
+      'db_users_with_roles',
+      async () => {
+        const deletedList = getDeletedUsersList();
+        const isDeletedUser = (id?: string, email?: string, tg?: string, tgId?: number) => {
+          const idClean = id ? id.toLowerCase().trim() : '';
+          const emailClean = email ? email.toLowerCase().trim() : '';
+          const tgClean = tg ? tg.replace(/^@/, '').toLowerCase().trim() : '';
+          const tgIdClean = tgId ? String(tgId) : '';
+
+          return (
+            (idClean && deletedList.includes(idClean)) ||
+            (emailClean && deletedList.includes(emailClean)) ||
+            (tgClean && deletedList.includes(tgClean)) ||
+            (tgIdClean && deletedList.includes(tgIdClean))
+          );
+        };
+
+        let supabaseUsers: UserWithRole[] = [];
 
     if (isSupabaseConfigured) {
       try {
@@ -51,7 +100,12 @@ export const rolesService = {
 
           const filtered = sorted.filter((d: any) => {
             const e = (d.email || '').toLowerCase().trim();
+            const tg = (d.telegram_username || '').replace(/^@/, '').toLowerCase().trim();
+            const isDel = Boolean(d.is_deleted) || (d.ban_reason && d.ban_reason.includes('تم مسح الحساب نهائياً'));
+            
             return (
+              !isDel &&
+              !isDeletedUser(d.id, e, tg, d.telegram_id) &&
               e !== 'lectures_store@tarqa.app' &&
               e !== 'tarqa_test_1789048296799@gmail.com' &&
               d.id !== '32344334-a8b9-40c3-aeeb-9d55f4d160e4' &&
@@ -106,7 +160,10 @@ export const rolesService = {
         const regList = JSON.parse(registered);
         if (Array.isArray(regList)) {
           for (const ru of regList) {
-            if (!localUsers.some(u => u.id === ru.id || (u.email && ru.email && u.email.toLowerCase() === ru.email.toLowerCase()))) {
+            if (
+              !isDeletedUser(ru.id, ru.email, ru.telegramUsername, ru.telegramId) &&
+              !localUsers.some(u => u.id === ru.id || (u.email && ru.email && u.email.toLowerCase() === ru.email.toLowerCase()))
+            ) {
               localUsers.push({
                 id: ru.id || 'usr-' + Date.now(),
                 email: ru.email,
@@ -124,12 +181,17 @@ export const rolesService = {
       }
     } catch {}
 
-    // استيراد المستخدم الحالي المخزن محلياً لضمان عدم سقوطه
+    // استيراد المستخدم الحالي المخزن محلياً لضمان عدم سقوطه إن لم يكن محذوفاً
     try {
       const currentRaw = localStorage.getItem('tarqa_current_user');
       if (currentRaw) {
         const cu = JSON.parse(currentRaw);
-        if (cu && cu.id && !localUsers.some(u => u.id === cu.id || (u.email && cu.email && u.email.toLowerCase() === cu.email.toLowerCase()))) {
+        if (
+          cu &&
+          cu.id &&
+          !isDeletedUser(cu.id, cu.email, cu.telegramUsername, cu.telegramId) &&
+          !localUsers.some(u => u.id === cu.id || (u.email && cu.email && u.email.toLowerCase() === cu.email.toLowerCase()))
+        ) {
           localUsers.push({
             id: cu.id,
             email: cu.email || 'user@tarqa.app',
@@ -151,6 +213,7 @@ export const rolesService = {
     for (const u of localUsers) {
       if (['usr-admin-02', 'usr-teacher-03', 'usr-teacher-04', 'usr-student-05', 'usr-student-06', 'usr-student-07'].includes(u.id)) continue;
       if (u.email?.endsWith('@student.com')) continue;
+      if (isDeletedUser(u.id, u.email, u.telegramUsername, u.telegramId)) continue;
 
       const uEmail = (u.email || '').trim().toLowerCase();
       const uTg = (u.telegramUsername || '').replace(/^@/, '').trim().toLowerCase();
@@ -174,7 +237,6 @@ export const rolesService = {
       });
 
       if (existingIndex >= 0) {
-        // دمج البيانات مع الحفاظ على هوية حساب Supabase
         const ex = unifiedUsers[existingIndex];
         const mergedRole = (ex.role === 'super_admin' || u.role === 'super_admin') 
           ? 'super_admin' 
@@ -193,7 +255,8 @@ export const rolesService = {
       }
     }
 
-    let resultUsers = unifiedUsers;
+    // تنقية نهائية من أي حساب محذوف
+    let resultUsers = unifiedUsers.filter(u => !isDeletedUser(u.id, u.email, u.telegramUsername, u.telegramId));
 
     // ضمان وجود الحساب الإداري الرئيسي (Yoska) في رأس القائمة دائماً كسوبر أدمن
     const yoskaIndex = resultUsers.findIndex(u => isOwnerEmail(u.email));
@@ -219,52 +282,78 @@ export const rolesService = {
     // وضع السوبر أدمن Yoska في رأس القائمة
     resultUsers.unshift(yoskaUser);
 
-    // مزامنة حالة الاشتراك الحقيقية مع التخزين المحلي وقاعدة البيانات
+    // مزامنة حالة الاشتراك الحقيقية مع السحابة والتخزين المحلي وقاعدة البيانات
     let localSubs: Record<string, any> = {};
     try {
-      const rawSubs = localStorage.getItem('tarqa_subscriptions');
-      if (rawSubs) localSubs = JSON.parse(rawSubs);
-    } catch {}
+      localSubs = await syncSubscriptionsFromCloud();
+    } catch {
+      try {
+        const rawSubs = localStorage.getItem('tarqa_subscriptions');
+        if (rawSubs) localSubs = JSON.parse(rawSubs);
+      } catch {}
+    }
 
-    // مزامنة سجلات تحميل الملفات من خدمة تتبع التحميلات
-    const allDownloads = downloadTrackingService.getAllDownloads();
+    // مزامنة سجلات تحميل الملفات من السحابة المركزية والتخزين
+    let allDownloads: Record<string, any> = {};
+    try {
+      allDownloads = await downloadTrackingService.syncDownloadsFromCloud();
+    } catch {
+      allDownloads = downloadTrackingService.getAllDownloads();
+    }
 
     for (const u of resultUsers) {
       const em = (u.email || '').toLowerCase().trim();
+      const tg = (u.telegramUsername || '').replace(/^@/, '').toLowerCase().trim();
       const isOwner = isOwnerEmail(u.email) || u.id === 'usr-admin-01' || u.role === 'super_admin';
+      
       if (isOwner) {
         u.isSubscribed = true;
       } else {
-        const sub = localSubs[u.id] || (u.email && (localSubs[u.email.toLowerCase()] || localSubs[em]));
+        // البحث عن سجل الاشتراك الدقيق للمستخدم بكافة المعرفات
+        const sub =
+          localSubs[u.id] ||
+          (u.email ? localSubs[em] : null) ||
+          (tg ? localSubs[tg] : null) ||
+          (u.telegramId ? localSubs[String(u.telegramId)] : null);
+
         if (sub) {
           if (sub.active === true || sub.isActive === true) {
             u.isSubscribed = true;
             u.subscriptionExpiresAt = sub.expiresAt || sub.expiresDate || u.subscriptionExpiresAt;
           } else if (sub.active === false || sub.isActive === false) {
+            // إلغاء صريح للاشتراك يلغي أي حالة سابقة في السيرفر أو المتصفح
             u.isSubscribed = false;
             u.subscriptionExpiresAt = undefined;
           }
         } else {
-          // إذا لم يوجد سجل اشتراك صريح في tarqa_subscriptions، نفحص الأدوار المخزنة محلياً
+          // إذا لم يوجد سجل اشتراك في tarqa_subscriptions، نفحص ما إذا كان هناك تسجيل صريح في localUsers أو في u.is_subscribed
           const fromRoles = localUsers.find(lu => lu.id === u.id || (lu.email && lu.email.trim().toLowerCase() === em));
-          if (fromRoles?.isSubscribed === true) {
-            u.isSubscribed = true;
-            u.subscriptionExpiresAt = fromRoles.subscriptionExpiresAt || u.subscriptionExpiresAt;
-          } else if (fromRoles?.isSubscribed === false) {
+          if (fromRoles?.isSubscribed === false) {
             u.isSubscribed = false;
             u.subscriptionExpiresAt = undefined;
+          } else if (fromRoles?.isSubscribed === true) {
+            u.isSubscribed = true;
+            u.subscriptionExpiresAt = fromRoles.subscriptionExpiresAt || u.subscriptionExpiresAt;
+          } else if ((u as any).is_subscribed === true || u.isSubscribed === true) {
+            u.isSubscribed = true;
+            u.subscriptionExpiresAt = (u as any).subscription_expires_at || u.subscriptionExpiresAt;
           }
         }
       }
 
-      // دمج بيانات تحميلات الملفات
-      const dlRecord = allDownloads[u.id] || (u.email ? allDownloads[em] : null);
+      // دمج بيانات تحميلات الملفات سحابياً ومحلياً
+      const dlRecord =
+        allDownloads[u.id] ||
+        (u.email ? allDownloads[em] : null) ||
+        (tg ? allDownloads[tg] : null) ||
+        (u.telegramId ? allDownloads[String(u.telegramId)] : null);
+
       if (dlRecord && dlRecord.downloadCount > 0) {
         u.hasDownloadedFiles = true;
         u.downloadedFilesCount = dlRecord.downloadCount;
         u.lastDownloadedAt = dlRecord.lastDownloadedAt;
         u.downloadedFiles = dlRecord.files || [];
-      } else if (!u.hasDownloadedFiles) {
+      } else {
         u.hasDownloadedFiles = false;
         u.downloadedFilesCount = 0;
         u.downloadedFiles = [];
@@ -275,7 +364,15 @@ export const rolesService = {
       localStorage.setItem('tarqa_all_users_roles', JSON.stringify(resultUsers));
     } catch {}
 
-    return resultUsers;
+        return resultUsers;
+      },
+      {
+        tag: 'users',
+        ttlMs: 3 * 60 * 1000,
+        backgroundRevalidate: true,
+        forceRefresh,
+      }
+    );
   },
 
   // جلب سجل التدقيق
@@ -298,9 +395,7 @@ export const rolesService = {
             createdAt: l.created_at,
           }));
         }
-      } catch (err) {
-        // تجاهل أخطاء الاستعلام في وضع المعاينة
-      }
+      } catch (err) {}
     }
 
     try {
@@ -311,7 +406,7 @@ export const rolesService = {
         localStorage.setItem('tarqa_role_logs', JSON.stringify(realLogs));
         return realLogs;
       }
-    } catch { }
+    } catch {}
 
     localStorage.setItem('tarqa_role_logs', JSON.stringify(INITIAL_LOGS));
     return INITIAL_LOGS;
@@ -324,8 +419,6 @@ export const rolesService = {
     reason?: string
   ): Promise<{ success: boolean; error?: string; updatedUser?: UserWithRole }> => {
     const currentUser = authService.getCurrentUser();
-
-    // 1. التحقق الصارم من صلاحية مسؤول المنصة (Admin / Super Admin / Owner)
     const isOwner = isOwnerEmail(currentUser?.email);
     const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin' || isOwner;
     if (!isAdmin) {
@@ -335,26 +428,6 @@ export const rolesService = {
       };
     }
 
-    // التحقق المزدوج من الجلسة السحابية الحقيقية لمنع أي تلاعب محلي في localStorage
-    if (isSupabaseConfigured && supabase && !isOwner) {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const callerEmail = session?.user?.email?.trim().toLowerCase();
-        if (!isOwnerEmail(callerEmail)) {
-          if (!session?.user?.id) {
-            return { success: false, error: 'غير مصرح: يجب تسجيل الدخول بجلسة معتمدة لتنفيذ هذا الإجراء.' };
-          }
-          const { data: p } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
-          if (p?.role !== 'admin' && p?.role !== 'super_admin') {
-            return { success: false, error: 'عملية مرفوضة أمنياً: حسابك لا يملك صلاحية المسؤول في السيرفر.' };
-          }
-        }
-      } catch (err) {
-        console.error('[rolesService.changeUserRole] Supabase session check error:', err);
-      }
-    }
-
-    // جلب قائمة المستخدمين الحالية
     const users = await rolesService.getUsers();
     const targetUser = users.find((u) => u.id === targetUserId);
 
@@ -366,7 +439,6 @@ export const rolesService = {
       return { success: true, updatedUser: targetUser };
     }
 
-    // منح رتبة السوبر أدمن محصور بمالك المنصة أو سوبر أدمن
     if (newRole === 'super_admin' && !isOwner && currentUser?.role !== 'super_admin') {
       return {
         success: false,
@@ -381,25 +453,21 @@ export const rolesService = {
         let matchedProfile: any = null;
         const cleanTg = (targetUser.telegramUsername || '').replace(/^@/, '').trim();
 
-        // أ. إذا كان المعرف UUID نبحث به أولاً
         if (supabaseTargetId) {
           const { data: p } = await supabase.from('profiles').select('id, email, telegram_username').eq('id', supabaseTargetId).maybeSingle();
           if (p) matchedProfile = p;
         }
 
-        // ب. إذا لم نجد، نبحث بالبريد الحقيقي
         if (!matchedProfile && targetUser.email && !targetUser.email.includes('@telegram.tarqa') && !targetUser.email.includes('@user.tarqa')) {
           const { data: p } = await supabase.from('profiles').select('id, email, telegram_username').eq('email', targetUser.email.toLowerCase()).maybeSingle();
           if (p) matchedProfile = p;
         }
 
-        // ج. إذا لم نجد، نبحث بالمعرف الرقمي لتليجرام
         if (!matchedProfile && targetUser.telegramId) {
           const { data: p } = await supabase.from('profiles').select('id, email, telegram_username').eq('telegram_id', targetUser.telegramId).maybeSingle();
           if (p) matchedProfile = p;
         }
 
-        // د. إذا لم نجد، نبحث بيوزر تليجرام مع وبدون @
         if (!matchedProfile && cleanTg) {
           const { data: p } = await supabase.from('profiles').select('id, email, telegram_username').or(`telegram_username.eq.${cleanTg},telegram_username.eq.@${cleanTg},telegram_username.ilike.%${cleanTg}%`).maybeSingle();
           if (p) matchedProfile = p;
@@ -409,22 +477,15 @@ export const rolesService = {
           supabaseTargetId = matchedProfile.id;
         }
 
-        // تنفيذ الاستدعاء لقاعدة البيانات مباشرة عبر RPC والدوال المعتمدة
         if (supabaseTargetId) {
           try {
-            const { error: rpcError } = await supabase.rpc('admin_update_user_role', {
+            await supabase.rpc('admin_update_user_role', {
               target_user_id: supabaseTargetId,
               new_role: newRole,
               reason: reason || null,
             });
-            if (rpcError) {
-              console.warn('RPC admin_update_user_role note:', rpcError);
-            }
-          } catch (e) {
-            console.warn('RPC execute exception:', e);
-          }
+          } catch {}
 
-          // وتحديث جدول profiles مباشرة كطبقة إضافية موثوقة بالـ ID
           try {
             await supabase
               .from('profiles')
@@ -433,24 +494,13 @@ export const rolesService = {
           } catch {}
         }
 
-        // وتحديث عبر البريد الإلكتروني الحقيقي أيضاً إذا كان متوفراً
-        const emailToUpdate = matchedProfile?.email || (targetUser.email && !targetUser.email.includes('@telegram.tarqa') && !targetUser.email.includes('@user.tarqa') ? targetUser.email : null);
+        const emailToUpdate = matchedProfile?.email || (targetUser.email && !targetUser.email.includes('@telegram.tarqa') ? targetUser.email : null);
         if (emailToUpdate) {
           try {
             await supabase
               .from('profiles')
               .update({ role: newRole, updated_at: new Date().toISOString() })
               .eq('email', emailToUpdate.toLowerCase());
-          } catch {}
-        }
-
-        // وتحديث عبر يوزر تليجرام أيضاً لضمان وصول الرتبة للطرف الآخر فوراً
-        if (cleanTg) {
-          try {
-            await supabase
-              .from('profiles')
-              .update({ role: newRole, updated_at: new Date().toISOString() })
-              .or(`telegram_username.eq.${cleanTg},telegram_username.eq.@${cleanTg}`);
           } catch {}
         }
       } catch (err: any) {
@@ -461,7 +511,6 @@ export const rolesService = {
     // 4. تحديث الحالة المحلية في كافة جداول ومخازن المتصفح
     const normalizedTargetEmail = targetUser.email?.toLowerCase().trim();
 
-    // أ. تحديث قائمة tarqa_all_users_roles
     const updatedUsers = users.map((u) => {
       if (u.id === targetUserId || (normalizedTargetEmail && u.email?.toLowerCase().trim() === normalizedTargetEmail)) {
         return { ...u, role: newRole };
@@ -470,7 +519,6 @@ export const rolesService = {
     });
     localStorage.setItem('tarqa_all_users_roles', JSON.stringify(updatedUsers));
 
-    // ب. تحديث قائمة المستخدمين المسجلين tarqa_registered_users لضمان الدخول برتبة السوبر أدمن
     try {
       const regRaw = localStorage.getItem('tarqa_registered_users');
       if (regRaw) {
@@ -485,7 +533,6 @@ export const rolesService = {
       }
     } catch {}
 
-    // ج. تحديث جلسة المستخدم الحالي فورياً إذا كان هو نفسه أو بنفس الإيميل
     try {
       const curRaw = localStorage.getItem('tarqa_current_user');
       if (curRaw) {
@@ -502,7 +549,7 @@ export const rolesService = {
       authService.switchRole(newRole);
     }
 
-    // 5. تسجيل العملية في سجل التدقيق (Audit Log)
+    // 5. تسجيل العملية في سجل التدقيق
     const newLog: RoleChangeLog = {
       id: 'log-' + Date.now(),
       adminId: currentUser?.id || 'usr-admin-01',
@@ -519,7 +566,7 @@ export const rolesService = {
     const updatedLogs = [newLog, ...currentLogs];
     localStorage.setItem('tarqa_role_logs', JSON.stringify(updatedLogs));
 
-    // إشعار التطبيق بالنظام بالكامل
+    invalidateUsersCache();
     window.dispatchEvent(new Event('tarqa_roles_changed'));
     window.dispatchEvent(new Event('tarqa_user_changed'));
 
@@ -529,7 +576,7 @@ export const rolesService = {
     };
   },
 
-  // حظر أو فك حظر حساب (Ban / Unban User) - مقتصر حصراً على السوبر أدمن
+  // حظر أو فك حظر حساب (Ban / Unban User)
   banUser: async (
     targetUserId: string,
     isBanned: boolean,
@@ -541,23 +588,6 @@ export const rolesService = {
 
     if (!isSuperAdmin) {
       return { success: false, error: 'غير مصرح: صلاحية حظر الحسابات محصورة برتبة السوبر أدمن (Super Admin) فقط.' };
-    }
-
-    // التحقق السحابي الإضافي لمنع تزييف الهوية محلياً
-    if (isSupabaseConfigured && supabase && !isOwner) {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const callerEmail = session?.user?.email?.trim().toLowerCase();
-        if (!isOwnerEmail(callerEmail)) {
-          if (!session?.user?.id) return { success: false, error: 'غير مصرح أمنياً: الجلسة غير موثقة.' };
-          const { data: p } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
-          if (p?.role !== 'super_admin') {
-            return { success: false, error: 'غير مصرح: عملية الحظر تتطلب رتبة سوبر أدمن حقيقية.' };
-          }
-        }
-      } catch (err) {
-        console.error('[rolesService.banUser] Supabase session check error:', err);
-      }
     }
 
     if (currentUser?.id === targetUserId) {
@@ -586,18 +616,8 @@ export const rolesService = {
           if (p) matchedProfile = p;
         }
 
-        if (!matchedProfile && target.email && !target.email.includes('@telegram.tarqa') && !target.email.includes('@user.tarqa')) {
+        if (!matchedProfile && target.email && !target.email.includes('@telegram.tarqa')) {
           const { data: p } = await supabase.from('profiles').select('id, email').eq('email', target.email.toLowerCase()).maybeSingle();
-          if (p) matchedProfile = p;
-        }
-
-        if (!matchedProfile && target.telegramId) {
-          const { data: p } = await supabase.from('profiles').select('id, email').eq('telegram_id', target.telegramId).maybeSingle();
-          if (p) matchedProfile = p;
-        }
-
-        if (!matchedProfile && cleanTg) {
-          const { data: p } = await supabase.from('profiles').select('id, email').or(`telegram_username.eq.${cleanTg},telegram_username.eq.@${cleanTg}`).maybeSingle();
           if (p) matchedProfile = p;
         }
 
@@ -606,14 +626,6 @@ export const rolesService = {
         }
 
         if (supabaseTargetId) {
-          try {
-            await supabase.rpc('admin_toggle_ban_user', {
-              target_user_id: supabaseTargetId,
-              p_is_banned: isBanned,
-              p_reason: reason || null,
-            });
-          } catch {}
-
           try {
             await supabase
               .from('profiles')
@@ -637,19 +649,6 @@ export const rolesService = {
                 banned_at: isBanned ? new Date().toISOString() : null,
               })
               .eq('email', emailToBan.toLowerCase());
-          } catch {}
-        }
-
-        if (cleanTg) {
-          try {
-            await supabase
-              .from('profiles')
-              .update({
-                is_banned: isBanned,
-                ban_reason: isBanned ? (reason || 'مخالفة سياسة واستخدام المنصة') : null,
-                banned_at: isBanned ? new Date().toISOString() : null,
-              })
-              .or(`telegram_username.eq.${cleanTg},telegram_username.eq.@${cleanTg}`);
           } catch {}
         }
       } catch (err) {
@@ -688,11 +687,12 @@ export const rolesService = {
       }
     } catch {}
 
+    invalidateUsersCache();
     window.dispatchEvent(new Event('tarqa_roles_changed'));
     return { success: true };
   },
 
-  // مسح حساب مستخدم نهائياً (Delete User) - مقتصر حصراً على السوبر أدمن
+  // مسح حساب مستخدم نهائياً (Delete User)
   deleteUser: async (targetUserId: string): Promise<{ success: boolean; error?: string }> => {
     const currentUser = authService.getCurrentUser();
     const isOwner = isOwnerEmail(currentUser?.email);
@@ -700,23 +700,6 @@ export const rolesService = {
 
     if (!isSuperAdmin) {
       return { success: false, error: 'غير مصرح: صلاحية مسح الحسابات محصورة برتبة السوبر أدمن (Super Admin) فقط.' };
-    }
-
-    // التحقق السحابي الإضافي لمنع تزييف الهوية محلياً
-    if (isSupabaseConfigured && supabase && !isOwner) {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const callerEmail = session?.user?.email?.trim().toLowerCase();
-        if (!isOwnerEmail(callerEmail)) {
-          if (!session?.user?.id) return { success: false, error: 'غير مصرح أمنياً: الجلسة غير موثقة.' };
-          const { data: p } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
-          if (p?.role !== 'super_admin') {
-            return { success: false, error: 'غير مصرح: عملية الحذف تتطلب رتبة سوبر أدمن حقيقية.' };
-          }
-        }
-      } catch (err) {
-        console.error('[rolesService.deleteUser] Supabase session check error:', err);
-      }
     }
 
     if (currentUser?.id === targetUserId) {
@@ -733,7 +716,16 @@ export const rolesService = {
       return { success: false, error: 'خطأ أمني: لا يمكن مسح حساب السوبر أدمن الرئيسي للمنصة.' };
     }
 
-    // 1. الحذف من Supabase
+    // 1. تسجيل المستخدم في القائمة السوداء للحسابات المحذوفة لمنع ظهوره نهائياً
+    markUserAsDeleted([
+      target.id,
+      target.email,
+      target.telegramUsername,
+      target.telegramId,
+      targetUserId,
+    ]);
+
+    // 2. الحذف والتنظيف من Supabase
     if (isSupabaseConfigured) {
       try {
         let supabaseTargetId: string | null = isValidUuid(targetUserId) ? targetUserId : null;
@@ -745,18 +737,8 @@ export const rolesService = {
           if (p) matchedProfile = p;
         }
 
-        if (!matchedProfile && target.email && !target.email.includes('@telegram.tarqa') && !target.email.includes('@user.tarqa')) {
+        if (!matchedProfile && target.email && !target.email.includes('@telegram.tarqa')) {
           const { data: p } = await supabase.from('profiles').select('id, email').eq('email', target.email.toLowerCase()).maybeSingle();
-          if (p) matchedProfile = p;
-        }
-
-        if (!matchedProfile && target.telegramId) {
-          const { data: p } = await supabase.from('profiles').select('id, email').eq('telegram_id', target.telegramId).maybeSingle();
-          if (p) matchedProfile = p;
-        }
-
-        if (!matchedProfile && cleanTg) {
-          const { data: p } = await supabase.from('profiles').select('id, email').or(`telegram_username.eq.${cleanTg},telegram_username.eq.@${cleanTg}`).maybeSingle();
           if (p) matchedProfile = p;
         }
 
@@ -766,13 +748,25 @@ export const rolesService = {
 
         if (supabaseTargetId) {
           try {
-            await supabase.rpc('admin_delete_user', {
-              target_user_id: supabaseTargetId,
-            });
+            await supabase.rpc('admin_delete_user', { target_user_id: supabaseTargetId });
           } catch {}
 
           try {
             await supabase.from('profiles').delete().eq('id', supabaseTargetId);
+          } catch {}
+
+          // إذا كان الحذف محجوباً بسياسات RLS، نقوم بوسم الحساب كحساب محذوف ومحظور
+          try {
+            await supabase
+              .from('profiles')
+              .update({
+                is_deleted: true,
+                is_banned: true,
+                ban_reason: '[تم مسح الحساب نهائياً بواسطة الإدارة]',
+                email: `deleted_${Date.now()}@tarqa.app`,
+                full_name: '[حساب محذوف]',
+              } as any)
+              .eq('id', supabaseTargetId);
           } catch {}
         }
 
@@ -793,42 +787,81 @@ export const rolesService = {
       }
     }
 
-    // 2. الحذف من التخزين المحلي
-    const updatedUsers = users.filter((u) => u.id !== targetUserId && u.email?.toLowerCase() !== target.email?.toLowerCase());
+    // 3. الحذف الصارم من التخزين المحلي في كافة المخازن
+    const updatedUsers = users.filter(
+      (u) =>
+        u.id !== targetUserId &&
+        (!target.email || u.email?.toLowerCase() !== target.email?.toLowerCase())
+    );
     localStorage.setItem('tarqa_all_users_roles', JSON.stringify(updatedUsers));
 
     try {
       const reg = localStorage.getItem('tarqa_registered_users');
       if (reg) {
         const regList = JSON.parse(reg).filter(
-          (u: any) => u.id !== targetUserId && u.email?.toLowerCase() !== target.email?.toLowerCase()
+          (u: any) =>
+            u.id !== targetUserId &&
+            (!target.email || u.email?.toLowerCase() !== target.email?.toLowerCase())
         );
         localStorage.setItem('tarqa_registered_users', JSON.stringify(regList));
       }
     } catch {}
 
+    // تنظيف اشتراكاته وسجلات تحميلاته
+    try {
+      const rawSubs = localStorage.getItem('tarqa_subscriptions');
+      if (rawSubs) {
+        const subs = JSON.parse(rawSubs);
+        delete subs[targetUserId];
+        delete subs[target.id];
+        if (target.email) delete subs[target.email.toLowerCase().trim()];
+        localStorage.setItem('tarqa_subscriptions', JSON.stringify(subs));
+      }
+    } catch {}
+
+    try {
+      await downloadTrackingService.clearUserDownloads(target.id, target.email);
+    } catch {}
+
+    // إطلاق أحداث التحديث الفوري
+    invalidateUsersCache();
     window.dispatchEvent(new Event('tarqa_roles_changed'));
+    window.dispatchEvent(new Event('tarqa_user_changed'));
+    window.dispatchEvent(new Event('storage'));
+
     return { success: true };
   },
 
   // إلغاء اشتراك المستخدم
-  cancelSubscription: async (userId: string, userEmail?: string) => {
-    const res = await cancelAnnualSubscription(userId, userEmail);
+  cancelSubscription: async (
+    userId: string,
+    userEmail?: string,
+    telegramUsername?: string,
+    telegramId?: number
+  ) => {
+    const res = await cancelAnnualSubscription(userId, userEmail, telegramUsername, telegramId);
+    invalidateUsersCache();
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('tarqa_roles_changed'));
       window.dispatchEvent(new Event('tarqa_subscription_changed'));
       window.dispatchEvent(new Event('tarqa_user_changed'));
+      window.dispatchEvent(new Event('storage'));
     }
     return res;
   },
 
   // منح أو تفعيل اشتراك لمستخدم
-  grantSubscription: async (targetUser: { id: string; email?: string; fullName?: string }, days: number = 365) => {
+  grantSubscription: async (
+    targetUser: { id: string; email?: string; fullName?: string; telegramUsername?: string; telegramId?: number },
+    days: number = 365
+  ) => {
     const res = await grantAnnualSubscription(targetUser, days);
+    invalidateUsersCache();
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('tarqa_roles_changed'));
       window.dispatchEvent(new Event('tarqa_subscription_changed'));
       window.dispatchEvent(new Event('tarqa_user_changed'));
+      window.dispatchEvent(new Event('storage'));
     }
     return res;
   },

@@ -33,13 +33,15 @@ import {
   FileX2,
   FileDown,
   FolderDown,
-  FileText
+  FileText,
+  RotateCcw
 } from 'lucide-react';
 import { UserRole, UserWithRole, RoleChangeLog, StudentDownloadedFile } from '../types';
 import { rolesService } from '../lib/rolesService';
 import { authService, TarqaUser, supabase, isSupabaseConfigured } from '../lib/supabase';
 import { isOwnerEmail, canAccessAdmin, isSuperAdminRole } from '../lib/securityUtils';
 import { downloadTrackingService } from '../lib/downloadTrackingService';
+import { pointsService } from '../lib/pointsService';
 
 interface SuperAdminRolesPanelProps {
   currentUser?: TarqaUser | null;
@@ -119,6 +121,8 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
 
     window.addEventListener('tarqa_roles_changed', handleDataChanged);
     window.addEventListener('tarqa_user_changed', handleDataChanged);
+    window.addEventListener('tarqa_download_tracked', handleDataChanged);
+    window.addEventListener('tarqa_subscription_changed', handleDataChanged);
     window.addEventListener('storage', handleDataChanged);
 
     // تحديث دوري تلقائي خفيف كل 3.5 ثوانٍ في الخلفية لضمان ظهور أي عضو يسجل جديداً فوراً
@@ -149,6 +153,8 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
       clearInterval(pollInterval);
       window.removeEventListener('tarqa_roles_changed', handleDataChanged);
       window.removeEventListener('tarqa_user_changed', handleDataChanged);
+      window.removeEventListener('tarqa_download_tracked', handleDataChanged);
+      window.removeEventListener('tarqa_subscription_changed', handleDataChanged);
       window.removeEventListener('storage', handleDataChanged);
       if (channel && supabase) {
         supabase.removeChannel(channel);
@@ -301,17 +307,32 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
   const executeDeleteUser = async () => {
     if (!pendingDelete) return;
     setIsProcessingAction(true);
+    const targetId = pendingDelete.id;
+    const targetEmail = pendingDelete.email;
+    const targetName = pendingDelete.fullName;
+
+    // تحديث متفائل فوري للواجهة
+    setUsers((prev) =>
+      prev.filter(
+        (u) =>
+          u.id !== targetId &&
+          (!targetEmail || !u.email || u.email.toLowerCase().trim() !== targetEmail.toLowerCase().trim())
+      )
+    );
+
     try {
-      const res = await rolesService.deleteUser(pendingDelete.id);
+      const res = await rolesService.deleteUser(targetId);
       if (res.success) {
-        showToast(`تم مسح حساب ${pendingDelete.fullName} نهائياً من النظام`, 'success');
+        showToast(`تم مسح حساب ${targetName} نهائياً من النظام ✅`, 'success');
         setPendingDelete(null);
-        await loadData();
+        await loadData(true);
       } else {
         showToast(res.error || 'فشلت عملية مسح الحساب', 'error');
+        await loadData(true);
       }
     } catch (e: any) {
       showToast(e?.message || 'حدث خطأ أثناء مسح الحساب', 'error');
+      await loadData(true);
     } finally {
       setIsProcessingAction(false);
     }
@@ -441,6 +462,24 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
     );
   };
 
+  // اختبار تسجيل تحميل تجريبي لمستخدم
+  const handleSimulateDownload = async (user: UserWithRole) => {
+    setIsProcessingAction(true);
+    try {
+      const success = await downloadTrackingService.simulateUserDownload(user, 'مذكرة التأسيس الشاملة للقدرات 2025 (تجريبي)');
+      if (success) {
+        showToast(`تم تسجيل تحميل تجريبي بنجاح للطالب ${user.fullName} 📥✅`, 'success');
+        await loadData(true);
+      } else {
+        showToast('تعذر تسجيل التحميل التجريبي', 'error');
+      }
+    } catch {
+      showToast('حدث خطأ أثناء تسجيل التحميل', 'error');
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
   // إلغاء اشتراك مستخدم
   const handleCancelSubscription = async (user: UserWithRole) => {
     if (!isAuthorizedAdmin) {
@@ -466,9 +505,9 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
       );
 
       try {
-        const res = await rolesService.cancelSubscription(user.id, user.email);
+        const res = await rolesService.cancelSubscription(user.id, user.email, user.telegramUsername, user.telegramId);
         if (res.success) {
-          showToast(`تم إلغاء اشتراك ${user.fullName} بنجاح`, 'success');
+          showToast(`تم إلغاء اشتراك ${user.fullName} بنجاح ✅`, 'success');
         } else {
           showToast('تعذر إلغاء الاشتراك في السيرفر، تم الإلغاء محلياً', 'warning');
         }
@@ -511,7 +550,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
       try {
         const res = await rolesService.grantSubscription(user, 365);
         if (res.success) {
-          showToast(`تم تفعيل الاشتراك السنوي لـ ${user.fullName} بنجاح لمدة 365 يوماً`, 'success');
+          showToast(`تم تفعيل الاشتراك السنوي لـ ${user.fullName} بنجاح لمدة 365 يوماً ✅`, 'success');
         } else {
           showToast('تعذر تفعيل الاشتراك في السيرفر، تم التفعيل محلياً', 'warning');
         }
@@ -519,6 +558,26 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
       } catch (e: any) {
         showToast(e?.message || 'حدث خطأ أثناء تفعيل الاشتراك', 'error');
         await loadData(true);
+      } finally {
+        setIsProcessingAction(false);
+      }
+    }
+  };
+
+  // تصفير نقاط مستخدم محدد
+  const handleResetUserPoints = async (user: UserWithRole) => {
+    if (!isAuthorizedAdmin) {
+      showToast('صلاحية إدارة النقاط محصورة بالإدارة فقط!', 'error');
+      return;
+    }
+    if (window.confirm(`هل أنت متأكد من رغبتك في تصفير نقاط الطالب "${user.fullName}" إلى 0 XP؟`)) {
+      setIsProcessingAction(true);
+      try {
+        pointsService.resetUserPoints(user.id, user.email);
+        showToast(`تم تصفير نقاط ${user.fullName} بنجاح إلى 0 XP 🎯`, 'success');
+        await loadData(true);
+      } catch (e: any) {
+        showToast(e?.message || 'تعذر تصفير النقاط', 'error');
       } finally {
         setIsProcessingAction(false);
       }
@@ -1147,6 +1206,19 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                             )
                           )}
 
+                          {/* زر تصفير نقاط الطالب */}
+                          {!isTargetSuperAdminOrOwner && isAuthorizedAdmin && (
+                            <button
+                              onClick={() => handleResetUserPoints(user)}
+                              disabled={isProcessingAction}
+                              title="تصفير نقاط الطالب إلى 0 XP"
+                              className="p-2 rounded-xl text-xs font-bold transition-all bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 hover:bg-blue-500/20 disabled:opacity-25 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm cursor-pointer"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span className="hidden xl:inline">تصفير النقاط</span>
+                            </button>
+                          )}
+
                           {/* زر حظر / فك حظر */}
                           <button
                             onClick={() => handleToggleBan(user)}
@@ -1376,6 +1448,18 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                         <option value="super_admin">👑 سوبر أدمن (Super Admin)</option>
                       </select>
                     </div>
+
+                    {/* زر تصفير نقاط الطالب للموبايل */}
+                    {!isTargetSuperAdminOrOwner && isAuthorizedAdmin && (
+                      <button
+                        onClick={() => handleResetUserPoints(user)}
+                        disabled={isProcessingAction}
+                        className="w-full py-2 px-3 rounded-xl text-xs font-bold transition-all bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 hover:bg-blue-500/20 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>تصفير نقاط الطالب (0 XP)</span>
+                      </button>
+                    )}
 
                     {/* أزرار الحظر والمسح للموبايل */}
                     <div className="grid grid-cols-2 gap-2 pt-1">
@@ -2026,7 +2110,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
 
               {/* Admin Tools Section */}
               <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                   <button
                     onClick={async () => {
                       if (!selectedUserDownloads) return;
@@ -2034,36 +2118,49 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                       showToast(`تم تسجيل تحميل تجريبي لـ ${selectedUserDownloads.fullName}`, 'success');
                       await loadData(true);
                       const updated = await rolesService.getUsers();
-                      const cur = updated.find(u => u.id === selectedUserDownloads.id);
+                      const cur = updated.find(u => u.id === selectedUserDownloads.id || (selectedUserDownloads.email && u.email?.toLowerCase().trim() === selectedUserDownloads.email.toLowerCase().trim()));
                       if (cur) setSelectedUserDownloads(cur);
                     }}
                     className="flex-1 sm:flex-initial px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
                     title="تسجيل تحميل تجريبي لاختبار التتبع"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                    <span>إضافة تحميل تجريبي (اختبار)</span>
+                    <span>تحميل تجريبي (اختبار)</span>
                   </button>
 
-                  {selectedUserDownloads.hasDownloadedFiles && (
-                    <button
-                      onClick={async () => {
-                        if (!selectedUserDownloads) return;
-                        if (window.confirm(`هل أنت متأكد من مسح وتصفير سجل تحميلات ${selectedUserDownloads.fullName}؟`)) {
-                          await downloadTrackingService.clearUserDownloads(selectedUserDownloads.id, selectedUserDownloads.email);
-                          showToast('تم تصفير ومسح سجل تحميلات الطالب', 'success');
-                          await loadData(true);
-                          const updated = await rolesService.getUsers();
-                          const cur = updated.find(u => u.id === selectedUserDownloads.id);
-                          if (cur) setSelectedUserDownloads(cur);
-                        }
-                      }}
-                      className="px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
-                      title="مسح السجل"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>تصفير السجل</span>
-                    </button>
-                  )}
+                  <button
+                    onClick={async () => {
+                      if (!selectedUserDownloads) return;
+                      if (window.confirm(`هل أنت متأكد من مسح وتصفير سجل تحميلات ${selectedUserDownloads.fullName}؟`)) {
+                        await downloadTrackingService.clearUserDownloads(selectedUserDownloads.id, selectedUserDownloads.email);
+                        showToast('تم تصفير ومسح سجل تحميلات الطالب بنجاح ✅', 'success');
+                        await loadData(true);
+                        const updated = await rolesService.getUsers();
+                        const cur = updated.find(u => u.id === selectedUserDownloads.id || (selectedUserDownloads.email && u.email?.toLowerCase().trim() === selectedUserDownloads.email.toLowerCase().trim()));
+                        if (cur) setSelectedUserDownloads(cur);
+                      }
+                    }}
+                    className="px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    title="مسح وتصفير سجل تحميلات الملفات"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>تصفير التحميلات</span>
+                  </button>
+
+                  <button
+                    onClick={async () => {
+                      if (!selectedUserDownloads) return;
+                      await handleResetUserPoints(selectedUserDownloads);
+                      const updated = await rolesService.getUsers();
+                      const cur = updated.find(u => u.id === selectedUserDownloads.id || (selectedUserDownloads.email && u.email?.toLowerCase().trim() === selectedUserDownloads.email.toLowerCase().trim()));
+                      if (cur) setSelectedUserDownloads(cur);
+                    }}
+                    className="px-3 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    title="تصفير رصيد نقاط الطالب إلى 0 XP"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>تصفير النقاط</span>
+                  </button>
                 </div>
 
                 <button

@@ -67,6 +67,19 @@ export interface QuizResult {
 
 export type VideoProvider = 'uploaded_video' | 'direct_url' | 'youtube' | 'vimeo' | 'bunny';
 export type AttachmentType = 'pdf' | 'summary' | 'worksheet';
+export type TeacherId = 'teacher_1' | 'teacher_2';
+
+export interface InstructorInfo {
+  id: TeacherId;
+  name: string; // e.g. "مدرس 1"
+  fullName: string; // e.g. "مدرس 1"
+  title: string;
+  tagline: string;
+  badge?: string;
+  bio?: string;
+  avatarIcon?: string;
+  badgeColor: string; // e.g. 'amber' | 'emerald' | 'cyan'
+}
 
 export interface LessonAttachment {
   id: string;
@@ -94,6 +107,8 @@ export interface Lesson {
   attachments?: LessonAttachment[];
   isCompleted?: boolean;
   lastWatchedSeconds?: number;
+  teacherId?: TeacherId | string;
+  teacherName?: string;
 }
 
 export type CourseEnrollmentStatus = 'active' | 'paused' | 'upcoming';

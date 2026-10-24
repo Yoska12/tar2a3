@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /uploads/
+
+# Host
+Host: https://tarqa3.net
+
+# Sitemaps
+Sitemap: https://tarqa3.net/sitemap.xml

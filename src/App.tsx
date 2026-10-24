@@ -24,6 +24,7 @@ import { QuizInterface } from './components/QuizInterface';
 import { ResultView } from './components/ResultView';
 import { AuthModal } from './components/AuthModal';
 import { StudentDashboard } from './components/StudentDashboard';
+import { LeaderboardView } from './components/LeaderboardView';
 import { AdminPanel } from './components/AdminPanel';
 import { ClassroomView } from './components/ClassroomView';
 import { CoursesView } from './components/CoursesView';
@@ -35,7 +36,7 @@ import { CookieConsentBanner } from './components/CookieConsentBanner';
 import { ThemeTransitionOrb } from './components/ThemeTransitionOrb';
 import { OrangeGalaxyBackground } from './components/OrangeGalaxyBackground';
 import { mockFoundationModules } from './data/foundationModules';
-import { mockCategories, mockQuestions } from './data/mockQuestions';
+import { mockCategories } from './data/mockQuestions';
 import { QuizSettings, QuizResult, Category, Question, CourseModule, Lesson, UserRole, CourseFileItem } from './types';
 import { localScoreStorage, authService, TarqaUser, supabase, isSupabaseConfigured, syncUserToMembersDashboard, isValidUuid, isOwnerEmail } from './lib/supabase';
 import { canAccessAdmin, isSuperAdminRole } from './lib/securityUtils';
@@ -43,7 +44,8 @@ import { sendQuizCompletedNotification, TELEGRAM_BOT_URL, TELEGRAM_BOT_USERNAME 
 import { coursesStorage, CLOUD_LECTURES_STORE_ID, CLOUD_LECTURES_STORE_EMAIL, isUserSubscribed } from './lib/subscriptionService';
 import { questionBankStorage, CLOUD_QUESTIONS_STORE_ID, CLOUD_QUESTIONS_STORE_EMAIL } from './lib/questionBankStorage';
 import { initGlobalAntiHack, logSecurityViolation } from './lib/antiHack';
-import { SUPPORT_EMAIL, SUPPORT_PHONE_EGYPT, SUPPORT_PHONE_EGYPT_FORMATTED, SUPPORT_WHATSAPP_URL } from './lib/constants';
+import { downloadTrackingService } from './lib/downloadTrackingService';
+import { SUPPORT_EMAIL, SUPPORT_PHONE_EGYPT, SUPPORT_PHONE_EGYPT_FORMATTED, SUPPORT_TELEGRAM_URL, SUPPORT_TELEGRAM_BOT } from './lib/constants';
 import {
   persistViewState,
   getPersistedViewState,
@@ -52,8 +54,8 @@ import {
 } from './lib/indexedDbService';
 
 const getInitialNavigationState = (): {
-  view: 'home' | 'courses' | 'quiz' | 'result' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles';
-  tab: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles';
+  view: 'home' | 'courses' | 'quiz' | 'result' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles' | 'leaderboard';
+  tab: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles' | 'leaderboard';
 } => {
   if (typeof window === 'undefined') {
     return { view: 'home', tab: 'home' };
@@ -63,6 +65,7 @@ const getInitialNavigationState = (): {
 
   if (hash === 'courses') return { view: 'courses', tab: 'courses' };
   if (hash === 'dashboard') return { view: 'dashboard', tab: 'dashboard' };
+  if (hash === 'leaderboard') return { view: 'leaderboard', tab: 'leaderboard' };
   if (hash === 'admin') return { view: 'admin', tab: 'admin' };
   if (hash === 'admin-lectures') return { view: 'admin-lectures', tab: 'admin-lectures' };
   if (hash === 'admin-roles') return { view: 'admin-roles', tab: 'admin-roles' };
@@ -75,7 +78,7 @@ const getInitialNavigationState = (): {
   try {
     const savedView = localStorage.getItem('tarqa_current_view') as any;
     const savedTab = localStorage.getItem('tarqa_active_tab') as any;
-    if (savedView && ['home', 'courses', 'dashboard', 'admin', 'classroom', 'admin-lectures', 'admin-roles'].includes(savedView)) {
+    if (savedView && ['home', 'courses', 'dashboard', 'admin', 'classroom', 'admin-lectures', 'admin-roles', 'leaderboard'].includes(savedView)) {
       return {
         view: savedView,
         tab: savedTab || (savedView === 'classroom' ? 'courses' : savedView),
@@ -89,29 +92,31 @@ const getInitialNavigationState = (): {
 export const App: React.FC = () => {
   // وضع الشاشة النشطة مع استرجاع تلقائي لحالة الدورات أو لوحة التحكم لمنع فقدان الصفحة عند التحديث
   const initialNav = getInitialNavigationState();
-  const [currentView, setCurrentView] = useState<'home' | 'courses' | 'quiz' | 'result' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles'>(initialNav.view);
-  const [activeTab, setActiveTab] = useState<'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles'>(initialNav.tab);
+  const [currentView, setCurrentView] = useState<'home' | 'courses' | 'quiz' | 'result' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles' | 'leaderboard'>(initialNav.view);
+  const [activeTab, setActiveTab] = useState<'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles' | 'leaderboard' | 'admin-kashier' | 'admin-security' | 'kashier' | 'security'>(initialNav.tab);
   const [modules, setModules] = useState<CourseModule[]>(() => coursesStorage.getModules());
   const [courseFiles, setCourseFiles] = useState<CourseFileItem[]>(() => coursesStorage.getFiles());
   const [activeModule, setActiveModule] = useState<CourseModule>(() => {
     const allMods = coursesStorage.getModules();
+    const fallbackMod = allMods[0] || mockFoundationModules[0];
     const savedModId = typeof window !== 'undefined' ? localStorage.getItem('tarqa_active_module_id') : null;
     if (savedModId) {
       const found = allMods.find((m) => m.id === savedModId);
       if (found) return found;
     }
-    return allMods[0] || mockFoundationModules[0];
+    return fallbackMod;
   });
   const [activeLesson, setActiveLesson] = useState<Lesson>(() => {
     const allMods = coursesStorage.getModules();
+    const fallbackMod = allMods[0] || mockFoundationModules[0];
     const savedModId = typeof window !== 'undefined' ? localStorage.getItem('tarqa_active_module_id') : null;
     const savedLessonId = typeof window !== 'undefined' ? localStorage.getItem('tarqa_active_lesson_id') : null;
-    const targetMod = (savedModId && allMods.find((m) => m.id === savedModId)) || allMods[0] || mockFoundationModules[0];
-    if (savedLessonId && targetMod.lessons) {
-      const foundL = targetMod.lessons.find((l) => l.id === savedLessonId);
+    const targetMod = (savedModId && allMods.find((m) => m.id === savedModId)) || fallbackMod;
+    if (savedLessonId && Array.isArray(targetMod?.lessons)) {
+      const foundL = targetMod.lessons.find((l) => l?.id === savedLessonId);
       if (foundL) return foundL;
     }
-    return targetMod?.lessons?.[0] || mockFoundationModules[0].lessons[0];
+    return targetMod?.lessons?.[0] || mockFoundationModules[0]?.lessons?.[0];
   });
   const [isAuthOpen, setIsAuthOpen] = useState<boolean>(false);
   const [authInitialTab, setAuthInitialTab] = useState<'signin' | 'signup'>('signin');
@@ -120,16 +125,17 @@ export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<TarqaUser | null>(() => {
     return authService.getCurrentUser();
   });
+  const [adminTab, setAdminTab] = useState<'questions' | 'quizBuilder' | 'security' | 'kashier' | 'dbCache'>('questions');
 
   // دالة مركزية للتنقل بين الشاشات والتبويبات مع حفظ الحالة في IndexedDB والتخزين ومزامنة الرابط
   const navigateToView = (
-    view: 'home' | 'courses' | 'quiz' | 'result' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles',
-    tab?: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles',
+    view: 'home' | 'courses' | 'quiz' | 'result' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles' | 'leaderboard',
+    tab?: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles' | 'leaderboard' | 'admin-kashier' | 'admin-security' | 'kashier' | 'security',
     extra?: { moduleId?: string; lessonId?: string }
   ) => {
     const targetTab = tab || (view === 'classroom' ? 'courses' : (view as any));
     setCurrentView(view);
-    setActiveTab(targetTab);
+    setActiveTab(targetTab as any);
 
     // مزامنة الـ URL Hash بدون إعادة تحميل الصفحة لضمان عمل أزرار المتصفح (Back/Forward) والريفرش
     if (typeof window !== 'undefined') {
@@ -207,9 +213,24 @@ export const App: React.FC = () => {
         setCurrentView('dashboard');
         setActiveTab('dashboard');
         persistViewState({ currentView: 'dashboard', activeTab: 'dashboard' }).catch(() => {});
+      } else if (hash === 'leaderboard') {
+        setCurrentView('leaderboard');
+        setActiveTab('leaderboard');
+        persistViewState({ currentView: 'leaderboard', activeTab: 'leaderboard' }).catch(() => {});
+      } else if (hash === 'kashier' || hash === 'admin-kashier') {
+        setCurrentView('admin');
+        setActiveTab('admin-kashier');
+        setAdminTab('kashier');
+        persistViewState({ currentView: 'admin', activeTab: 'admin-kashier' }).catch(() => {});
+      } else if (hash === 'security' || hash === 'admin-security') {
+        setCurrentView('admin');
+        setActiveTab('admin-security');
+        setAdminTab('security');
+        persistViewState({ currentView: 'admin', activeTab: 'admin-security' }).catch(() => {});
       } else if (hash === 'admin') {
         setCurrentView('admin');
         setActiveTab('admin');
+        setAdminTab('questions');
         persistViewState({ currentView: 'admin', activeTab: 'admin' }).catch(() => {});
       } else if (hash === 'admin-lectures') {
         setCurrentView('admin-lectures');
@@ -535,24 +556,69 @@ export const App: React.FC = () => {
                 if (updated.ban_reason) {
                   try {
                     const parsed = JSON.parse(updated.ban_reason);
-                    const newMods = Array.isArray(parsed) ? parsed : (parsed?.modules || []);
-                    const hasRealLessons = Array.isArray(newMods) && newMods.some((m: any) => Array.isArray(m.lessons) && m.lessons.length > 0);
-                    if (hasRealLessons) {
-                      localStorage.setItem('tarqa_custom_modules_v7', JSON.stringify(newMods));
-                      localStorage.setItem('tarqa_custom_modules_v6', JSON.stringify(newMods));
-                      setModules([...newMods]);
+                    if (Array.isArray(parsed?.deletedLessonIds)) {
+                      parsed.deletedLessonIds.forEach((id: string) => coursesStorage.addDeletedLessonId(id));
                     }
-                    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.files) && parsed.files.length > 0) {
-                      localStorage.setItem('tarqa_custom_files_v1', JSON.stringify(parsed.files));
-                      setCourseFiles([...parsed.files]);
+                    if (Array.isArray(parsed?.deletedFileIds)) {
+                      parsed.deletedFileIds.forEach((id: string) => coursesStorage.addDeletedFileId(id));
+                    }
+                    const deletedLessonsSet = new Set(coursesStorage.getDeletedLessonIds());
+                    const deletedFilesSet = new Set(coursesStorage.getDeletedFileIds());
+
+                    const newMods = Array.isArray(parsed) ? parsed : (parsed?.modules || []);
+                    if (Array.isArray(newMods)) {
+                      const cleanedMods = newMods.map((m: any) => ({
+                        ...m,
+                        lessons: (m.lessons || []).filter((l: any) => !deletedLessonsSet.has(l.id)),
+                      }));
+                      localStorage.setItem('tarqa_custom_modules_v7', JSON.stringify(cleanedMods));
+                      localStorage.setItem('tarqa_custom_modules_v6', JSON.stringify(cleanedMods));
+                      setModules([...cleanedMods]);
+                    }
+                    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.files)) {
+                      const cleanedFiles = parsed.files.filter((f: any) => !deletedFilesSet.has(f.id));
+                      localStorage.setItem('tarqa_custom_files_v1', JSON.stringify(cleanedFiles));
+                      setCourseFiles([...cleanedFiles]);
                       if (typeof window !== 'undefined') {
-                        window.dispatchEvent(new CustomEvent('tarqa_courses_files_changed', { detail: parsed.files }));
+                        window.dispatchEvent(new CustomEvent('tarqa_courses_files_changed', { detail: cleanedFiles }));
                       }
                     }
-                    // في حال تضمنت النسخة الاحتياطية أسئلة
-                    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.questions)) {
-                      localStorage.setItem('tarqa_custom_questions_v1', JSON.stringify(parsed.questions));
-                      setAllQuestions([...parsed.questions]);
+                    // مزامنة الاشتراكات السحابية المركزية فوراً
+                    if (parsed && typeof parsed === 'object' && parsed.subscriptions) {
+                      try {
+                        const cloudSubs = parsed.subscriptions;
+                        const rawLocal = localStorage.getItem('tarqa_subscriptions') || '{}';
+                        const localSubs = JSON.parse(rawLocal);
+                        const mergedSubs = { ...localSubs, ...cloudSubs };
+                        localStorage.setItem('tarqa_subscriptions', JSON.stringify(mergedSubs));
+
+                        const currentU = authService.getCurrentUser();
+                        if (currentU) {
+                          const mySub = cloudSubs[currentU.id] || (currentU.email && (cloudSubs[currentU.email.toLowerCase()] || cloudSubs[currentU.email]));
+                          if (mySub && (mySub.isActive === true || mySub.active === true)) {
+                            const exp = mySub.expiresDate || mySub.expiresAt;
+                            const notExp = !exp || new Date(exp).getTime() > Date.now();
+                            if (notExp && (!currentU.isSubscribed || currentU.subscriptionExpiresAt !== exp)) {
+                              currentU.isSubscribed = true;
+                              currentU.subscriptionExpiresAt = exp;
+                              authService.setCurrentUser(currentU);
+                              setCurrentUser({ ...currentU });
+                              window.dispatchEvent(new CustomEvent('tarqa_subscription_changed', { detail: mySub }));
+                            }
+                          }
+                        }
+                      } catch {}
+                    }
+
+                    // مزامنة سجلات التحميلات السحابية
+                    if (parsed && typeof parsed === 'object' && parsed.downloads) {
+                      try {
+                        const rawLocalDl = localStorage.getItem('tarqa_user_downloads') || '{}';
+                        const localDl = JSON.parse(rawLocalDl);
+                        const mergedDl = { ...localDl, ...parsed.downloads };
+                        localStorage.setItem('tarqa_user_downloads', JSON.stringify(mergedDl));
+                        window.dispatchEvent(new Event('tarqa_roles_changed'));
+                      } catch {}
                     }
                   } catch (e) {
                     console.warn('[App] Realtime parse cloud modules note:', e);
@@ -576,6 +642,8 @@ export const App: React.FC = () => {
                 const isOwner = isOwnerEmail(cur.email) || (updated.email && isOwnerEmail(updated.email));
                 const newRole: UserRole = isOwner ? 'super_admin' : (updated.role as UserRole || cur.role);
                 const newFullName = isOwner ? 'Yoska' : (updated.full_name || cur.fullName);
+                const newSubscribed = isOwner ? true : (Boolean(updated.is_subscribed) || Boolean(cur.isSubscribed));
+                const newSubExpires = isOwner ? undefined : (updated.subscription_expires_at || cur.subscriptionExpiresAt);
 
                 const updatedUser: TarqaUser = {
                   ...cur,
@@ -584,12 +652,15 @@ export const App: React.FC = () => {
                   fullName: newFullName,
                   email: (updated.email && !updated.email.includes('@telegram.tarqa')) ? updated.email : cur.email,
                   isBanned: Boolean(updated.is_banned),
+                  isSubscribed: newSubscribed,
+                  subscriptionExpiresAt: newSubExpires,
                 };
 
                 authService.setCurrentUser(updatedUser);
                 setCurrentUser(updatedUser);
                 syncUserToMembersDashboard(updatedUser);
                 window.dispatchEvent(new Event('tarqa_user_changed'));
+                window.dispatchEvent(new CustomEvent('tarqa_subscription_changed', { detail: { isSubscribed: newSubscribed } }));
                 window.dispatchEvent(new Event('tarqa_roles_changed'));
               }
             }
@@ -606,24 +677,36 @@ export const App: React.FC = () => {
     }
   }, []);
 
-
-  // الاستماع الفوري لتغييرات الرتب والمستخدمين عبر النوافذ والتبويبات
+  // الاستماع الفوري لتغييرات الرتب والمستخدمين والاشتراكات عبر النوافذ والتبويبات والتركيز
   useEffect(() => {
     const handleUserOrRoleChanged = () => {
       const cur = authService.getCurrentUser();
       setCurrentUser(cur ? { ...cur } : null);
     };
 
+    const handleFocusSync = () => {
+      authService.refreshCurrentUser().then((u) => {
+        if (u) setCurrentUser({ ...u });
+      }).catch(() => {});
+      coursesStorage.syncFromCloud().catch(() => {});
+      downloadTrackingService.syncDownloadsFromCloud().catch(() => {});
+    };
+
     window.addEventListener('tarqa_user_changed', handleUserOrRoleChanged);
-    window.addEventListener('tarqa_roles_changed', handleUserOrRoleChanged);
     window.addEventListener('tarqa_subscription_changed', handleUserOrRoleChanged);
-    window.addEventListener('storage', handleUserOrRoleChanged);
+    window.addEventListener('tarqa_roles_changed', handleUserOrRoleChanged);
+    window.addEventListener('focus', handleFocusSync);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        handleFocusSync();
+      }
+    });
 
     return () => {
       window.removeEventListener('tarqa_user_changed', handleUserOrRoleChanged);
-      window.removeEventListener('tarqa_roles_changed', handleUserOrRoleChanged);
       window.removeEventListener('tarqa_subscription_changed', handleUserOrRoleChanged);
-      window.removeEventListener('storage', handleUserOrRoleChanged);
+      window.removeEventListener('tarqa_roles_changed', handleUserOrRoleChanged);
+      window.removeEventListener('focus', handleFocusSync);
     };
   }, []);
 
@@ -648,7 +731,7 @@ export const App: React.FC = () => {
   }, [darkMode]);
 
   // حالة الاختبار الحالي
-  const [activeQuestions, setActiveQuestions] = useState<Question[]>(mockQuestions);
+  const [activeQuestions, setActiveQuestions] = useState<Question[]>(() => questionBankStorage.getQuestions());
   const [quizSettings, setQuizSettings] = useState<QuizSettings>({
     mode: 'Mock_Exam',
     timeLimitSeconds: 600,
@@ -698,14 +781,11 @@ export const App: React.FC = () => {
   useEffect(() => {
     coursesStorage.syncFromCloud().then((cloudData) => {
       if (cloudData?.modules && Array.isArray(cloudData.modules)) {
-        const hasLessons = cloudData.modules.some((m) => Array.isArray(m.lessons) && m.lessons.length > 0);
-        if (hasLessons) {
-          setModules([...cloudData.modules]);
-        } else {
-          setModules(coursesStorage.getModules());
-        }
+        setModules([...cloudData.modules]);
+      } else {
+        setModules(coursesStorage.getModules());
       }
-      if (cloudData?.files && Array.isArray(cloudData.files) && cloudData.files.length > 0) {
+      if (cloudData?.files && Array.isArray(cloudData.files)) {
         setCourseFiles([...cloudData.files]);
       } else {
         setCourseFiles(coursesStorage.getFiles());
@@ -840,9 +920,11 @@ export const App: React.FC = () => {
   };
 
   // دالة موحدة للتنقل بين التبويبات والشاشات مع حفظ الحالة في IndexedDB والتخزين
-  const handleTabSelect = (tab: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles') => {
+  const handleTabSelect = (tab: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles' | 'leaderboard' | 'admin-kashier' | 'admin-security' | 'kashier' | 'security') => {
     if (tab === 'courses') {
       navigateToView('courses', 'courses');
+    } else if (tab === 'leaderboard') {
+      navigateToView('leaderboard', 'leaderboard');
     } else if (tab === 'speed') {
       startSpeedChallenge();
     } else if (tab === 'dashboard') {
@@ -852,11 +934,28 @@ export const App: React.FC = () => {
       } else {
         navigateToView('dashboard', 'dashboard');
       }
+    } else if (tab === 'admin-kashier' || tab === 'kashier') {
+      if (!currentUser || !canAccessAdmin(currentUser)) {
+        setAuthInitialTab('signin');
+        setIsAuthOpen(true);
+      } else {
+        setAdminTab('kashier');
+        navigateToView('admin', 'admin-kashier' as any);
+      }
+    } else if (tab === 'admin-security' || tab === 'security') {
+      if (!currentUser || !canAccessAdmin(currentUser)) {
+        setAuthInitialTab('signin');
+        setIsAuthOpen(true);
+      } else {
+        setAdminTab('security');
+        navigateToView('admin', 'admin-security' as any);
+      }
     } else if (tab === 'admin') {
       if (!currentUser || !canAccessAdmin(currentUser)) {
         setAuthInitialTab('signin');
         setIsAuthOpen(true);
       } else {
+        setAdminTab('questions');
         navigateToView('admin', 'admin');
       }
     } else if (tab === 'admin-lectures') {
@@ -965,6 +1064,21 @@ export const App: React.FC = () => {
             onStartPractice={(cat) => startPracticeMode(cat)}
             onOpenAuth={() => setIsAuthOpen(true)}
             onNavigateCourses={() => navigateToView('courses', 'courses')}
+            onNavigateLeaderboard={() => navigateToView('leaderboard', 'leaderboard')}
+          />
+        </main>
+      )}
+
+      {/* ======================================================================= */}
+      {/* 3.5. لوحة المتصدرين ونظام النقاط (Leaderboard & XP Hall of Fame) */}
+      {/* ======================================================================= */}
+      {currentView === 'leaderboard' && (
+        <main className="flex-1 w-full pb-24 md:pb-8">
+          <LeaderboardView
+            currentUser={currentUser}
+            onOpenAuth={() => setIsAuthOpen(true)}
+            onNavigateCourses={() => navigateToView('courses', 'courses')}
+            onNavigateDashboard={() => navigateToView('dashboard', 'dashboard')}
           />
         </main>
       )}
@@ -979,6 +1093,12 @@ export const App: React.FC = () => {
               questions={allQuestions}
               categories={mockCategories}
               quizzes={customQuizzes}
+              initialTab={adminTab}
+              onTabChange={(tab) => {
+                setAdminTab(tab);
+                const targetTab = tab === 'kashier' ? 'admin-kashier' : tab === 'security' ? 'admin-security' : 'admin';
+                setActiveTab(targetTab as any);
+              }}
               onAddQuestion={(newQ) => {
                 const updated = questionBankStorage.addQuestion(newQ);
                 setAllQuestions([...updated]);
@@ -1179,8 +1299,8 @@ export const App: React.FC = () => {
       {currentView === 'classroom' && (
         <main className="flex-1 w-full pb-24 md:pb-8">
           <ClassroomView
-            currentModule={activeModule}
-            currentLesson={activeLesson}
+            currentModule={activeModule || modules[0] || mockFoundationModules[0]}
+            currentLesson={activeLesson || activeModule?.lessons?.[0] || modules[0]?.lessons?.[0] || mockFoundationModules[0]?.lessons?.[0]}
             currentUser={currentUser}
             onSelectLesson={(lesson) => setActiveLesson(lesson)}
             onCompleteLesson={handleCompleteLesson}
@@ -1261,20 +1381,10 @@ export const App: React.FC = () => {
               <div className="lg:col-span-4 flex justify-center">
                 <div className="w-56 h-56 sm:w-64 sm:h-64 rounded-3xl border border-amber-500/40 dark:border-amber-400/50 bg-gradient-to-b from-amber-400 to-amber-500 flex items-center justify-center p-6 shadow-xl dark:shadow-[0_0_50px_rgba(245,158,11,0.35)] relative overflow-hidden group">
                   <img
-                    src="/frame_000012.png"
+                    src="/frame_00001.png"
                     alt="شعار منصة طرقع"
-                    className="w-full h-auto max-h-44 object-contain drop-shadow-md group-hover:scale-105 transition-transform duration-300"
-                    onError={(e) => {
-                      const el = e.target as HTMLElement;
-                      el.style.display = 'none';
-                      const fallback = el.parentElement?.querySelector('.logo-fallback') as HTMLElement;
-                      if (fallback) fallback.style.display = 'flex';
-                    }}
+                    className="w-full h-auto max-h-44 object-contain drop-shadow-xl group-hover:scale-105 transition-transform duration-300"
                   />
-                  <div className="logo-fallback hidden flex-col items-center justify-center gap-2 text-slate-950">
-                    <span className="text-6xl font-black font-cairo">ط</span>
-                    <span className="text-xl font-black">منصة طرقع</span>
-                  </div>
                 </div>
               </div>
 
@@ -1514,14 +1624,14 @@ export const App: React.FC = () => {
             </a>
             <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">•</span>
             <a
-              href={SUPPORT_WHATSAPP_URL}
+              href={SUPPORT_TELEGRAM_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold transition text-[11px]"
-              title="محادثة واتساب مباشرة"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 font-bold transition text-[11px]"
+              title="تواصل عبر تيليجرام"
             >
               <MessageSquare className="w-3 h-3" />
-              <span>واتساب الدعم (مصر)</span>
+              <span>@{SUPPORT_TELEGRAM_BOT}</span>
             </a>
           </div>
         </div>

@@ -2,6 +2,7 @@ import { Question } from '../types';
 import { mockQuestions } from '../data/mockQuestions';
 import { supabase, isSupabaseConfigured } from './supabase';
 import { CLOUD_LECTURES_STORE_ID } from './subscriptionService';
+import { dbCache, invalidateQuestionsCache } from './dbCache';
 
 export const CLOUD_QUESTIONS_STORE_ID = 'a0a2797a-5bcb-4987-b9bc-43b6a3d36876';
 export const CLOUD_QUESTIONS_STORE_EMAIL = 'tarqa_test_1789048296799@gmail.com';
@@ -21,28 +22,54 @@ export interface CustomQuizItem {
 
 /**
  * إدارة وتخزين بنك الأسئلة والاختبارات المخصصة
- * مع المزامنة السحابية اللحظية (Supabase Cloud Sync) لكافة المستخدمين والطلاب
+ * مع التخزين المؤقت فائق السرعة (Database Cache) والمزامنة السحابية اللحظية (Supabase Cloud Sync)
  */
 export const questionBankStorage = {
-  // جلب الأسئلة من التخزين المحلي أو الأسئلة الافتراضية
+  // جلب الأسئلة من كاش الذاكرة السريع أو التخزين
   getQuestions(): Question[] {
+    const cached = dbCache.get<Question[]>('db_questions_list');
+    if (cached && Array.isArray(cached) && cached.length > 0) {
+      return cached;
+    }
+
+    try {
+      if (typeof window !== 'undefined' && !localStorage.getItem('tarqa_clean_mocks_questions_v2')) {
+        const stored = localStorage.getItem(STORAGE_KEY_QUESTIONS);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            const filtered = parsed.filter(
+              (q: Question) =>
+                !['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'q10'].includes(q.id)
+            );
+            localStorage.setItem(STORAGE_KEY_QUESTIONS, JSON.stringify(filtered));
+          }
+        }
+        localStorage.setItem('tarqa_clean_mocks_questions_v2', 'true');
+      }
+    } catch {}
+
     try {
       const stored = localStorage.getItem(STORAGE_KEY_QUESTIONS);
       if (stored !== null) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
+          dbCache.set('db_questions_list', parsed, { tag: 'questions', ttlMs: 30 * 60 * 1000 });
           return parsed;
         }
       }
     } catch (e) {
       console.warn('[questionBankStorage] Error reading local questions:', e);
     }
+    
+    dbCache.set('db_questions_list', mockQuestions, { tag: 'questions', ttlMs: 30 * 60 * 1000 });
     return [...mockQuestions];
   },
 
-  // حفظ الأسئلة محلياً ومزامنتها سحابياً فوراً
+  // حفظ الأسئلة محلياً وفي كاش الذاكرة ومزامنتها سحابياً فوراً
   saveQuestions(questions: Question[]): void {
     try {
+      dbCache.set('db_questions_list', questions, { tag: 'questions', ttlMs: 30 * 60 * 1000 });
       localStorage.setItem(STORAGE_KEY_QUESTIONS, JSON.stringify(questions));
       if (typeof window !== 'undefined') {
         window.dispatchEvent(
@@ -90,17 +117,24 @@ export const questionBankStorage = {
 
   // جلب الاختبارات المخصصة
   getQuizzes(): CustomQuizItem[] {
+    const cached = dbCache.get<CustomQuizItem[]>('db_quizzes_list');
+    if (cached && Array.isArray(cached)) {
+      return cached;
+    }
+
     try {
       const stored = localStorage.getItem(STORAGE_KEY_QUIZZES);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
+          dbCache.set('db_quizzes_list', parsed, { tag: 'quizzes', ttlMs: 30 * 60 * 1000 });
           return parsed;
         }
       }
     } catch (e) {
       console.warn('[questionBankStorage] Error reading quizzes:', e);
     }
+    dbCache.set('db_quizzes_list', [], { tag: 'quizzes', ttlMs: 30 * 60 * 1000 });
     return [];
   },
 
@@ -115,6 +149,7 @@ export const questionBankStorage = {
       } else {
         updated = [quizData, ...current];
       }
+      dbCache.set('db_quizzes_list', updated, { tag: 'quizzes', ttlMs: 30 * 60 * 1000 });
       localStorage.setItem(STORAGE_KEY_QUIZZES, JSON.stringify(updated));
       if (typeof window !== 'undefined') {
         window.dispatchEvent(
@@ -134,6 +169,7 @@ export const questionBankStorage = {
     try {
       const current = this.getQuizzes();
       const updated = current.filter((q) => q.id !== quizId);
+      dbCache.set('db_quizzes_list', updated, { tag: 'quizzes', ttlMs: 30 * 60 * 1000 });
       localStorage.setItem(STORAGE_KEY_QUIZZES, JSON.stringify(updated));
       if (typeof window !== 'undefined') {
         window.dispatchEvent(

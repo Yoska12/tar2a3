@@ -1,8 +1,9 @@
-import { UserRole, CourseModule, Lesson, CourseSubscription, CourseFileItem, CourseEnrollmentStatus } from '../types';
+import { UserRole, CourseModule, Lesson, CourseSubscription, CourseFileItem, CourseEnrollmentStatus, InstructorInfo } from '../types';
 import { TarqaUser, supabase, isSupabaseConfigured, isValidUuid } from './supabase';
 import { isOwnerEmail } from './securityUtils';
 export { isOwnerEmail };
-import { mockFoundationModules, mockCourseFiles } from '../data/foundationModules';
+import { mockFoundationModules, mockCourseFiles, AVAILABLE_INSTRUCTORS } from '../data/foundationModules';
+import { dbCache, invalidateCoursesCache } from './dbCache';
 
 export const ANNUAL_SUBSCRIPTION_PRICE_SAR = 75;
 export const ANNUAL_SUBSCRIPTION_PRICE_EGP = 1050;
@@ -55,9 +56,9 @@ export const getCourseEnrollmentInfo = (courseOrModule?: {
       return {
         status: 'active' as CourseEnrollmentStatus,
         isOpen: true,
-        badgeText: 'متاح قريباً ⏳',
-        buttonText: 'قريباً ⏳',
-        badgeColor: 'amber',
+        badgeText: customText || 'التسجيل متاح الآن 🟢',
+        buttonText: customText || 'اشترك الآن 🚀',
+        badgeColor: 'emerald',
         notice: null,
       };
   }
@@ -320,6 +321,42 @@ export const activateAnnualSubscription = async (
           } as any)
           .ilike('email', user.email.trim());
       }
+
+      // مزامنة فورية في السحابة المركزية لضمان ظهور الاشتراك في داشبورد الإدارة على جميع الأجهزة
+      try {
+        const { data: storeData } = await supabase
+          .from('profiles')
+          .select('ban_reason')
+          .eq('id', CLOUD_LECTURES_STORE_ID)
+          .maybeSingle();
+
+        let currentStorePayload: any = {};
+        if (storeData?.ban_reason) {
+          try {
+            currentStorePayload = JSON.parse(storeData.ban_reason);
+          } catch {}
+        }
+
+        const currentSubs = currentStorePayload.subscriptions || {};
+        if (user.id) currentSubs[user.id] = subRecord;
+        if (user.email) currentSubs[user.email.toLowerCase().trim()] = subRecord;
+
+        const newStorePayload = {
+          ...currentStorePayload,
+          subscriptions: currentSubs,
+          updatedAt: new Date().toISOString(),
+        };
+
+        await supabase
+          .from('profiles')
+          .update({
+            ban_reason: JSON.stringify(newStorePayload),
+            updated_at: new Date().toISOString(),
+          } as any)
+          .eq('id', CLOUD_LECTURES_STORE_ID);
+      } catch (cloudErr) {
+        console.warn('Could not sync subscription to cloud store:', cloudErr);
+      }
     } catch (dbErr) {
       console.warn('Could not sync subscription to Supabase:', dbErr);
     }
@@ -344,14 +381,22 @@ export const activateAnnualSubscription = async (
  */
 export const cancelAnnualSubscription = async (
   userId: string,
-  userEmail?: string
+  userEmail?: string,
+  telegramUsername?: string,
+  telegramId?: number
 ): Promise<{ success: boolean; message: string }> => {
   const emailClean = userEmail ? userEmail.toLowerCase().trim() : undefined;
+  const tgClean = telegramUsername ? telegramUsername.replace(/^@/, '').toLowerCase().trim() : undefined;
+  const tgIdClean = telegramId ? String(telegramId) : undefined;
+
   const cancelledRecord = {
     userId,
     userEmail: emailClean,
+    telegramUsername: tgClean,
+    telegramId,
     isActive: false,
     active: false,
+    isSubscribed: false,
     cancelledAt: new Date().toISOString(),
   };
 
@@ -359,12 +404,10 @@ export const cancelAnnualSubscription = async (
   try {
     const raw = localStorage.getItem('tarqa_subscriptions') || '{}';
     const subs = JSON.parse(raw);
-    if (userId) {
-      subs[userId] = { ...(subs[userId] || {}), ...cancelledRecord };
-    }
-    if (emailClean) {
-      subs[emailClean] = { ...(subs[emailClean] || {}), ...cancelledRecord };
-    }
+    if (userId) subs[userId] = { ...(subs[userId] || {}), ...cancelledRecord };
+    if (emailClean) subs[emailClean] = { ...(subs[emailClean] || {}), ...cancelledRecord };
+    if (tgClean) subs[tgClean] = { ...(subs[tgClean] || {}), ...cancelledRecord };
+    if (tgIdClean) subs[tgIdClean] = { ...(subs[tgIdClean] || {}), ...cancelledRecord };
     localStorage.setItem('tarqa_subscriptions', JSON.stringify(subs));
 
     // تحديث المستخدم الحالي إذا كان هو المعني
@@ -372,7 +415,14 @@ export const cancelAnnualSubscription = async (
     if (currentRaw) {
       const parsed = JSON.parse(currentRaw);
       const curEmail = (parsed.email || '').toLowerCase().trim();
-      if (parsed.id === userId || (emailClean && curEmail === emailClean)) {
+      const curTg = (parsed.telegramUsername || '').replace(/^@/, '').toLowerCase().trim();
+      const isMatch =
+        parsed.id === userId ||
+        (emailClean && curEmail === emailClean) ||
+        (tgClean && curTg === tgClean) ||
+        (telegramId && parsed.telegramId === telegramId);
+
+      if (isMatch) {
         parsed.isSubscribed = false;
         parsed.subscriptionExpiresAt = undefined;
         localStorage.setItem('tarqa_current_user', JSON.stringify(parsed));
@@ -386,7 +436,14 @@ export const cancelAnnualSubscription = async (
       if (Array.isArray(parsedRoles)) {
         const updatedRoles = parsedRoles.map((u: any) => {
           const uEm = (u.email || '').toLowerCase().trim();
-          if (u.id === userId || (emailClean && uEm === emailClean)) {
+          const uTg = (u.telegramUsername || '').replace(/^@/, '').toLowerCase().trim();
+          const isMatch =
+            u.id === userId ||
+            (emailClean && uEm === emailClean) ||
+            (tgClean && uTg === tgClean) ||
+            (telegramId && u.telegramId === telegramId);
+
+          if (isMatch) {
             return {
               ...u,
               isSubscribed: false,
@@ -406,7 +463,14 @@ export const cancelAnnualSubscription = async (
       if (Array.isArray(parsedReg)) {
         const updatedReg = parsedReg.map((u: any) => {
           const uEm = (u.email || '').toLowerCase().trim();
-          if (u.id === userId || (emailClean && uEm === emailClean)) {
+          const uTg = (u.telegramUsername || '').replace(/^@/, '').toLowerCase().trim();
+          const isMatch =
+            u.id === userId ||
+            (emailClean && uEm === emailClean) ||
+            (tgClean && uTg === tgClean) ||
+            (telegramId && u.telegramId === telegramId);
+
+          if (isMatch) {
             return {
               ...u,
               isSubscribed: false,
@@ -423,9 +487,8 @@ export const cancelAnnualSubscription = async (
   }
 
   // 2. تحديث في قاعدة بيانات Supabase إذا كانت متصلة
-  if (isSupabaseConfigured && (userId || emailClean)) {
+  if (isSupabaseConfigured && (userId || emailClean || tgClean || telegramId)) {
     try {
-      // محاولة استدعاء دالة RPC المخصصة
       try {
         await supabase.rpc('admin_cancel_subscription', {
           target_user_id: userId || '',
@@ -433,7 +496,6 @@ export const cancelAnnualSubscription = async (
         });
       } catch (rpcErr) {}
 
-      // تحديث مباشر بالـ UUID إن وجد
       if (userId && isValidUuid(userId)) {
         await supabase
           .from('profiles')
@@ -445,7 +507,6 @@ export const cancelAnnualSubscription = async (
           .eq('id', userId);
       }
 
-      // تحديث مباشر بالبريد الإلكتروني
       if (emailClean) {
         await supabase
           .from('profiles')
@@ -456,16 +517,74 @@ export const cancelAnnualSubscription = async (
           } as any)
           .ilike('email', emailClean);
       }
+
+      if (tgClean) {
+        await supabase
+          .from('profiles')
+          .update({
+            is_subscribed: false,
+            subscription_expires_at: null,
+            updated_at: new Date().toISOString(),
+          } as any)
+          .or(`telegram_username.eq.${tgClean},telegram_username.eq.@${tgClean}`);
+      }
+
+      if (telegramId) {
+        await supabase
+          .from('profiles')
+          .update({
+            is_subscribed: false,
+            subscription_expires_at: null,
+            updated_at: new Date().toISOString(),
+          } as any)
+          .eq('telegram_id', telegramId);
+      }
+
+      // 3. مزامنة فورية في السحابة المركزية
+      try {
+        const { data: storeData } = await supabase
+          .from('profiles')
+          .select('ban_reason')
+          .eq('id', CLOUD_LECTURES_STORE_ID)
+          .maybeSingle();
+
+        let currentStorePayload: any = {};
+        if (storeData?.ban_reason) {
+          try {
+            currentStorePayload = JSON.parse(storeData.ban_reason);
+          } catch {}
+        }
+
+        const currentSubs = currentStorePayload.subscriptions || {};
+        if (userId) currentSubs[userId] = cancelledRecord;
+        if (emailClean) currentSubs[emailClean] = cancelledRecord;
+        if (tgClean) currentSubs[tgClean] = cancelledRecord;
+
+        const newStorePayload = {
+          ...currentStorePayload,
+          subscriptions: currentSubs,
+          updatedAt: new Date().toISOString(),
+        };
+
+        await supabase
+          .from('profiles')
+          .update({
+            ban_reason: JSON.stringify(newStorePayload),
+            updated_at: new Date().toISOString(),
+          } as any)
+          .eq('id', CLOUD_LECTURES_STORE_ID);
+      } catch {}
     } catch (dbErr) {
       console.warn('Could not sync subscription cancellation to Supabase:', dbErr);
     }
   }
 
-  // 3. إطلاق الأحداث لتحديث كافة واجهات الموقع فوراً
+  // 4. إطلاق الأحداث لتحديث كافة واجهات الموقع فوراً
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('tarqa_subscription_changed', { detail: { userId, email: emailClean, isActive: false } }));
     window.dispatchEvent(new CustomEvent('tarqa_user_changed'));
     window.dispatchEvent(new CustomEvent('tarqa_roles_changed'));
+    window.dispatchEvent(new Event('storage'));
   }
 
   return {
@@ -478,11 +597,13 @@ export const cancelAnnualSubscription = async (
  * منح أو تفعيل اشتراك سنوي لمستخدم معين بواسطة الإدارة (Super Admin)
  */
 export const grantAnnualSubscription = async (
-  targetUser: { id: string; email?: string; fullName?: string },
+  targetUser: { id: string; email?: string; fullName?: string; telegramUsername?: string; telegramId?: number },
   days: number = 365
 ): Promise<{ success: boolean; message: string }> => {
   const emailClean = targetUser.email ? targetUser.email.toLowerCase().trim() : undefined;
+  const tgClean = targetUser.telegramUsername ? targetUser.telegramUsername.replace(/^@/, '').toLowerCase().trim() : undefined;
   const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+  
   const subRecord: CourseSubscription = {
     userId: targetUser.id,
     userEmail: emailClean,
@@ -499,12 +620,9 @@ export const grantAnnualSubscription = async (
   try {
     const raw = localStorage.getItem('tarqa_subscriptions') || '{}';
     const subs = JSON.parse(raw);
-    if (targetUser.id) {
-      subs[targetUser.id] = subRecord;
-    }
-    if (emailClean) {
-      subs[emailClean] = subRecord;
-    }
+    if (targetUser.id) subs[targetUser.id] = subRecord;
+    if (emailClean) subs[emailClean] = subRecord;
+    if (tgClean) subs[tgClean] = subRecord;
     localStorage.setItem('tarqa_subscriptions', JSON.stringify(subs));
 
     // تحديث tarqa_all_users_roles
@@ -514,7 +632,14 @@ export const grantAnnualSubscription = async (
       if (Array.isArray(parsedRoles)) {
         const updatedRoles = parsedRoles.map((u: any) => {
           const uEm = (u.email || '').toLowerCase().trim();
-          if (u.id === targetUser.id || (emailClean && uEm === emailClean)) {
+          const uTg = (u.telegramUsername || '').replace(/^@/, '').toLowerCase().trim();
+          const isMatch =
+            u.id === targetUser.id ||
+            (emailClean && uEm === emailClean) ||
+            (tgClean && uTg === tgClean) ||
+            (targetUser.telegramId && u.telegramId === targetUser.telegramId);
+
+          if (isMatch) {
             return {
               ...u,
               isSubscribed: true,
@@ -534,7 +659,14 @@ export const grantAnnualSubscription = async (
       if (Array.isArray(parsedReg)) {
         const updatedReg = parsedReg.map((u: any) => {
           const uEm = (u.email || '').toLowerCase().trim();
-          if (u.id === targetUser.id || (emailClean && uEm === emailClean)) {
+          const uTg = (u.telegramUsername || '').replace(/^@/, '').toLowerCase().trim();
+          const isMatch =
+            u.id === targetUser.id ||
+            (emailClean && uEm === emailClean) ||
+            (tgClean && uTg === tgClean) ||
+            (targetUser.telegramId && u.telegramId === targetUser.telegramId);
+
+          if (isMatch) {
             return {
               ...u,
               isSubscribed: true,
@@ -547,31 +679,30 @@ export const grantAnnualSubscription = async (
       }
     }
 
-    // تحديث المستخدم الحالي إذا كان هو نفسه
+    // تحديث المستخدم الحالي إن كان هو المستهدف
     const currentRaw = localStorage.getItem('tarqa_current_user');
     if (currentRaw) {
       const parsed = JSON.parse(currentRaw);
       const curEmail = (parsed.email || '').toLowerCase().trim();
-      if (parsed.id === targetUser.id || (emailClean && curEmail === emailClean)) {
+      const curTg = (parsed.telegramUsername || '').replace(/^@/, '').toLowerCase().trim();
+      const isMatch =
+        parsed.id === targetUser.id ||
+        (emailClean && curEmail === emailClean) ||
+        (tgClean && curTg === tgClean);
+
+      if (isMatch) {
         parsed.isSubscribed = true;
         parsed.subscriptionExpiresAt = expiresAt;
         localStorage.setItem('tarqa_current_user', JSON.stringify(parsed));
       }
     }
-  } catch (e) {}
+  } catch (err) {
+    console.warn('Error granting subscription locally:', err);
+  }
 
-  if (isSupabaseConfigured && (targetUser.id || emailClean)) {
+  // 2. تحديث Supabase
+  if (isSupabaseConfigured && (targetUser.id || emailClean || tgClean)) {
     try {
-      // 1. محاولة استخدام الدالة المباشرة المقفلة بأمان
-      try {
-        await supabase.rpc('admin_grant_subscription', {
-          target_user_id: targetUser.id || '',
-          days_count: days,
-          target_email: emailClean || null,
-        });
-      } catch (rpcErr) {}
-
-      // 2. تحديث جدول profiles مباشرة إذا كان الـ ID من نوع UUID
       if (targetUser.id && isValidUuid(targetUser.id)) {
         await supabase
           .from('profiles')
@@ -593,20 +724,65 @@ export const grantAnnualSubscription = async (
           } as any)
           .ilike('email', emailClean);
       }
-    } catch (supErr) {
-      console.warn('[grantAnnualSubscription] Supabase sync notice:', supErr);
-    }
+
+      if (tgClean) {
+        await supabase
+          .from('profiles')
+          .update({
+            is_subscribed: true,
+            subscription_expires_at: expiresAt,
+            updated_at: new Date().toISOString(),
+          } as any)
+          .or(`telegram_username.eq.${tgClean},telegram_username.eq.@${tgClean}`);
+      }
+
+      // مزامنة فورية في السحابة المركزية
+      try {
+        const { data: storeData } = await supabase
+          .from('profiles')
+          .select('ban_reason')
+          .eq('id', CLOUD_LECTURES_STORE_ID)
+          .maybeSingle();
+
+        let currentStorePayload: any = {};
+        if (storeData?.ban_reason) {
+          try {
+            currentStorePayload = JSON.parse(storeData.ban_reason);
+          } catch {}
+        }
+
+        const currentSubs = currentStorePayload.subscriptions || {};
+        if (targetUser.id) currentSubs[targetUser.id] = subRecord;
+        if (emailClean) currentSubs[emailClean] = subRecord;
+        if (tgClean) currentSubs[tgClean] = subRecord;
+
+        const newStorePayload = {
+          ...currentStorePayload,
+          subscriptions: currentSubs,
+          updatedAt: new Date().toISOString(),
+        };
+
+        await supabase
+          .from('profiles')
+          .update({
+            ban_reason: JSON.stringify(newStorePayload),
+            updated_at: new Date().toISOString(),
+          } as any)
+          .eq('id', CLOUD_LECTURES_STORE_ID);
+      } catch {}
+    } catch {}
   }
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('tarqa_subscription_changed', { detail: subRecord }));
     window.dispatchEvent(new CustomEvent('tarqa_user_changed'));
     window.dispatchEvent(new CustomEvent('tarqa_roles_changed'));
+    window.dispatchEvent(new Event('storage'));
   }
 
   return {
     success: true,
-    message: 'تم تفعيل الاشتراك السنوي بنجاح لمدة سنة كاملة.',
+    message: `تم تفعيل الاشتراك السنوي لـ ${targetUser.fullName || 'الطالب'} بنجاح!`,
   };
 };
 
@@ -617,16 +793,82 @@ export const CLOUD_LECTURES_STORE_EMAIL = 'lectures_store@tarqa.app';
  * إدارة وتخزين وحدات ومحاضرات الدورات (مع المزامنة السحابية الفورية لجميع الطلاب)
  */
 export const coursesStorage = {
+  // إدارة معرفات المحاضرات والملفات المحذوفة نهائياً لمنع عودتها
+  getDeletedLessonIds(): string[] {
+    try {
+      const raw = localStorage.getItem('tarqa_deleted_lessons_v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  },
+
+  addDeletedLessonId(lessonId: string) {
+    if (!lessonId) return;
+    try {
+      const current = this.getDeletedLessonIds();
+      if (!current.includes(lessonId)) {
+        const updated = [...current, lessonId];
+        localStorage.setItem('tarqa_deleted_lessons_v1', JSON.stringify(updated));
+      }
+    } catch (e) {}
+  },
+
+  getDeletedFileIds(): string[] {
+    try {
+      const raw = localStorage.getItem('tarqa_deleted_files_v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  },
+
+  addDeletedFileId(fileId: string) {
+    if (!fileId) return;
+    try {
+      const current = this.getDeletedFileIds();
+      if (!current.includes(fileId)) {
+        const updated = [...current, fileId];
+        localStorage.setItem('tarqa_deleted_files_v1', JSON.stringify(updated));
+      }
+    } catch (e) {}
+  },
+
   // مزامنة فورية إلى السحابة (Supabase Cloud Store)
   async syncToCloud(modules?: CourseModule[], files?: CourseFileItem[]) {
     if (!isSupabaseConfigured || !supabase) return;
     try {
       const currentMods = modules !== undefined ? modules : this.getModules();
       const currentFiles = files !== undefined ? files : this.getFiles();
+      const deletedLessonIds = this.getDeletedLessonIds();
+      const deletedFileIds = this.getDeletedFileIds();
+
+      // جلب البيانات السحابية الحالية للحفاظ على الاشتراكات وسجلات التحميلات
+      let existingPayload: any = {};
+      try {
+        const { data: storeData } = await supabase
+          .from('profiles')
+          .select('ban_reason')
+          .eq('id', CLOUD_LECTURES_STORE_ID)
+          .maybeSingle();
+
+        if (storeData?.ban_reason) {
+          existingPayload = JSON.parse(storeData.ban_reason);
+        }
+      } catch {}
+
       const payload = JSON.stringify({
-        version: 2,
+        ...existingPayload,
+        version: 3,
         modules: currentMods,
         files: currentFiles,
+        instructors: this.getInstructors(),
+        deletedLessonIds,
+        deletedFileIds,
         updatedAt: new Date().toISOString(),
       });
 
@@ -653,7 +895,7 @@ export const coursesStorage = {
     }
   },
 
-  // جلب ومزامنة أحدث المحاضرات من السحابة (Supabase Cloud Store)
+  // جلب ومزامنة أحدث المحاضرات والاشتراكات من السحابة (Supabase Cloud Store)
   async syncFromCloud(): Promise<{ modules: CourseModule[]; files: CourseFileItem[] } | null> {
     if (!isSupabaseConfigured || !supabase) return null;
     try {
@@ -677,6 +919,10 @@ export const coursesStorage = {
 
       let cloudModules: CourseModule[] | null = null;
       let cloudFiles: CourseFileItem[] | null = null;
+      let cloudInstructors: InstructorInfo[] | null = null;
+      let cloudDeletedLessons: string[] = [];
+      let cloudDeletedFiles: string[] = [];
+      let cloudSubs: Record<string, any> | null = null;
 
       try {
         const parsed = JSON.parse(targetData.ban_reason);
@@ -689,44 +935,95 @@ export const coursesStorage = {
           if (Array.isArray(parsed.files)) {
             cloudFiles = parsed.files;
           }
+          if (Array.isArray(parsed.instructors)) {
+            cloudInstructors = parsed.instructors;
+          }
+          if (Array.isArray(parsed.deletedLessonIds)) {
+            cloudDeletedLessons = parsed.deletedLessonIds;
+          }
+          if (Array.isArray(parsed.deletedFileIds)) {
+            cloudDeletedFiles = parsed.deletedFileIds;
+          }
+          if (parsed.subscriptions && typeof parsed.subscriptions === 'object') {
+            cloudSubs = parsed.subscriptions;
+          }
         }
       } catch (e) {
         console.warn('[coursesStorage] Cloud JSON parse error:', e);
       }
 
-      const cloudHasLessons = Boolean(
-        cloudModules &&
-        cloudModules.length > 0 &&
-        cloudModules.some((m) => Array.isArray(m.lessons) && m.lessons.length > 0)
-      );
-
-      if (cloudModules && cloudModules.length > 0 && cloudHasLessons) {
-        localStorage.setItem('tarqa_custom_modules_v7', JSON.stringify(cloudModules));
-        localStorage.setItem('tarqa_custom_modules_v6', JSON.stringify(cloudModules));
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('tarqa_courses_modules_changed', { detail: cloudModules }));
-        }
-      } else {
-        // إذا كان مخزن السحابة لا يحتوي على محاضرات صالحة، نقوم برفع المحاضرات المعتمدة فوراً لإصلاحه
-        const defaultMods = this.getModules();
-        const defaultFiles = this.getFiles();
-        this.syncToCloud(defaultMods, defaultFiles);
+      if (cloudInstructors && Array.isArray(cloudInstructors) && cloudInstructors.length > 0) {
+        try {
+          localStorage.setItem('tarqa_custom_instructors_v1', JSON.stringify(cloudInstructors));
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('tarqa_instructors_changed', { detail: cloudInstructors }));
+          }
+        } catch {}
       }
 
-      const cloudHasFiles = Boolean(cloudFiles && Array.isArray(cloudFiles) && cloudFiles.length > 0);
-      if (cloudHasFiles && cloudFiles) {
-        localStorage.setItem('tarqa_custom_files_v1', JSON.stringify(cloudFiles));
+      // مزامنة الاشتراكات السحابية محلياً فوراً
+      if (cloudSubs && Object.keys(cloudSubs).length > 0) {
+        try {
+          const rawLocal = localStorage.getItem('tarqa_subscriptions') || '{}';
+          const localSubs = JSON.parse(rawLocal);
+          const mergedSubs = { ...localSubs, ...cloudSubs };
+          localStorage.setItem('tarqa_subscriptions', JSON.stringify(mergedSubs));
+
+          // التحقق مما إذا كان للمستخدم الحالي اشتراك مفعل سحابياً
+          const curRaw = localStorage.getItem('tarqa_current_user');
+          if (curRaw) {
+            const cur = JSON.parse(curRaw);
+            const userSub = cloudSubs[cur.id] || (cur.email && (cloudSubs[cur.email.toLowerCase()] || cloudSubs[cur.email]));
+            if (userSub && (userSub.isActive === true || (userSub as any).active === true)) {
+              const expDate = userSub.expiresDate || (userSub as any).expiresAt;
+              const isNotExpired = !expDate || new Date(expDate).getTime() > Date.now();
+              if (isNotExpired && !cur.isSubscribed) {
+                cur.isSubscribed = true;
+                cur.subscriptionExpiresAt = expDate || cur.subscriptionExpiresAt;
+                localStorage.setItem('tarqa_current_user', JSON.stringify(cur));
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('tarqa_subscription_changed', { detail: userSub }));
+                  window.dispatchEvent(new Event('tarqa_user_changed'));
+                }
+              }
+            }
+          }
+        } catch {}
+      }
+
+      // دمج المعرفات المحذوفة سحابياً ومحلياً
+      cloudDeletedLessons.forEach((id) => this.addDeletedLessonId(id));
+      cloudDeletedFiles.forEach((id) => this.addDeletedFileId(id));
+      const deletedLessonsSet = new Set(this.getDeletedLessonIds());
+      const deletedFilesSet = new Set(this.getDeletedFileIds());
+
+      let finalModules = this.getModules();
+      if (cloudModules && Array.isArray(cloudModules) && cloudModules.length > 0) {
+        const cleanedModules = cloudModules.map((m) => ({
+          ...m,
+          lessons: (m.lessons || []).filter((l: Lesson) => !deletedLessonsSet.has(l.id)),
+        }));
+        localStorage.setItem('tarqa_custom_modules_v7', JSON.stringify(cleanedModules));
+        localStorage.setItem('tarqa_custom_modules_v6', JSON.stringify(cleanedModules));
+        finalModules = cleanedModules;
         if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('tarqa_courses_files_changed', { detail: cloudFiles }));
+          window.dispatchEvent(new CustomEvent('tarqa_courses_modules_changed', { detail: cleanedModules }));
         }
-      } else {
-        const defaultFiles = this.getFiles();
-        this.syncToCloud(undefined, defaultFiles);
+      }
+
+      let finalFiles = this.getFiles();
+      if (cloudFiles && Array.isArray(cloudFiles)) {
+        const cleanedFiles = cloudFiles.filter((f) => !deletedFilesSet.has(f.id));
+        localStorage.setItem('tarqa_custom_files_v1', JSON.stringify(cleanedFiles));
+        finalFiles = cleanedFiles;
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('tarqa_courses_files_changed', { detail: cleanedFiles }));
+        }
       }
 
       return {
-        modules: cloudModules && cloudHasLessons ? cloudModules : this.getModules(),
-        files: cloudFiles && cloudHasFiles ? cloudFiles : this.getFiles(),
+        modules: finalModules,
+        files: finalFiles,
       };
     } catch (e) {
       console.warn('[coursesStorage] syncFromCloud exception:', e);
@@ -735,56 +1032,113 @@ export const coursesStorage = {
   },
 
   getModules(): CourseModule[] {
+    const cached = dbCache.get<CourseModule[]>('db_course_modules');
+    if (cached && Array.isArray(cached) && cached.length > 0) {
+      return cached;
+    }
+
+    const deletedLessonIds = new Set(this.getDeletedLessonIds());
+    const normalizeLessons = (lessons: Lesson[]): Lesson[] => {
+      const activeLessons = (lessons || []).filter((l: Lesson) => !deletedLessonIds.has(l.id));
+      const withTeachers = activeLessons.map((l) => ({
+        ...l,
+        teacherId: l.teacherId || 'teacher_1',
+        teacherName: l.teacherName || (l.teacherId === 'teacher_2' ? 'مدرس 2' : 'مدرس 1'),
+      }));
+
+      // إذا كان التخزين القديم لا يحتوي على محاضرات مدرس 2، نقوم بدمج محاضرات مدرس 2 الافتراضية
+      const hasTeacher2 = withTeachers.some((l) => l.teacherId === 'teacher_2');
+      if (!hasTeacher2) {
+        const defaultTeacher2Lessons = (mockFoundationModules[0]?.lessons || []).filter(
+          (l) => l.teacherId === 'teacher_2' && !deletedLessonIds.has(l.id)
+        );
+        return [...withTeachers, ...defaultTeacher2Lessons];
+      }
+      return withTeachers;
+    };
+
     try {
       // 1. قراءة التخزين الأساسي المستقر v7
       const raw = localStorage.getItem('tarqa_custom_modules_v7');
-      if (raw) {
+      if (raw !== null) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const hasAnyLessons = parsed.some((m) => Array.isArray(m.lessons) && m.lessons.length > 0);
-          if (hasAnyLessons) {
-            return parsed;
-          }
+          const result = parsed.map((m) => {
+            const lessons = normalizeLessons(m.lessons || []);
+            const status = m.status === 'paused' && (!m.customStatusText || m.customStatusText.includes('قريباً')) ? 'active' : (m.status || 'active');
+            return {
+              ...m,
+              status,
+              customStatusText: status === 'active' ? '' : m.customStatusText,
+              lessons,
+              totalDurationMinutes: lessons.reduce((sum, l) => sum + (l.durationMinutes || 0), 0),
+            };
+          });
+          dbCache.set('db_course_modules', result, { tag: 'courses', ttlMs: 60 * 60 * 1000 });
+          return result;
         }
       }
 
       // 2. الهجرة الآمنة من v6 إذا كانت موجودة لأول مرة فقط
       const rawV6 = localStorage.getItem('tarqa_custom_modules_v6');
-      if (rawV6) {
+      if (rawV6 !== null) {
         const parsedV6 = JSON.parse(rawV6);
         if (Array.isArray(parsedV6) && parsedV6.length > 0) {
-          const hasAnyLessonsV6 = parsedV6.some((m) => Array.isArray(m.lessons) && m.lessons.length > 0);
-          if (hasAnyLessonsV6) {
-            this.saveModules(parsedV6);
-            return parsedV6;
-          }
+          const cleaned = parsedV6.map((m) => {
+            const lessons = normalizeLessons(m.lessons || []);
+            const status = m.status === 'paused' && (!m.customStatusText || m.customStatusText.includes('قريباً')) ? 'active' : (m.status || 'active');
+            return {
+              ...m,
+              status,
+              customStatusText: status === 'active' ? '' : m.customStatusText,
+              lessons,
+              totalDurationMinutes: lessons.reduce((sum, l) => sum + (l.durationMinutes || 0), 0),
+            };
+          });
+          this.saveModules(cleaned);
+          return cleaned;
         }
       }
     } catch (e) {
       console.warn('Failed to parse saved modules:', e);
     }
 
-    // 3. الحالة الافتراضية المعتمدة (8 محاضرات تأسيسية) عند فتح الموقع أو فراغ التخزين
-    const initial = JSON.parse(JSON.stringify(mockFoundationModules));
-    this.saveModules(initial);
-    return initial;
+    // 3. الحالة الافتراضية المعتمدة فقط عند أول تشغيل للتطبيق قبل أي تخصيص
+    const initial: CourseModule[] = JSON.parse(JSON.stringify(mockFoundationModules));
+    const cleanedInitial = initial.map((m) => {
+      const lessons = normalizeLessons(m.lessons || []);
+      return {
+        ...m,
+        lessons,
+        totalDurationMinutes: lessons.reduce((sum, l) => sum + (l.durationMinutes || 0), 0),
+      };
+    });
+    this.saveModules(cleanedInitial);
+    return cleanedInitial;
   },
 
   saveModules(modules: CourseModule[]): CourseModule[] {
+    const deletedLessonIds = new Set(this.getDeletedLessonIds());
+    const sanitizedModules = modules.map((m) => ({
+      ...m,
+      lessons: (m.lessons || []).filter((l: Lesson) => !deletedLessonIds.has(l.id)),
+    }));
+
     try {
-      localStorage.setItem('tarqa_custom_modules_v7', JSON.stringify(modules));
-      localStorage.setItem('tarqa_custom_modules_v6', JSON.stringify(modules));
+      dbCache.set('db_course_modules', sanitizedModules, { tag: 'courses', ttlMs: 60 * 60 * 1000 });
+      localStorage.setItem('tarqa_custom_modules_v7', JSON.stringify(sanitizedModules));
+      localStorage.setItem('tarqa_custom_modules_v6', JSON.stringify(sanitizedModules));
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('tarqa_courses_modules_changed', { detail: modules }));
+        window.dispatchEvent(new CustomEvent('tarqa_courses_modules_changed', { detail: sanitizedModules }));
       }
     } catch (e) {
       console.warn('Failed to save modules to local storage:', e);
     }
 
     // مزامنة فورية للسحابة لتحديث كافة الطلاب فوراً
-    this.syncToCloud(modules);
+    this.syncToCloud(sanitizedModules);
 
-    return modules;
+    return sanitizedModules;
   },
 
   addModule(newModule: CourseModule): CourseModule[] {
@@ -821,11 +1175,21 @@ export const coursesStorage = {
 
   deleteModule(moduleId: string): CourseModule[] {
     const current = this.getModules();
+    const targetModule = current.find((m) => m.id === moduleId);
+    if (targetModule && targetModule.lessons) {
+      targetModule.lessons.forEach((l) => this.addDeletedLessonId(l.id));
+    }
     const updated = current.filter((m) => m.id !== moduleId);
     return this.saveModules(updated);
   },
 
   addLesson(moduleId: string, newLesson: Lesson): CourseModule[] {
+    // إزالة المعرف من قائمة المحذوفات في حال إعادة إضافته
+    try {
+      const deleted = this.getDeletedLessonIds().filter((id) => id !== newLesson.id);
+      localStorage.setItem('tarqa_deleted_lessons_v1', JSON.stringify(deleted));
+    } catch (e) {}
+
     const current = this.getModules();
     if (current.length === 0) {
       current.push({
@@ -906,6 +1270,10 @@ export const coursesStorage = {
 
   deleteLesson(moduleIdOrLessonId: string, maybeLessonId?: string): CourseModule[] {
     const targetId = maybeLessonId || moduleIdOrLessonId;
+    if (targetId) {
+      this.addDeletedLessonId(targetId);
+    }
+
     const current = this.getModules();
     const updated = current.map((mod) => {
       const filtered = (mod.lessons || []).filter((l) => l.id !== targetId);
@@ -960,12 +1328,18 @@ export const coursesStorage = {
   },
 
   resetFilesToDefault(): CourseFileItem[] {
+    try {
+      localStorage.removeItem('tarqa_deleted_files_v1');
+    } catch (e) {}
     const defaultFiles = JSON.parse(JSON.stringify(mockCourseFiles));
     this.saveFiles(defaultFiles);
     return defaultFiles;
   },
 
   resetToDefault(): CourseModule[] {
+    try {
+      localStorage.removeItem('tarqa_deleted_lessons_v1');
+    } catch (e) {}
     const resetData = JSON.parse(JSON.stringify(mockFoundationModules));
     this.saveModules(resetData);
     this.resetFilesToDefault();
@@ -974,42 +1348,78 @@ export const coursesStorage = {
 
   // إدارة قسم ملفات ومذكرات الدورة
   getFiles(): CourseFileItem[] {
+    const cached = dbCache.get<CourseFileItem[]>('db_course_files');
+    if (cached && Array.isArray(cached) && cached.length > 0) {
+      return cached;
+    }
+
+    const deletedFileIds = new Set(this.getDeletedFileIds());
+    try {
+      if (typeof window !== 'undefined' && !localStorage.getItem('tarqa_clean_mocks_files_v2')) {
+        const raw = localStorage.getItem('tarqa_custom_files_v1');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            const filtered = parsed.filter(
+              (f: CourseFileItem) =>
+                !['file-1', 'file-2', 'file-3'].includes(f.id) &&
+                !f.fileUrl?.startsWith('vault://pdf')
+            );
+            localStorage.setItem('tarqa_custom_files_v1', JSON.stringify(filtered));
+          }
+        }
+        localStorage.setItem('tarqa_clean_mocks_files_v2', 'true');
+      }
+    } catch {}
+
     try {
       const raw = localStorage.getItem('tarqa_custom_files_v1');
       if (raw !== null) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+        if (Array.isArray(parsed)) {
+          const res = parsed.filter((f: CourseFileItem) => !deletedFileIds.has(f.id));
+          dbCache.set('db_course_files', res, { tag: 'courses', ttlMs: 60 * 60 * 1000 });
+          return res;
         }
       }
     } catch (e) {}
-    const defaultFiles = JSON.parse(JSON.stringify(mockCourseFiles));
-    this.saveFiles(defaultFiles);
-    return defaultFiles;
+    const defaultFiles: CourseFileItem[] = JSON.parse(JSON.stringify(mockCourseFiles));
+    const cleaned = defaultFiles.filter((f) => !deletedFileIds.has(f.id));
+    this.saveFiles(cleaned);
+    return cleaned;
   },
 
   saveFiles(files: CourseFileItem[]) {
+    const deletedFileIds = new Set(this.getDeletedFileIds());
+    const sanitizedFiles = files.filter((f) => !deletedFileIds.has(f.id));
+
     try {
       // تنظيف أي Data URLs ضخمة قبل التخزين في localStorage منعاً لحدوث QuotaExceededError
-      const safeFiles = files.map((f) => {
+      const safeFiles = sanitizedFiles.map((f) => {
         if (f.fileUrl && f.fileUrl.startsWith('data:') && f.fileUrl.length > 5000) {
           return { ...f, fileUrl: `vault://pdf_migrated_${f.id}` };
         }
         return f;
       });
+      dbCache.set('db_course_files', safeFiles, { tag: 'courses', ttlMs: 60 * 60 * 1000 });
       localStorage.setItem('tarqa_custom_files_v1', JSON.stringify(safeFiles));
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('tarqa_courses_files_changed', { detail: files }));
+        window.dispatchEvent(new CustomEvent('tarqa_courses_files_changed', { detail: safeFiles }));
       }
     } catch (e) {
       console.warn('Failed to save files to local storage:', e);
     }
 
     // مزامنة فورية للسحابة
-    this.syncToCloud(undefined, files);
+    this.syncToCloud(undefined, sanitizedFiles);
   },
 
   addFile(newFile: CourseFileItem): CourseFileItem[] {
+    try {
+      const deleted = this.getDeletedFileIds().filter((id) => id !== newFile.id);
+      localStorage.setItem('tarqa_deleted_files_v1', JSON.stringify(deleted));
+    } catch (e) {}
+
     const current = this.getFiles();
     // منع تكرار نفس الملف في حال استدعاء الدالة في المكون الفرعي والأب معاً
     const filtered = current.filter((f) => f.id !== newFile.id);
@@ -1026,6 +1436,9 @@ export const coursesStorage = {
   },
 
   deleteFile(fileId: string): CourseFileItem[] {
+    if (fileId) {
+      this.addDeletedFileId(fileId);
+    }
     const current = this.getFiles();
     const updated = current.filter((f) => f.id !== fileId);
     this.saveFiles(updated);
@@ -1040,5 +1453,114 @@ export const coursesStorage = {
     this.saveFiles(updated);
     return updated;
   },
+
+  getInstructors(): InstructorInfo[] {
+    try {
+      const raw = localStorage.getItem('tarqa_custom_instructors_v1');
+      if (raw !== null) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return AVAILABLE_INSTRUCTORS;
+  },
+
+  saveInstructors(instructors: InstructorInfo[]): InstructorInfo[] {
+    try {
+      localStorage.setItem('tarqa_custom_instructors_v1', JSON.stringify(instructors));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('tarqa_instructors_changed', { detail: instructors }));
+      }
+    } catch (e) {
+      console.warn('Failed to save instructors locally:', e);
+    }
+    this.syncToCloud();
+    return instructors;
+  },
+
+  updateInstructor(instructor: InstructorInfo): InstructorInfo[] {
+    const current = this.getInstructors();
+    const index = current.findIndex((i) => i.id === instructor.id);
+    let updated: InstructorInfo[];
+    if (index >= 0) {
+      updated = [...current];
+      updated[index] = { ...updated[index], ...instructor };
+    } else {
+      updated = [...current, instructor];
+    }
+    this.saveInstructors(updated);
+
+    // تحديث اسم المدرس في جميع المحاضرات المرتبطة بهذا المعلم لضمان الاتساق
+    try {
+      const currentModules = this.getModules();
+      let hasChanges = false;
+      const updatedModules = currentModules.map((m) => ({
+        ...m,
+        lessons: (m.lessons || []).map((l) => {
+          if ((l.teacherId || 'teacher_1') === instructor.id) {
+            hasChanges = true;
+            return {
+              ...l,
+              teacherName: instructor.name,
+            };
+          }
+          return l;
+        }),
+      }));
+      if (hasChanges) {
+        this.saveModules(updatedModules);
+      }
+    } catch (e) {}
+
+    return updated;
+  },
 };
+
+/**
+ * مزامنة وجلب كافة اشتراكات الطلاب من السحابة المركزية مباشرة
+ */
+export async function syncSubscriptionsFromCloud(): Promise<Record<string, any>> {
+  if (!isSupabaseConfigured || !supabase) {
+    try {
+      const raw = localStorage.getItem('tarqa_subscriptions');
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  try {
+    const { data: storeData } = await supabase
+      .from('profiles')
+      .select('ban_reason')
+      .eq('id', CLOUD_LECTURES_STORE_ID)
+      .maybeSingle();
+
+    let cloudSubs: Record<string, any> = {};
+    if (storeData?.ban_reason) {
+      try {
+        const parsed = JSON.parse(storeData.ban_reason);
+        if (parsed.subscriptions && typeof parsed.subscriptions === 'object') {
+          cloudSubs = parsed.subscriptions;
+        }
+      } catch {}
+    }
+
+    const rawLocal = localStorage.getItem('tarqa_subscriptions') || '{}';
+    const localSubs = JSON.parse(rawLocal);
+    const merged = { ...localSubs, ...cloudSubs };
+    localStorage.setItem('tarqa_subscriptions', JSON.stringify(merged));
+    return merged;
+  } catch (err) {
+    console.warn('syncSubscriptionsFromCloud error:', err);
+    try {
+      const raw = localStorage.getItem('tarqa_subscriptions');
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  }
+}
 

@@ -29,14 +29,14 @@ export const FoundationRoadmap: React.FC<FoundationRoadmapProps> = ({
   const [expandedModuleId, setExpandedModuleId] = useState<string>(modules[0]?.id || '');
 
   // حساب الإحصائيات الشاملة
-  const totalLessons = modules.reduce((acc, m) => acc + m.lessons.length, 0);
-  const totalDuration = modules.reduce((acc, m) => acc + (m.totalDurationMinutes || 0), 0);
+  const totalLessons = modules.reduce((acc, m) => acc + (m?.lessons?.length || 0), 0);
+  const totalDuration = modules.reduce((acc, m) => acc + (m?.totalDurationMinutes || 0), 0);
   const completedLessons = modules.reduce(
-    (acc, m) => acc + m.lessons.filter((l) => l.isCompleted).length,
+    (acc, m) => acc + (m?.lessons || []).filter((l) => l?.isCompleted).length,
     0
   );
   const totalAttachments = modules.reduce(
-    (acc, m) => acc + m.lessons.reduce((lAcc, l) => lAcc + (l.attachments?.length || 0), 0),
+    (acc, m) => acc + (m?.lessons || []).reduce((lAcc, l) => lAcc + (l?.attachments?.length || 0), 0),
     0
   );
   const progressPercentage = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
@@ -82,8 +82,9 @@ export const FoundationRoadmap: React.FC<FoundationRoadmapProps> = ({
         <div className="space-y-4">
           {modules.map((mod, modIdx) => {
             const isExpanded = expandedModuleId === mod.id;
-            const completedInModule = mod.lessons.filter((l) => l.isCompleted).length;
-            const modPercentage = mod.lessons.length > 0 ? Math.round((completedInModule / mod.lessons.length) * 100) : 0;
+            const lessons = mod?.lessons || [];
+            const completedInModule = lessons.filter((l) => l?.isCompleted).length;
+            const modPercentage = lessons.length > 0 ? Math.round((completedInModule / lessons.length) * 100) : 0;
 
             return (
               <div
@@ -144,20 +145,20 @@ export const FoundationRoadmap: React.FC<FoundationRoadmapProps> = ({
                 {/* قائمة محاضرات ودروس الباب (عند الفتح) */}
                 {isExpanded && (
                   <div className="border-t border-slate-100 dark:border-slate-800/80 p-4 sm:p-6 bg-slate-50/50 dark:bg-slate-950/30 space-y-3">
-                    {mod.lessons.map((lesson, lesIdx) => (
+                    {(mod?.lessons || []).map((lesson, lesIdx) => (
                       <div
-                        key={lesson.id}
+                        key={lesson?.id || lesIdx}
                         className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-white dark:bg-[#0c1222] border border-slate-200/80 dark:border-slate-800 hover:border-amber-500/40 transition group shadow-sm"
                       >
                         <div className="flex items-start gap-3.5 min-w-0">
                           <div
                             className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 ${
-                              lesson.isCompleted
+                              lesson?.isCompleted
                                 ? 'bg-emerald-500 text-white'
                                 : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
                             }`}
                           >
-                            {lesson.isCompleted ? (
+                            {lesson?.isCompleted ? (
                               <CheckCircle2 className="w-4 h-4" />
                             ) : (
                               lesIdx + 1

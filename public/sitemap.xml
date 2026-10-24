@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml"
+        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
+        http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd
+        http://www.google.com/schemas/sitemap-image/1.1
+        http://www.google.com/schemas/sitemap-image/1.1/sitemap-image.xsd">
+
+  <!-- الصفحة الرئيسية لمنصة طرقع قدرات -->
+  <url>
+    <loc>https://tarqa3.net/</loc>
+    <lastmod>2026-09-19</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="ar" href="https://tarqa3.net/" />
+    <image:image>
+      <image:loc>https://tarqa3.net/frame_00001.png</image:loc>
+      <image:title>منصة طرقع قدرات - أفضل منصة تدريب كمي ومحاكي اختبارات قياس</image:title>
+      <image:caption>شعار ومنصة طرقع للقدرات العامة والكمي - تدريب تفاعلي وشروحات الحل السريع</image:caption>
+    </image:image>
+    <image:image>
+      <image:loc>https://tarqa3.net/tarqa_clean_logo.png</image:loc>
+      <image:title>لوجو منصة طرقع</image:title>
+      <image:caption>منصة طرقع للقدرات والكمي</image:caption>
+    </image:image>
+  </url>
+
+</urlset>

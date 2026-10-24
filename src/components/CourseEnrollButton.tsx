@@ -116,15 +116,15 @@ export const CourseEnrollButton: React.FC<CourseEnrollEnrollButtonProps> = ({
     );
   }
 
-  // زر الحالة المعطلة: متاح قريباً
+  // زر الحالة المفعلة: متاح الآن للاشتراك والدفع المباشر
   return (
     <button
       type="button"
-      disabled
-      className={`w-full rounded-2xl font-black transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 text-slate-950 shadow-lg shadow-amber-500/25 cursor-not-allowed select-none opacity-95 ${sizeClasses} ${className}`}
+      onClick={onEnrollClick}
+      className={`w-full rounded-2xl font-black transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 shadow-lg shadow-amber-500/25 cursor-pointer active:scale-98 select-none ${sizeClasses} ${className}`}
     >
-      <Clock className="w-4 h-4 animate-pulse shrink-0 text-slate-950" />
-      <span>قريباً ⏳</span>
+      <Sparkles className="w-4 h-4 shrink-0 text-slate-950" />
+      <span>اشترك الآن 🚀 ({priceSAR} ر.س)</span>
     </button>
   );
 };

@@ -44,14 +44,14 @@ const TRANSACTIONS_STORAGE_KEY = 'tarqa_kashier_transactions';
 export const defaultKashierSettings: KashierSettings = {
   enabled: true,
   mode: 'test',
-  merchantId: (import.meta as any).env?.VITE_KASHIER_MERCHANT_ID || 'MID-TARQA-TEST',
-  apiKey: (import.meta as any).env?.VITE_KASHIER_API_KEY || '',
-  secretKey: '',
+  merchantId: (import.meta as any).env?.VITE_KASHIER_MERCHANT_ID || 'MID-50598-297',
+  apiKey: (import.meta as any).env?.VITE_KASHIER_API_KEY || '980f3d9b-9782-40a0-ad47-f49ae98fdbb7',
+  secretKey: (import.meta as any).env?.VITE_KASHIER_SECRET_KEY || '6ec661c17fe95a9faae76df553f6ecb6$c02d309b502aa7a0f1eb27dbdb37f61f58e17df14f8a04b43ffa526a9e51b2f9281357acae5ca6412eb4ba540b919776',
   currency: 'EGP',
   amount: 1050.00, // 1050 جنيه مصري أو 75 ريال سعودي
   brandColor: '#f59e0b', // اللون البرتقالي المميز لمنصة طرقع
   allowedMethods: 'card,wallet',
-  simulateMode: true, // تفعيل المحاكاة افتراضياً للتجربة الفورية حتى يدخل المالك مفاتيحه
+  simulateMode: false, // وضع البوابة المباشرة
 };
 
 /**
@@ -66,8 +66,13 @@ export const getKashierSettings = (): KashierSettings => {
     if (parsed.currency === 'EGP' && (parsed.amount === 75 || parsed.amount === 1020)) {
       parsed.amount = 1050;
     }
-    // المفتاح السري لا يُقرأ من localStorage لحماية التاجر
-    return { ...defaultKashierSettings, ...parsed, secretKey: '' };
+    return { 
+      ...defaultKashierSettings, 
+      ...parsed, 
+      merchantId: (parsed.merchantId || defaultKashierSettings.merchantId).trim(),
+      apiKey: (parsed.apiKey || defaultKashierSettings.apiKey).trim(),
+      secretKey: (parsed.secretKey || defaultKashierSettings.secretKey).trim()
+    };
   } catch {
     return { ...defaultKashierSettings };
   }
@@ -79,10 +84,14 @@ export const getKashierSettings = (): KashierSettings => {
 export const saveKashierSettings = (newSettings: Partial<KashierSettings>): KashierSettings => {
   try {
     const current = getKashierSettings();
-    const updated: KashierSettings = { ...current, ...newSettings };
-    // حماية المفتاح السري ومنع تخزينه في المتصفح
-    const safeToStore = { ...updated, secretKey: '' };
-    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(safeToStore));
+    const updated: KashierSettings = { 
+      ...current, 
+      ...newSettings,
+      merchantId: (newSettings.merchantId ?? current.merchantId).trim(),
+      apiKey: (newSettings.apiKey ?? current.apiKey).trim(),
+      secretKey: (newSettings.secretKey ?? current.secretKey).trim(),
+    };
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(updated));
     window.dispatchEvent(new CustomEvent('tarqa_kashier_settings_changed', { detail: updated }));
     return updated;
   } catch (e) {
@@ -173,6 +182,9 @@ export const createKashierPaymentSession = async (
   // توليد رقم طلب فريد وفق اشتراطات كاشير
   const cleanId = user?.id ? user.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) : 'guest';
   const orderId = `tarqa_${cleanId}_${Date.now()}`;
+  const originUrl = typeof window !== 'undefined' && window.location.origin.startsWith('https://')
+    ? window.location.origin
+    : 'https://tarqa3.net';
 
   const payload = {
     expireAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
@@ -181,7 +193,7 @@ export const createKashierPaymentSession = async (
     amount: Number(amount).toFixed(2),
     currency,
     order: orderId,
-    merchantRedirect: `${window.location.origin}/?payment=kashier_done&order=${orderId}`,
+    merchantRedirect: `${originUrl}/?payment=kashier_done&order=${orderId}`,
     display: 'ar',
     type: 'one-time',
     allowedMethods: settings.allowedMethods || 'card,wallet',
@@ -226,100 +238,133 @@ export const createKashierPaymentSession = async (
       }),
     });
 
-    if (apiRes.ok) {
-      const data = await apiRes.json();
-      if (data.sessionUrl) {
-        logKashierTransaction({
-          orderId,
-          userId: user?.id || 'guest',
-          userName: user?.fullName || 'طالب طرقع',
-          userEmail: user?.email || 'student@tarqa.app',
-          amount,
-          currency,
-          status: 'PENDING',
-          sessionUrl: data.sessionUrl,
-          details: 'تم إنشاء جلسة دفع كاشير رسمية بنجاح عبر السيرفر السحابي',
-        });
-        return {
-          success: true,
-          sessionUrl: data.sessionUrl,
-          orderId,
-          isSimulated: false,
-        };
-      }
-    }
-  } catch (err) {
-    console.info('[Kashier] Serverless endpoint not available, evaluating direct/simulated mode...');
-  }
+    const data = await apiRes.json().catch(() => ({}));
 
-  // 2. إذا كانت المفاتيح مدخلة ومفعلة، نحاول الاتصال المباشر بـ Kashier API
-  if (settings.secretKey && settings.apiKey && settings.merchantId && !settings.simulateMode) {
-    try {
-      const endpoint = settings.mode === 'live'
-        ? 'https://api.kashier.io/v3/payment/sessions'
-        : 'https://test-api.kashier.io/v3/payment/sessions';
-
-      const directRes = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Authorization': settings.secretKey,
-          'api-key': settings.apiKey,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
+    if (apiRes.ok && data.sessionUrl) {
+      logKashierTransaction({
+        orderId,
+        userId: user?.id || 'guest',
+        userName: user?.fullName || 'طالب طرقع',
+        userEmail: user?.email || 'student@tarqa.app',
+        amount,
+        currency,
+        status: 'PENDING',
+        sessionUrl: data.sessionUrl,
+        details: 'تم إنشاء جلسة دفع كاشير رسمية بنجاح',
       });
-
-      if (directRes.ok) {
-        const data = await directRes.json();
-        const sessionUrl = data.sessionUrl || data.data?.sessionUrl;
-        if (sessionUrl) {
-          logKashierTransaction({
-            orderId,
-            userId: user?.id || 'guest',
-            userName: user?.fullName || 'طالب طرقع',
-            userEmail: user?.email || 'student@tarqa.app',
-            amount,
-            currency,
-            status: 'PENDING',
-            sessionUrl,
-            details: `تم إنشاء جلسة دفع كاشير (${settings.mode.toUpperCase()})`,
-          });
-          return {
-            success: true,
-            sessionUrl,
-            orderId,
-            isSimulated: false,
-          };
-        }
-      } else {
-        const errJson = await directRes.json().catch(() => ({}));
-        console.warn('[Kashier] Direct API returned error:', directRes.status, errJson);
-      }
-    } catch (e: any) {
-      console.warn('[Kashier] Direct fetch failed (likely CORS or network):', e);
+      return {
+        success: true,
+        sessionUrl: data.sessionUrl,
+        orderId,
+        isSimulated: false,
+      };
+    } else {
+      console.warn('[Kashier] Serverless endpoint response was not ok, falling back to direct Kashier API:', apiRes.status, data);
     }
+  } catch (err: any) {
+    console.warn('[Kashier] Serverless endpoint fetch error, attempting direct Kashier API:', err);
   }
 
-  // 3. وضع المعاينة والمحاكاة التجريبية الذكي (Smart Sandbox Simulator)
-  // يعمل بشكل فوري لضمان عدم توقف تجربة المستخدم حتى يتم إدخال مفاتيح الإنتاج
-  const simulatedSessionUrl = `https://payments.kashier.io/session/simulated-${orderId}?mode=test`;
+  // 2. المحاولة المباشرة مع Kashier API كإجراء احتياطي فوري (Direct Browser Fallback with CORS)
+  try {
+    const directEndpoint = settings.mode === 'live'
+      ? 'https://api.kashier.io/v3/payment/sessions'
+      : 'https://test-api.kashier.io/v3/payment/sessions';
 
-  logKashierTransaction({
-    orderId,
-    userId: user?.id || 'guest',
-    userName: user?.fullName || 'طالب طرقع',
-    userEmail: user?.email || 'student@tarqa.app',
-    amount,
-    currency,
-    status: 'PENDING',
-    sessionUrl: simulatedSessionUrl,
-    details: 'جلسة محاكاة تجريبية مدمجة (Sandbox Simulation)',
-  });
+    const directRes = await fetch(directEndpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization': settings.secretKey,
+        'api-key': settings.apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const directData = await directRes.json().catch(() => ({}));
+    if (directRes.ok && directData.sessionUrl) {
+      logKashierTransaction({
+        orderId,
+        userId: user?.id || 'guest',
+        userName: user?.fullName || 'طالب طرقع',
+        userEmail: user?.email || 'student@tarqa.app',
+        amount,
+        currency,
+        status: 'PENDING',
+        sessionUrl: directData.sessionUrl,
+        details: 'تم إنشاء جلسة دفع كاشير رسمية بنجاح (اتصال مباشر)',
+      });
+      return {
+        success: true,
+        sessionUrl: directData.sessionUrl,
+        orderId,
+        isSimulated: false,
+      };
+    } else {
+      const errMsg = directData?.details?.message || directData?.details?.messages?.ar || directData?.message || directData?.error || `خطأ من كاشير (${directRes.status})`;
+      return {
+        success: false,
+        orderId,
+        error: errMsg,
+      };
+    }
+  } catch (directErr: any) {
+    console.error('[Kashier] Direct fetch exception:', directErr);
+    return {
+      success: false,
+      orderId,
+      error: directErr?.message || 'تعذر الاتصال ببوابة كاشير، يرجى المحاولة مرة أخرى.',
+    };
+  }
 
   return {
-    success: true,
-    sessionUrl: simulatedSessionUrl,
+    success: false,
     orderId,
-    isSimulated: true,
+    error: 'تعذر إنشاء جلسة الدفع، يرجى المحاولة لاحقاً.',
   };
 };
+
+/**
+ * التحقق من نتيجة جلسة الدفع عبر Kashier API
+ * GET /v3/payment/sessions/:sessionId/payment
+ * وفق التوثيق الرسمي لـ Kashier
+ */
+export const verifyKashierPaymentSession = async (sessionId: string): Promise<{
+  success: boolean;
+  status?: string;
+  data?: any;
+  error?: string;
+}> => {
+  const settings = getKashierSettings();
+  if (!settings.secretKey) {
+    return { success: false, error: 'Secret Key is not configured' };
+  }
+
+  try {
+    const baseUrl = settings.mode === 'live'
+      ? 'https://api.kashier.io'
+      : 'https://test-api.kashier.io';
+
+    const res = await fetch(`${baseUrl}/v3/payment/sessions/${sessionId}/payment`, {
+      method: 'GET',
+      headers: {
+        'Authorization': settings.secretKey,
+      },
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      return { success: false, error: err?.message || `HTTP ${res.status}` };
+    }
+
+    const json = await res.json();
+    return {
+      success: true,
+      status: json?.status || json?.data?.status,
+      data: json,
+    };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Network error' };
+  }
+};
+

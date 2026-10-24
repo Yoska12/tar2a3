@@ -31,7 +31,8 @@ import {
   CreditCard,
   RotateCcw
 } from 'lucide-react';
-import { CourseModule, Lesson, LessonAttachment, VideoProvider, CourseFileItem, CourseEnrollmentStatus } from '../types';
+import { CourseModule, Lesson, LessonAttachment, VideoProvider, CourseFileItem, CourseEnrollmentStatus, TeacherId, InstructorInfo } from '../types';
+import { AVAILABLE_INSTRUCTORS } from '../data/foundationModules';
 import { TarqaUser } from '../lib/supabase';
 import { uploadLessonVideo, formatVideoSize } from '../lib/videoUploadService';
 import {
@@ -69,7 +70,23 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
 }) => {
   const [modules, setModules] = useState<CourseModule[]>(() => coursesStorage.getModules());
   const [files, setFiles] = useState<CourseFileItem[]>(() => coursesStorage.getFiles());
+  const [instructors, setInstructors] = useState<InstructorInfo[]>(() => coursesStorage.getInstructors());
   const [activeTab, setActiveTab] = useState<'all' | 'lectures' | 'files'>('all');
+  // تحديد المعلم المختار (مدرس 1 أو مدرس 2)
+  const [selectedTeacher, setSelectedTeacher] = useState<TeacherId>('teacher_1');
+
+  // نافذة تعديل اسم وبيانات المدرس
+  const [teacherModalOpen, setTeacherModalOpen] = useState(false);
+  const [editingTeacher, setEditingTeacher] = useState<InstructorInfo | null>(null);
+  const [teacherFormData, setTeacherFormData] = useState<InstructorInfo>({
+    id: 'teacher_1',
+    name: 'مدرس 1',
+    fullName: 'مدرس 1',
+    title: 'خبير التأسيس الذهني والخرائط المعرفية',
+    tagline: 'شرح تأصيلي مبسط من الصفر يربط المفاهيم بالخرائط الذهنية وقوانين قياس الأساسية.',
+    avatarIcon: '👨‍🏫',
+    badgeColor: 'amber',
+  });
   
   // الباب الوحيد للمحاضرات
   const currentModule = modules[0] || {
@@ -78,8 +95,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
     description: 'محاضرات التأسيس الشاملة للقدرات من الصفر حتى الاحتراف.',
     orderIndex: 1,
     isPublished: true,
-    status: 'paused' as CourseEnrollmentStatus,
-    customStatusText: 'الاشتراك متاح قريباً ⏳',
+    status: 'active' as CourseEnrollmentStatus,
+    customStatusText: '',
     availableDate: '',
     lessons: [],
   };
@@ -113,6 +130,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
   const [lessonFormData, setLessonFormData] = useState({
     title: '',
     description: '',
+    teacherId: 'teacher_1' as TeacherId,
+    teacherName: 'مدرس 1',
     videoUrl: '',
     videoProvider: 'youtube' as VideoProvider,
     durationMinutes: 15,
@@ -167,9 +186,9 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
   const [moduleFormData, setModuleFormData] = useState({
     title: currentModule.title || 'المحاضرات',
     description: currentModule.description || '',
-    status: (currentModule.status || 'paused') as CourseEnrollmentStatus,
+    status: (currentModule.status || 'active') as CourseEnrollmentStatus,
     availableDate: currentModule.availableDate || '',
-    customStatusText: currentModule.customStatusText || 'الاشتراك متاح قريباً ⏳',
+    customStatusText: currentModule.customStatusText || '',
   });
 
   // نافذة إضافة / تعديل ملف
@@ -258,54 +277,48 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
     }
   };
 
-  // حماية تلقائية وفورية: التأكد من وجود المحاضرات والملفات وعدم بقائها فارغة
-  useEffect(() => {
-    const currentMods = coursesStorage.getModules();
-    const hasLessons = currentMods.some((m) => Array.isArray(m.lessons) && m.lessons.length > 0);
-    if (!hasLessons || !modules[0]?.lessons || modules[0].lessons.length === 0) {
-      const restored = coursesStorage.resetToDefault();
-      setModules([...restored]);
-    }
-    const currentFiles = coursesStorage.getFiles();
-    if (!currentFiles || currentFiles.length === 0 || files.length === 0) {
-      const restoredFiles = coursesStorage.resetFilesToDefault();
-      setFiles([...restoredFiles]);
-    }
-  }, []);
+  // حفظ تعديل اسم وبيانات المدرس
+  const handleSaveTeacher = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!teacherFormData.name.trim()) return;
+    const updated = coursesStorage.updateInstructor(teacherFormData);
+    setInstructors([...updated]);
+    setModules([...coursesStorage.getModules()]);
+    setTeacherModalOpen(false);
+    setDownloadToast(`تم تحديث اسم وبيانات (${teacherFormData.name}) بنجاح! 👨‍🏫✅`);
+    setTimeout(() => setDownloadToast(null), 3500);
+  };
 
-  // الاستماع لتغييرات الدورات والملفات والاشتراكات
+  // الاستماع لتغييرات الدورات والملفات والاشتراكات والمدرسين
   useEffect(() => {
     const handleSubChanged = () => {
       setSubscriptionInfo(getSubscriptionDetails(currentUser));
     };
     const handleModulesChanged = (e: any) => {
       const incoming = e.detail || coursesStorage.getModules();
-      const hasLessons = incoming && incoming.some((m: any) => Array.isArray(m.lessons) && m.lessons.length > 0);
-      if (hasLessons) {
-        setModules([...incoming]);
-      } else {
-        setModules(coursesStorage.getModules());
-      }
+      setModules([...incoming]);
     };
     const handleFilesChanged = (e: any) => {
       const incoming = e.detail !== undefined ? e.detail : coursesStorage.getFiles();
-      if (Array.isArray(incoming) && incoming.length > 0) {
-        setFiles([...incoming]);
-      } else {
-        setFiles(coursesStorage.getFiles());
-      }
+      setFiles([...incoming]);
+    };
+    const handleInstructorsChanged = (e: any) => {
+      const incoming = e.detail !== undefined ? e.detail : coursesStorage.getInstructors();
+      setInstructors([...incoming]);
     };
 
     window.addEventListener('tarqa_subscription_changed', handleSubChanged);
     window.addEventListener('tarqa_user_changed', handleSubChanged);
     window.addEventListener('tarqa_courses_modules_changed', handleModulesChanged);
     window.addEventListener('tarqa_courses_files_changed', handleFilesChanged);
+    window.addEventListener('tarqa_instructors_changed', handleInstructorsChanged);
 
     return () => {
       window.removeEventListener('tarqa_subscription_changed', handleSubChanged);
       window.removeEventListener('tarqa_user_changed', handleSubChanged);
       window.removeEventListener('tarqa_courses_modules_changed', handleModulesChanged);
       window.removeEventListener('tarqa_courses_files_changed', handleFilesChanged);
+      window.removeEventListener('tarqa_instructors_changed', handleInstructorsChanged);
     };
   }, [currentUser]);
 
@@ -366,7 +379,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
   const handleLessonClick = (lesson: Lesson) => {
     const hasAccess = canAccessLesson(lesson, currentUser);
     if (hasAccess) {
-      onOpenClassroom(currentModule, lesson);
+      onOpenClassroom({ ...currentModule, lessons: displayedLessons }, lesson);
     } else {
       setShowSubscribeModal(true);
     }
@@ -447,11 +460,16 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
 
     const defaultVideoUrl = 'https://vjs.zencdn.net/v/oceans.mp4';
 
+    const teacherId = lessonFormData.teacherId || 'teacher_1';
+    const teacherName = teacherId === 'teacher_2' ? 'مدرس 2' : 'مدرس 1';
+
     if (editingLesson) {
       const updatedLesson: Lesson = {
         ...editingLesson,
         title: lessonFormData.title.trim(),
         description: lessonFormData.description.trim(),
+        teacherId,
+        teacherName,
         videoUrl: lessonFormData.videoUrl.trim() || defaultVideoUrl,
         videoProvider: lessonFormData.videoProvider || (lessonFormData.videoUrl.includes('youtu') ? 'youtube' : 'direct_url'),
         durationMinutes: Number(lessonFormData.durationMinutes) || 15,
@@ -467,6 +485,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
         moduleTitle: currentModule.title,
         title: lessonFormData.title.trim(),
         description: lessonFormData.description.trim(),
+        teacherId,
+        teacherName,
         videoUrl: lessonFormData.videoUrl.trim() || defaultVideoUrl,
         videoProvider: lessonFormData.videoProvider || (lessonFormData.videoUrl.includes('youtu') ? 'youtube' : 'direct_url'),
         durationMinutes: Number(lessonFormData.durationMinutes) || 15,
@@ -567,9 +587,19 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
     setFiles([...updatedFiles]);
   };
 
-  const totalLessons = currentModule.lessons.length;
-  const totalDurationMinutes = currentModule.lessons.reduce((acc, l) => acc + (l.durationMinutes || 0), 0);
-  const freePreviewsCount = currentModule.lessons.filter((l) => l.isFreePreview).length;
+  // تصفية المحاضرات حسب المدرس المختار (مدرس 1 أو مدرس 2)
+  const allLessons = currentModule.lessons || [];
+  const teacher1Info = instructors.find((i) => i.id === 'teacher_1') || AVAILABLE_INSTRUCTORS[0];
+  const teacher2Info = instructors.find((i) => i.id === 'teacher_2') || AVAILABLE_INSTRUCTORS[1];
+  const teacher1Lessons = allLessons.filter((l) => (l.teacherId || 'teacher_1') === 'teacher_1');
+  const teacher2Lessons = allLessons.filter((l) => l.teacherId === 'teacher_2');
+
+  const displayedLessons = allLessons.filter((l) => (l.teacherId || 'teacher_1') === selectedTeacher);
+
+  const totalLessons = allLessons.length;
+  const activeLecturesCount = displayedLessons.length;
+  const totalDurationMinutes = displayedLessons.reduce((acc, l) => acc + (l.durationMinutes || 0), 0);
+  const freePreviewsCount = displayedLessons.filter((l) => l.isFreePreview).length;
   const mainFile = files[0];
 
   return (
@@ -582,9 +612,14 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
           
           {/* الجانب الأيمن: النص والعنوان */}
           <div className="lg:col-span-7 space-y-4 text-right">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/80 dark:bg-amber-500/15 border border-sky-200/70 dark:border-amber-500/30 text-sky-900 dark:text-amber-400 text-xs font-bold shadow-sm backdrop-blur-sm">
-              <GraduationCap className="w-4 h-4 text-amber-500" />
-              <span>دورة طرقع للتأسيس الشامل • المحاضرات والملف المعتمد 1446</span>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-b from-amber-400 to-amber-500 p-1 flex items-center justify-center shadow-sm shrink-0">
+                <img src="/frame_00012.png" alt="شعار طرقع" className="w-full h-full object-contain drop-shadow-sm" />
+              </div>
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/80 dark:bg-amber-500/15 border border-sky-200/70 dark:border-amber-500/30 text-sky-900 dark:text-amber-400 text-xs font-bold shadow-sm backdrop-blur-sm">
+                <GraduationCap className="w-4 h-4 text-amber-500" />
+                <span>دورة طرقع للتأسيس الشامل • المحاضرات والملف المعتمد 1446</span>
+              </div>
             </div>
 
             <h1 className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white leading-[1.3]">
@@ -656,8 +691,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                 <span className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
                   الباقة السنوية الشاملة
                 </span>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                  قريباً ⏳
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                  {moduleEnrollmentInfo.badgeText}
                 </span>
               </div>
 
@@ -716,15 +751,11 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
               ) : (
                 <button
                   type="button"
-                  disabled
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }}
-                  className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-base shadow-lg shadow-amber-500/30 flex items-center justify-center gap-2 cursor-not-allowed select-none opacity-95 transition-all"
+                  onClick={handleConfirmSubscription}
+                  className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-base shadow-lg shadow-amber-500/30 flex items-center justify-center gap-2 cursor-pointer select-none transition-all active:scale-[0.98]"
                 >
-                  <Clock className="w-5 h-5 animate-pulse text-slate-950 shrink-0" />
-                  <span>قريباً ⏳</span>
+                  <Sparkles className="w-5 h-5 text-slate-950 shrink-0" />
+                  <span>اشترك الآن 🚀 ({ANNUAL_SUBSCRIPTION_PRICE_SAR} ر.س)</span>
                 </button>
               )}
 
@@ -787,9 +818,12 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
               <button
                 onClick={() => {
                   setEditingLesson(null);
+                  const defaultTeacherId: TeacherId = selectedTeacher === 'teacher_2' ? 'teacher_2' : 'teacher_1';
                   setLessonFormData({
                     title: '',
                     description: '',
+                    teacherId: defaultTeacherId,
+                    teacherName: defaultTeacherId === 'teacher_2' ? 'مدرس 2' : 'مدرس 1',
                     videoUrl: '',
                     videoProvider: 'youtube',
                     durationMinutes: 15,
@@ -923,14 +957,11 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                       </button>
                     ) : (
                       <button
-                        onClick={() => {
-                          setDownloadToast('الاشتراك سيكون متاحاً قريباً جداً فور تفعيل بوابة الدفع! ⏳');
-                          setShowSubscribeModal(true);
-                        }}
-                        className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-amber-500/20 to-amber-600/20 border border-amber-500/40 hover:bg-amber-500/30 text-amber-600 dark:text-amber-400 font-black text-xs sm:text-sm shadow-sm transition flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                        onClick={handleConfirmSubscription}
+                        className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2 cursor-pointer active:scale-98"
                       >
-                        <Clock className="w-4 h-4" />
-                        <span>الاشتراك متاح قريباً ⏳</span>
+                        <Sparkles className="w-4 h-4 text-slate-950" />
+                        <span>اشترك لتحميل الملف الكامل 🚀</span>
                       </button>
                     )}
 
@@ -994,19 +1025,12 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                   📄
                 </div>
                 <h3 className="text-base font-black text-slate-900 dark:text-white">
-                  لا توجد مذكرات أو ملفات مضافة حالياً
+                  لم يتم إضافة أي مذكرات أو ملفات بعد
                 </h3>
                 <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  يمكنك استعادة المذكرات المعتمدة (مذكرة طرقع الشاملة، كتيب القوانين، وأوراق العمل) بنقرة واحدة.
+                  سيتم إتاحة المذكرات والملفات تلقائياً فور قيام الإدارة برفعها وتحديثها سحابياً.
                 </p>
                 <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-                  <button
-                    onClick={handleRestoreDefaults}
-                    className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md transition flex items-center gap-2 cursor-pointer"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                    <span>استعادة مذكرات وملفات الدورة المعتمدة 📄</span>
-                  </button>
                   {isEditor && (
                     <button
                       onClick={() => {
@@ -1099,11 +1123,11 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                         ) : (
                           <button
                             type="button"
-                            onClick={() => setShowSubscribeModal(true)}
-                            className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-amber-500/10 dark:bg-slate-800 dark:hover:bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                            onClick={handleConfirmSubscription}
+                            className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
                           >
-                            <Clock className="w-3.5 h-3.5" />
-                            <span>متاح قريباً ⏳</span>
+                            <Sparkles className="w-3.5 h-3.5 text-slate-950" />
+                            <span>اشترك الآن 🚀</span>
                           </button>
                         )}
 
@@ -1172,18 +1196,23 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
         )}
 
         {/* ===================================================================== */}
-        {/* 4. باب المحاضرات (باب واحد فقط للمحاضرات اسمه "المحاضرات") */}
+        {/* 4. باب المحاضرات (مع خياري مدرس 1 ومدرس 2) */}
         {/* ===================================================================== */}
         {(activeTab === 'all' || activeTab === 'lectures') && (
-          <section className="space-y-4">
-            <div className="flex items-center justify-between">
+          <section className="space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-                  <Video className="w-6 h-6 text-amber-500" />
-                  <span>{currentModule.title || 'المحاضرات'} 🎥</span>
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {currentModule.description || 'شروحات فيديو تأسيسية مكثفة مع استراتيجيات الحل السريع'}
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+                    <Video className="w-6 h-6 text-amber-500" />
+                    <span>{currentModule.title || 'المحاضرات'} 🎥</span>
+                  </h2>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                    خيارات متعددة للشرح 👨‍🏫
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  اختر المعلم المناسب لأسلوب فهمك، أو تنقل بين شروحات المعلمين بحرية كاملة
                 </p>
               </div>
 
@@ -1194,9 +1223,9 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                       setModuleFormData({
                         title: currentModule.title,
                         description: currentModule.description,
-                        status: (currentModule.status || 'paused') as CourseEnrollmentStatus,
+                        status: (currentModule.status || 'active') as CourseEnrollmentStatus,
                         availableDate: currentModule.availableDate || '',
-                        customStatusText: currentModule.customStatusText || 'الاشتراك متاح قريباً ⏳',
+                        customStatusText: currentModule.customStatusText || '',
                       });
                       setModuleModalOpen(true);
                     }}
@@ -1214,6 +1243,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                       setLessonFormData({
                         title: '',
                         description: '',
+                        teacherId: selectedTeacher,
+                        teacherName: selectedTeacher === 'teacher_2' ? 'مدرس 2' : 'مدرس 1',
                         videoUrl: '',
                         videoProvider: 'uploaded_video',
                         durationMinutes: 15,
@@ -1232,34 +1263,240 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
               )}
             </div>
 
+            {/* بطاقتا اختيار المعلم البارزة (Option 1 & Option 2) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* خيار 1: مدرس 1 */}
+              <div
+                onClick={() => setSelectedTeacher('teacher_1')}
+                className={`p-5 rounded-3xl cursor-pointer transition-all duration-300 relative overflow-hidden border ${
+                  selectedTeacher === 'teacher_1'
+                    ? 'bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-transparent border-amber-500 shadow-[0_8px_30px_rgba(245,158,11,0.18)] ring-2 ring-amber-500/40'
+                    : 'bg-white/80 dark:bg-[#120e1d]/70 border-slate-200 dark:border-slate-800 hover:border-amber-500/40 hover:bg-amber-500/5 shadow-sm'
+                }`}
+              >
+                {selectedTeacher === 'teacher_1' && (
+                  <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-400" />
+                )}
+
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-500 flex items-center justify-center text-2xl shrink-0 shadow-inner">
+                      {teacher1Info.avatarIcon || '👨‍🏫'}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-black text-base text-slate-900 dark:text-white">
+                          {teacher1Info.fullName || teacher1Info.name}
+                        </h3>
+                        {selectedTeacher === 'teacher_1' && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-slate-950 flex items-center gap-1 shadow-sm">
+                            <Check className="w-3 h-3 stroke-[3]" />
+                            <span>المسار المحدد</span>
+                          </span>
+                        )}
+                        {isEditor && isEditMode && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingTeacher(teacher1Info);
+                              setTeacherFormData({ ...teacher1Info });
+                              setTeacherModalOpen(true);
+                            }}
+                            className="p-1 rounded-lg bg-amber-500/10 hover:bg-amber-500 hover:text-slate-950 text-amber-600 dark:text-amber-400 border border-amber-500/20 transition cursor-pointer"
+                            title="تعديل اسم وبيانات المدرس 1"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400 font-bold mt-0.5">
+                        {teacher1Info.title || 'خبير التأسيس والقدرات'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 shrink-0">
+                    {teacher1Lessons.length} محاضرات
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-600 dark:text-slate-300 mt-3 leading-relaxed">
+                  {teacher1Info.tagline || 'شرح تأصيلي مبسط يربط المفاهيم بالخرائط الذهنية لضمان ثبات القواعد في ذهنك.'}
+                </p>
+
+                <div className="flex items-center justify-between pt-4 mt-3 border-t border-slate-100 dark:border-slate-800/80 text-xs">
+                  <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400 text-[11px] font-bold">
+                    <span>⏱️ {Math.round(teacher1Lessons.reduce((acc, l) => acc + (l.durationMinutes || 0), 0) / 60)} ساعة تدريب</span>
+                    <span>•</span>
+                    <span className="text-emerald-600 dark:text-emerald-400">
+                      🎁 {teacher1Lessons.filter((l) => l.isFreePreview).length} محاضرات مجانية
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    className={`px-3.5 py-1.5 rounded-xl font-black text-xs transition flex items-center gap-1.5 ${
+                      selectedTeacher === 'teacher_1'
+                        ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/25'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-amber-500 hover:text-slate-950'
+                    }`}
+                  >
+                    <span>{selectedTeacher === 'teacher_1' ? `تشغيل محاضرات ${teacher1Info.name}` : `اختيار ${teacher1Info.name}`}</span>
+                    <Play className="w-3 h-3 fill-current" />
+                  </button>
+                </div>
+              </div>
+
+              {/* خيار 2: مدرس 2 */}
+              <div
+                onClick={() => setSelectedTeacher('teacher_2')}
+                className={`p-5 rounded-3xl cursor-pointer transition-all duration-300 relative overflow-hidden border ${
+                  selectedTeacher === 'teacher_2'
+                    ? 'bg-gradient-to-br from-emerald-500/15 via-emerald-500/5 to-transparent border-emerald-500 shadow-[0_8px_30px_rgba(16,185,129,0.18)] ring-2 ring-emerald-500/40'
+                    : 'bg-white/80 dark:bg-[#120e1d]/70 border-slate-200 dark:border-slate-800 hover:border-emerald-500/40 hover:bg-emerald-500/5 shadow-sm'
+                }`}
+              >
+                {selectedTeacher === 'teacher_2' && (
+                  <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-400" />
+                )}
+
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-500 flex items-center justify-center text-2xl shrink-0 shadow-inner">
+                      {teacher2Info.avatarIcon || '⚡'}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-black text-base text-slate-900 dark:text-white">
+                          {teacher2Info.fullName || teacher2Info.name}
+                        </h3>
+                        {selectedTeacher === 'teacher_2' && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500 text-slate-950 flex items-center gap-1 shadow-sm">
+                            <Check className="w-3 h-3 stroke-[3]" />
+                            <span>المسار المحدد</span>
+                          </span>
+                        )}
+                        {isEditor && isEditMode && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingTeacher(teacher2Info);
+                              setTeacherFormData({ ...teacher2Info });
+                              setTeacherModalOpen(true);
+                            }}
+                            className="p-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 transition cursor-pointer"
+                            title="تعديل اسم وبيانات المدرس 2"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold mt-0.5">
+                        {teacher2Info.title || 'خبير التكنيك السريع'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0">
+                    {teacher2Lessons.length} محاضرات
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-600 dark:text-slate-300 mt-3 leading-relaxed">
+                  {teacher2Info.tagline || 'طرق طرقع السحرية للحل الخاطف بمجرد النظر واستبعاد الخيارات للوصول للـ 100%.'}
+                </p>
+
+                <div className="flex items-center justify-between pt-4 mt-3 border-t border-slate-100 dark:border-slate-800/80 text-xs">
+                  <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400 text-[11px] font-bold">
+                    <span>⏱️ {Math.round(teacher2Lessons.reduce((acc, l) => acc + (l.durationMinutes || 0), 0) / 60)} ساعة تدريب</span>
+                    <span>•</span>
+                    <span className="text-emerald-600 dark:text-emerald-400">
+                      🎁 {teacher2Lessons.filter((l) => l.isFreePreview).length} محاضرات مجانية
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    className={`px-3.5 py-1.5 rounded-xl font-black text-xs transition flex items-center gap-1.5 ${
+                      selectedTeacher === 'teacher_2'
+                        ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/25'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-emerald-500 hover:text-slate-950'
+                    }`}
+                  >
+                    <span>{selectedTeacher === 'teacher_2' ? `تشغيل محاضرات ${teacher2Info.name}` : `اختيار ${teacher2Info.name}`}</span>
+                    <Play className="w-3 h-3 fill-current" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* شريط الفلترة السريع والمصغر */}
+            <div className="flex items-center justify-between flex-wrap gap-3 bg-white/60 dark:bg-[#120e1d]/60 p-2.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 backdrop-blur-md">
+              <div className="flex items-center gap-2 overflow-x-auto scrollbar-none py-0.5">
+                <span className="text-xs font-bold text-slate-500 px-2 shrink-0">عرض المحاضرات:</span>
+                <button
+                  onClick={() => setSelectedTeacher('teacher_1')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                    selectedTeacher === 'teacher_1'
+                      ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-amber-500/10'
+                  }`}
+                >
+                  <span>{teacher1Info.avatarIcon || '👨‍🏫'} {teacher1Info.name} ({teacher1Lessons.length})</span>
+                </button>
+
+                <button
+                  onClick={() => setSelectedTeacher('teacher_2')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                    selectedTeacher === 'teacher_2'
+                      ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-emerald-500/10'
+                  }`}
+                >
+                  <span>{teacher2Info.avatarIcon || '⚡'} {teacher2Info.name} ({teacher2Lessons.length})</span>
+                </button>
+              </div>
+
+              <div className="text-xs text-slate-500 font-bold px-2">
+                عرض محاضرات {selectedTeacher === 'teacher_2' ? (teacher2Info.fullName || teacher2Info.name) : (teacher1Info.fullName || teacher1Info.name)} ({displayedLessons.length} محاضرة)
+              </div>
+            </div>
+
             {/* قائمة المحاضرات داخل باب المحاضرات */}
             <div className="rounded-3xl tarqa-glass-card backdrop-blur-2xl shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.7),0_0_20px_rgba(245,158,11,0.1)] overflow-hidden p-4 sm:p-6 space-y-3">
               
-              {currentModule.lessons.length === 0 ? (
+              {displayedLessons.length === 0 ? (
                 <div className="py-12 text-center space-y-3">
                   <Video className="w-12 h-12 text-slate-300 dark:text-slate-700 mx-auto" />
-                  <h4 className="text-sm font-black text-slate-700 dark:text-slate-200">لا توجد محاضرات في هذا الباب حالياً</h4>
+                  <h4 className="text-sm font-black text-slate-700 dark:text-slate-200">
+                    لا توجد محاضرات معروضة لهذا المعلم حالياً
+                  </h4>
                   <p className="text-xs text-slate-400 max-w-md mx-auto">
-                    اضغط على الزر أدناه لاستعادة المحاضرات التأسيسية الـ 8 المعتمدة لدورة طرقع فوراً.
+                    اضغط على الزر أدناه لاستعادة المحاضرات التأسيسية المعتمدة لدورة طرقع لمدرسي المادة فوراً.
                   </p>
                   <button
                     onClick={handleRestoreDefaults}
                     className="mt-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs transition shadow-md inline-flex items-center gap-2 cursor-pointer"
                   >
                     <RotateCcw className="w-4 h-4" />
-                    <span>استعادة المحاضرات التأسيسية المعتمدة (8 محاضرات) 🔄</span>
+                    <span>استعادة المحاضرات التأسيسية المعتمدة (16 محاضرة للمدرسين 1 و 2) 🔄</span>
                   </button>
                 </div>
               ) : (
-                currentModule.lessons.map((lesson, lesIdx) => {
+                displayedLessons.map((lesson, lesIdx) => {
                   const hasAccess = canAccessLesson(lesson, currentUser);
+                  const isT2 = lesson.teacherId === 'teacher_2';
 
                   return (
                     <div
                       key={lesson.id}
                       className={`p-4 sm:p-5 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
                         hasAccess
-                          ? 'bg-sky-50/70 dark:bg-[#191326]/70 border-sky-200/80 dark:border-amber-500/20 hover:bg-white dark:hover:bg-[#201733]/90 hover:border-sky-400 dark:hover:border-amber-400/50 shadow-sm'
+                          ? isT2
+                            ? 'bg-emerald-50/50 dark:bg-[#0e1f1c]/50 border-emerald-200/70 dark:border-emerald-500/20 hover:bg-white dark:hover:bg-[#122824]/90 hover:border-emerald-400 dark:hover:border-emerald-400/50 shadow-sm'
+                            : 'bg-sky-50/70 dark:bg-[#191326]/70 border-sky-200/80 dark:border-amber-500/20 hover:bg-white dark:hover:bg-[#201733]/90 hover:border-sky-400 dark:hover:border-amber-400/50 shadow-sm'
                           : 'bg-slate-100/60 dark:bg-slate-900/40 border-slate-200/50 dark:border-slate-800/40 opacity-85'
                       }`}
                     >
@@ -1268,7 +1505,9 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                           onClick={() => handleLessonClick(lesson)}
                           className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 cursor-pointer transition ${
                             hasAccess
-                              ? 'bg-amber-500/15 text-amber-500 hover:bg-amber-500 hover:text-slate-950 border border-amber-500/30'
+                              ? isT2
+                                ? 'bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500 hover:text-slate-950 border border-emerald-500/30'
+                                : 'bg-amber-500/15 text-amber-500 hover:bg-amber-500 hover:text-slate-950 border border-amber-500/30'
                               : 'bg-slate-200 dark:bg-slate-800 text-slate-400 border border-slate-300 dark:border-slate-700'
                           }`}
                         >
@@ -1284,6 +1523,19 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                               {lesIdx + 1}. {lesson.title}
                             </h4>
 
+                            {/* شارة المدرس */}
+                            {isT2 ? (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                                <span>{teacher2Info.avatarIcon || '⚡'}</span>
+                                <span>{teacher2Info.fullName || teacher2Info.name || lesson.teacherName || 'مدرس 2'}</span>
+                              </span>
+                            ) : (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                                <span>{teacher1Info.avatarIcon || '👨‍🏫'}</span>
+                                <span>{teacher1Info.fullName || teacher1Info.name || lesson.teacherName || 'مدرس 1'}</span>
+                              </span>
+                            )}
+
                             {lesson.isFreePreview ? (
                               <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
                                 معاينة مجانية 🎁
@@ -1294,8 +1546,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                               </span>
                             ) : (
                               <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-200 dark:bg-slate-800 text-slate-500 border border-slate-300 dark:border-slate-700 flex items-center gap-1">
-                                <Clock className="w-2.5 h-2.5" />
-                                <span>متاح قريباً ⏳</span>
+                                <Lock className="w-2.5 h-2.5 text-amber-500" />
+                                <span>يتطلب اشتراك 🔒</span>
                               </span>
                             )}
                           </div>
@@ -1344,6 +1596,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                                 setLessonFormData({
                                   title: lesson.title,
                                   description: lesson.description,
+                                  teacherId: (lesson.teacherId || 'teacher_1') as TeacherId,
+                                  teacherName: lesson.teacherName || (lesson.teacherId === 'teacher_2' ? 'مدرس 2' : 'مدرس 1'),
                                   videoUrl: lesson.videoUrl,
                                   videoProvider: lesson.videoProvider || 'uploaded_video',
                                   durationMinutes: lesson.durationMinutes,
@@ -1373,18 +1627,22 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                         {hasAccess ? (
                           <button
                             onClick={() => handleLessonClick(lesson)}
-                            className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                            className={`px-4 py-2 rounded-xl font-black text-xs transition flex items-center gap-1.5 shadow-sm cursor-pointer ${
+                              isT2
+                                ? 'bg-emerald-500 hover:bg-emerald-600 text-slate-950'
+                                : 'bg-amber-500 hover:bg-amber-600 text-slate-950'
+                            }`}
                           >
                             <Play className="w-3.5 h-3.5 fill-current" />
                             <span>مشاهدة الآن</span>
                           </button>
                         ) : (
                           <button
-                            onClick={() => setShowSubscribeModal(true)}
-                            className="px-3.5 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-700 dark:text-slate-300 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer"
+                            onClick={() => handleLessonClick(lesson)}
+                            className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs transition flex items-center gap-1.5 cursor-pointer shadow-sm"
                           >
-                            <Clock className="w-3.5 h-3.5" />
-                            <span>متاح قريباً ⏳</span>
+                            <Sparkles className="w-3.5 h-3.5 text-slate-950" />
+                            <span>اشترك للمشاهدة 🚀</span>
                           </button>
                         )}
                       </div>
@@ -1443,31 +1701,41 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                 </div>
               ) : (
                 <div className="space-y-4 pt-2">
-                  {/* بطاقة الإشعار بقرب تفعيل الاشتراك */}
-                  <div className="p-5 rounded-2xl bg-gradient-to-b from-amber-500/10 to-amber-500/5 border border-amber-500/30 text-center space-y-3">
-                    <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-500 flex items-center justify-center mx-auto shadow-inner">
-                      <Clock className="w-6 h-6 animate-pulse" />
+                  <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-right space-y-2">
+                    <div className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-amber-500 shrink-0" />
+                      <span>الدفع الإلكتروني الآمن المباشر عبر بوابة كاشير (Kashier)</span>
                     </div>
-                    <div className="space-y-1">
-                      <h4 className="text-sm font-black text-slate-900 dark:text-white">
-                        الاشتراك سيكون متاحاً قريباً جداً 🚀
-                      </h4>
-                      <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed max-w-xs mx-auto">
-                        نعمل حالياً على تجهيز وتثبيت بوابة الدفع الإلكتروني لتوفير تجربة دفع سهلة ومؤمّنة للجميع. ترقبوا الانطلاق قريباً!
-                      </p>
-                    </div>
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[11px] font-black">
-                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
-                      <span>جاري إعداد البوابة • ترقبوا التدشين</span>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                      مدى، فيزا، ماستركارد، فوري، ميزة، أو المحافظ الإلكترونية. تفعيل فوري للاشتراك بعد إتمام العملية.
                     </div>
                   </div>
 
                   <button
                     type="button"
-                    onClick={() => setShowSubscribeModal(false)}
-                    className="w-full py-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition cursor-pointer"
+                    onClick={handleConfirmSubscription}
+                    disabled={isSubscribing}
+                    className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-sm shadow-lg shadow-amber-500/30 flex items-center justify-center gap-2 cursor-pointer select-none transition-all active:scale-[0.98] disabled:opacity-70"
                   >
-                    حسناً، فهمت
+                    {isSubscribing ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>جاري التجهيز...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 text-slate-950 shrink-0" />
+                        <span>متابعة الدفع والاشتراك الآن 💳 ({ANNUAL_SUBSCRIPTION_PRICE_SAR} ر.س)</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowSubscribeModal(false)}
+                    className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition cursor-pointer"
+                  >
+                    إلغاء
                   </button>
                 </div>
               )}
@@ -1504,6 +1772,58 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
             </div>
 
             <form onSubmit={handleSaveLesson} className="space-y-4 text-right">
+              {/* اختيار المعلم المشرف على المحاضرة */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  المعلم المشرف على المحاضرة *
+                </label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setLessonFormData({
+                        ...lessonFormData,
+                        teacherId: 'teacher_1',
+                        teacherName: teacher1Info.name || 'مدرس 1',
+                      })
+                    }
+                    className={`p-3 rounded-2xl border text-right transition flex items-center gap-2.5 cursor-pointer ${
+                      lessonFormData.teacherId === 'teacher_1'
+                        ? 'bg-amber-500/15 border-amber-500 text-amber-600 dark:text-amber-400 font-black shadow-sm ring-1 ring-amber-500/40'
+                        : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-amber-500/30'
+                    }`}
+                  >
+                    <span className="text-xl">{teacher1Info.avatarIcon || '👨‍🏫'}</span>
+                    <div>
+                      <div className="text-xs font-black">{teacher1Info.fullName || teacher1Info.name || 'مدرس 1'}</div>
+                      <div className="text-[10px] text-slate-400">{teacher1Info.title || 'التأسيس الذهني'}</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setLessonFormData({
+                        ...lessonFormData,
+                        teacherId: 'teacher_2',
+                        teacherName: teacher2Info.name || 'مدرس 2',
+                      })
+                    }
+                    className={`p-3 rounded-2xl border text-right transition flex items-center gap-2.5 cursor-pointer ${
+                      lessonFormData.teacherId === 'teacher_2'
+                        ? 'bg-emerald-500/15 border-emerald-500 text-emerald-600 dark:text-emerald-400 font-black shadow-sm ring-1 ring-emerald-500/40'
+                        : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-emerald-500/30'
+                    }`}
+                  >
+                    <span className="text-xl">{teacher2Info.avatarIcon || '⚡'}</span>
+                    <div>
+                      <div className="text-xs font-black">{teacher2Info.fullName || teacher2Info.name || 'مدرس 2'}</div>
+                      <div className="text-[10px] text-slate-400">{teacher2Info.title || 'الحل السريع والتكنيك'}</div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   عنوان المحاضرة *
@@ -1975,6 +2295,121 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setModuleModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold transition cursor-pointer"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* نافذة تعديل اسم وبيانات المدرس */}
+      {teacherModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in">
+          <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-[#151022] border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center text-lg font-black">
+                  {teacherFormData.avatarIcon || '👨‍🏫'}
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                    تعديل بيانات واسم المدرس
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    تخصيص الاسم واللقب والوصف لمسار ({teacherFormData.id === 'teacher_2' ? 'مدرس 2' : 'مدرس 1'})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setTeacherModalOpen(false)}
+                className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveTeacher} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  اسم المدرس المختصر (يظهر في الأزرار والفلترة):
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={teacherFormData.name}
+                  onChange={(e) => setTeacherFormData({ ...teacherFormData, name: e.target.value })}
+                  placeholder="اسم المدرس المختصر (مثال: مدرس 1)"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  الاسم الكامل واللقب (يظهر كعنوان بالبطاقة):
+                </label>
+                <input
+                  type="text"
+                  value={teacherFormData.fullName || ''}
+                  onChange={(e) => setTeacherFormData({ ...teacherFormData, fullName: e.target.value })}
+                  placeholder="الاسم الكامل واللقب (مثال: مدرس 1)"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    المسمى / التخصص:
+                  </label>
+                  <input
+                    type="text"
+                    value={teacherFormData.title || ''}
+                    onChange={(e) => setTeacherFormData({ ...teacherFormData, title: e.target.value })}
+                    placeholder="مثال: خبير التأسيس الذهني والخرائط المعرفية"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    الأيقونة (إيموجي):
+                  </label>
+                  <input
+                    type="text"
+                    value={teacherFormData.avatarIcon || ''}
+                    onChange={(e) => setTeacherFormData({ ...teacherFormData, avatarIcon: e.target.value })}
+                    placeholder="👨‍🏫 أو ⚡"
+                    className="w-full px-3.5 py-2 text-center rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 font-bold"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  نبذة ووصف مسار الشرح:
+                </label>
+                <textarea
+                  rows={2}
+                  value={teacherFormData.tagline || ''}
+                  onChange={(e) => setTeacherFormData({ ...teacherFormData, tagline: e.target.value })}
+                  placeholder="نبذة عن طريقة شرح المدرس في هذا المسار..."
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md transition cursor-pointer"
+                >
+                  حفظ اسم وبيانات المدرس 💾
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTeacherModalOpen(false)}
                   className="px-4 py-2.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold transition cursor-pointer"
                 >
                   إلغاء

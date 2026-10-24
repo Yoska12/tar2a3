@@ -105,30 +105,12 @@
 }
 
 /* ==========================================================================
-   أسلس انتقال لوني للخلفية وعناصر الموقع عند تبديل الثيم بدون أي وميض أو ريفريش
+   أسلس انتقال لوني للخلفية عند تبديل الثيم دون إجهاد معالج الرسوميات على الآيفون
    ========================================================================== */
 html.theme-transitioning,
 html.theme-transitioning body,
-html.theme-transitioning #root,
-html.theme-transitioning div,
-html.theme-transitioning header,
-html.theme-transitioning nav,
-html.theme-transitioning main,
-html.theme-transitioning section,
-html.theme-transitioning button,
-html.theme-transitioning span,
-html.theme-transitioning p,
-html.theme-transitioning h1,
-html.theme-transitioning h2,
-html.theme-transitioning h3,
-html.theme-transitioning svg {
-  transition: background-color 0.55s cubic-bezier(0.4, 0, 0.2, 1),
-              border-color 0.55s cubic-bezier(0.4, 0, 0.2, 1),
-              color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
-              fill 0.4s cubic-bezier(0.4, 0, 0.2, 1),
-              stroke 0.4s cubic-bezier(0.4, 0, 0.2, 1),
-              box-shadow 0.55s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  transition-delay: 0s !important;
+html.theme-transitioning #root {
+  transition: background-color 0.35s ease-out !important;
 }
 
 /* ==========================================================================
@@ -279,15 +261,30 @@ html.theme-transitioning svg {
 }
 
 /* ==========================================================================
-   تحسينات الأداء الفائقة لشاشات الهواتف الذكية (Mobile Performance Boost)
+   تحسينات الأداء الفائقة لشاشات الهواتف والآيفون (iPhone & Safari 60fps Optimization)
    ========================================================================== */
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@supports (-webkit-touch-callout: none) {
+  /* تحسينات سفاري ونظام iOS لمنع التقطيع */
+  body, html {
+    -webkit-overflow-scrolling: touch;
+    -webkit-text-size-adjust: 100%;
+  }
+}
+
 @media (max-width: 768px) {
-  /* خفض تكلفة gaussian blur على الموبايل لتوفير سلاسة 60fps فورية ومنع تعليق GPU */
+  /* خفض تكلفة gaussian blur على الآيفون لتوفير سلاسة 60fps فورية ومنع تعليق GPU */
   .backdrop-blur-3xl,
   .backdrop-blur-2xl,
-  .backdrop-blur-xl {
-    -webkit-backdrop-filter: blur(8px) !important;
-    backdrop-filter: blur(8px) !important;
+  .backdrop-blur-xl,
+  .backdrop-blur-lg,
+  .backdrop-blur-md {
+    -webkit-backdrop-filter: blur(6px) !important;
+    backdrop-filter: blur(6px) !important;
   }
 
   /* تسريع اللمس الفوري بدون تأخير 300ms على الهواتف */
@@ -296,8 +293,20 @@ html.theme-transitioning svg {
     -webkit-overflow-scrolling: touch;
   }
 
-  /* إيقاف الحركات المجهدة للموبايل في وضع خفض الحركة أو الشاشات الصغيرة */
-  .animate-galaxy-spin-slow {
+  /* عزل طبقات البطاقات لتسريع المعالجة الرسومية بالهاردوير */
+  .tarqa-glass-card,
+  .tarqa-glass-hero,
+  .tarqa-glass-metric {
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+  }
+
+  /* إيقاف الحركات المستمرة المجهدة لمعالج الجوال أثناء التمرير */
+  .animate-galaxy-spin-slow,
+  .animate-nebula-float,
+  .animate-shooting-star-1,
+  .animate-shooting-star-2,
+  .animate-shooting-star-3 {
     animation: none !important;
   }
 }

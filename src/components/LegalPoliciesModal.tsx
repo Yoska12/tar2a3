@@ -17,7 +17,7 @@ import {
   MessageSquare
 } from 'lucide-react';
 import { TELEGRAM_BOT_URL, TELEGRAM_BOT_USERNAME } from '../lib/telegram';
-import { SUPPORT_EMAIL, SUPPORT_PHONE_EGYPT, SUPPORT_PHONE_EGYPT_FORMATTED, SUPPORT_WHATSAPP_URL } from '../lib/constants';
+import { SUPPORT_EMAIL, SUPPORT_PHONE_EGYPT, SUPPORT_PHONE_EGYPT_FORMATTED, SUPPORT_TELEGRAM_URL, SUPPORT_TELEGRAM_BOT } from '../lib/constants';
 
 export type PolicyTab = 'terms' | 'privacy' | 'cookies' | 'refund';
 
@@ -463,7 +463,7 @@ export const LegalPoliciesModal: React.FC<LegalPoliciesModalProps> = ({
                   <div className="p-3.5 rounded-2xl bg-slate-100/90 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between gap-2">
                     <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200">
                       <Phone className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <span>دعم مصر (هاتف / واتساب):</span>
+                      <span>دعم مصر (هاتف / تيليجرام):</span>
                     </div>
                     <div className="flex items-center justify-between gap-1 text-[11px] font-mono font-bold">
                       <a
@@ -474,12 +474,12 @@ export const LegalPoliciesModal: React.FC<LegalPoliciesModalProps> = ({
                         {SUPPORT_PHONE_EGYPT_FORMATTED}
                       </a>
                       <a
-                        href={SUPPORT_WHATSAPP_URL}
+                        href={SUPPORT_TELEGRAM_URL}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 text-[10px]"
+                        className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-500 hover:bg-sky-500/20 text-[10px]"
                       >
-                        واتساب
+                        @{SUPPORT_TELEGRAM_BOT}
                       </a>
                     </div>
                   </div>

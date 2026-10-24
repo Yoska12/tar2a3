@@ -4,7 +4,7 @@ import { TarqaUser } from '../lib/supabase';
 
 interface MobileBottomNavProps {
   activeTab: string;
-  onSelectTab: (tab: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles') => void;
+  onSelectTab: (tab: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles' | 'leaderboard') => void;
   onOpenMenu: () => void;
   currentUser?: TarqaUser | null;
 }

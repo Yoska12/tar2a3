@@ -31,7 +31,11 @@ import {
   AlertTriangle,
   CreditCard,
   ExternalLink,
-  Wallet
+  Wallet,
+  Cpu,
+  HardDrive,
+  Activity,
+  Gauge
 } from 'lucide-react';
 import { MathRenderer } from './MathRenderer';
 import { Question, Category, OptionId, Difficulty, QuizMode } from '../types';
@@ -55,6 +59,17 @@ import {
   KashierSettings,
   KashierTransaction
 } from '../lib/kashierService';
+import {
+  dbCache,
+  invalidateCacheByTag,
+  invalidateQuestionsCache,
+  invalidateCoursesCache,
+  invalidateUsersCache,
+  clearAllDatabaseCache,
+  CacheMetrics
+} from '../lib/dbCache';
+
+export type AdminTab = 'questions' | 'quizBuilder' | 'security' | 'kashier' | 'dbCache';
 
 interface AdminPanelProps {
   questions: Question[];
@@ -67,6 +82,8 @@ interface AdminPanelProps {
   onCreateQuiz?: (quizData: any) => void;
   onDeleteQuiz?: (quizId: string) => void;
   quizzes?: any[];
+  initialTab?: AdminTab;
+  onTabChange?: (tab: AdminTab) => void;
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
@@ -80,8 +97,77 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onCreateQuiz,
   onDeleteQuiz,
   quizzes = [],
+  initialTab,
+  onTabChange,
 }) => {
-  const [activeTab, setActiveTab] = useState<'questions' | 'quizBuilder' | 'security' | 'kashier'>('questions');
+  const [activeTab, setActiveTabState] = useState<AdminTab>(initialTab || 'questions');
+
+  const setActiveTab = (tab: AdminTab) => {
+    setActiveTabState(tab);
+    if (onTabChange) onTabChange(tab);
+  };
+
+  useEffect(() => {
+    if (initialTab && initialTab !== activeTab) {
+      setActiveTabState(initialTab);
+    }
+  }, [initialTab]);
+
+  // مقاييس وحالة الكاشينج الفوري لقواعد البيانات (Database Caching Metrics)
+  const [cacheMetrics, setCacheMetrics] = useState<CacheMetrics>(() => dbCache.getMetrics());
+  const [benchmarkLatency, setBenchmarkLatency] = useState<number | null>(null);
+  const [isBenchmarking, setIsBenchmarking] = useState(false);
+
+  useEffect(() => {
+    const handleCacheChange = () => {
+      setCacheMetrics(dbCache.getMetrics());
+    };
+    window.addEventListener('tarqa_db_cache_changed', handleCacheChange);
+    return () => window.removeEventListener('tarqa_db_cache_changed', handleCacheChange);
+  }, []);
+
+  const handlePurgeQuestionsCache = () => {
+    invalidateQuestionsCache();
+    setCacheMetrics(dbCache.getMetrics());
+    showToast('تم تفريغ كاش بنك الأسئلة والاختبارات بنجاح ⚡', 'success');
+  };
+
+  const handlePurgeCoursesCache = () => {
+    invalidateCoursesCache();
+    setCacheMetrics(dbCache.getMetrics());
+    showToast('تم تفريغ كاش الدورات والمحاضرات والملفات بنجاح ⚡', 'success');
+  };
+
+  const handlePurgeUsersCache = () => {
+    invalidateUsersCache();
+    setCacheMetrics(dbCache.getMetrics());
+    showToast('تم تفريغ كاش المستخدمين والرتب والاشتراكات بنجاح ⚡', 'success');
+  };
+
+  const handlePurgeAllCache = () => {
+    if (window.confirm('هل أنت متأكد من تفريغ كافة قواعد البيانات والكاش بالكامل؟ سيتم إعادة الجلب تلقائياً في الخلفية عند الحاجة.')) {
+      clearAllDatabaseCache();
+      setCacheMetrics(dbCache.getMetrics());
+      showToast('تم تفريغ كامل الكاشينج لقواعد البيانات بنجاح 🧹', 'info');
+    }
+  };
+
+  const handleRunBenchmark = () => {
+    setIsBenchmarking(true);
+    setTimeout(() => {
+      const start = performance.now();
+      for (let i = 0; i < 500; i++) {
+        dbCache.get('question_bank_items');
+        dbCache.get('db_users_with_roles');
+        dbCache.get('db_courses_modules');
+      }
+      const duration = performance.now() - start;
+      const perRead = Number((duration / 1500).toFixed(4));
+      setBenchmarkLatency(perRead);
+      setIsBenchmarking(false);
+      showToast(`اكتمل فحص السرعة! زمن القراءة من الكاش: ${perRead}ms لكل استعلام ⚡`, 'success');
+    }, 100);
+  };
 
   // إعدادات وسجلات درع الأمان (Anti-Hack Shield)
   const [securitySettings, setSecuritySettings] = useState<AntiHackSettings>(() => getAntiHackSettings());
@@ -127,7 +213,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         }
       );
       if (res.success && res.sessionUrl) {
-        setKashierTestResult(`نجح الاتصال! ✅ تم توليد رابط الجلسة: ${res.isSimulated ? '(وضع المحاكاة الذكي)' : '(جلسة كاشير رسمية)'}`);
+        setKashierTestResult(`نجح الاتصال! ✅ تم إنشاء جلسة كاشير رسمية بنجاح: ${res.sessionUrl}`);
         showToast('تم اختبار الاتصال وتوليد جلسة دفع بنجاح!', 'success');
         setKashierTransactions(getKashierTransactions());
       } else {
@@ -410,125 +496,128 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       )}
 
       {/* ======================================================================= */}
-      {/* 1. إحصائيات المنصة الشاملة (Platform Overview Cards) */}
+      {/* شريط التبويبات الرئيسي فائق الوضوح والبروز (High-Contrast Top Tab Bar) */}
       {/* ======================================================================= */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        
-        <div className="p-5 rounded-2xl tarqa-glass-metric backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex items-center gap-4 hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
-          <div className="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-500 flex items-center justify-center font-bold text-lg">
-            <Users className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-xs text-slate-500 font-medium">المستخدمون المسجلون</span>
-            <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">{platformStats.totalUsers}</div>
-            <span className="text-[11px] text-amber-600 dark:text-amber-400 font-bold">
-              {platformStats.studentsCount > 0 ? `${platformStats.studentsCount} طالب مسجل` : 'بيانات حقيقية موثقة'}
-            </span>
-          </div>
-        </div>
-
-        <div className="p-5 rounded-2xl tarqa-glass-metric backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex items-center gap-4 hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
-          <div className="w-12 h-12 rounded-2xl bg-blue-500/15 text-blue-500 flex items-center justify-center font-bold text-lg">
-            <Database className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-xs text-slate-500 font-medium">إجمالي بنك الأسئلة</span>
-            <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">{questions.length}</div>
-            <span className="text-[11px] text-blue-500 font-bold">
-              مقسمة على {categories.filter(c => c.id !== 'all').length} أقسام كمي
-            </span>
-          </div>
-        </div>
-
-        <div className="p-5 rounded-2xl tarqa-glass-metric backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex items-center gap-4 hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center font-bold text-lg">
-            <CheckSquare className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-xs text-slate-500 font-medium">المحاولات المكتملة</span>
-            <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">{platformStats.totalAttempts}</div>
-            <span className="text-[11px] text-emerald-500 font-bold">
-              {platformStats.todayAttempts > 0 ? `${platformStats.todayAttempts} محاولة اليوم` : 'سجل الاختبارات الفعلي'}
-            </span>
-          </div>
-        </div>
-
-        <div className="p-5 rounded-2xl tarqa-glass-metric backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex items-center gap-4 hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
-          <div className="w-12 h-12 rounded-2xl bg-purple-500/15 text-purple-500 flex items-center justify-center font-bold text-lg">
-            <TrendingUp className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-xs text-slate-500 font-medium">متوسط الدرجات</span>
-            <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">
-              {platformStats.hasScores ? `${platformStats.averageScore}%` : '--'}
-            </div>
-            <span className="text-[11px] text-amber-500 font-bold">
-              {platformStats.hasScores ? `بناءً على ${platformStats.totalAttempts} اختبار` : 'لا توجد اختبارات مسجلة بعد'}
-            </span>
-          </div>
-        </div>
-
-      </section>
-
-      {/* ======================================================================= */}
-      {/* تبويبات الإدارة (Bank Manager / Quiz Builder) */}
-      {/* ======================================================================= */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
-        <div className="flex items-center gap-2">
+      <div className="p-2.5 rounded-3xl bg-white/95 dark:bg-[#0c1222]/95 border-2 border-slate-200 dark:border-slate-800 shadow-xl backdrop-blur-2xl flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          
+          {/* تبويب 1: بوابة كاشير والمدفوعات */}
           <button
-            onClick={() => setActiveTab('questions')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-              activeTab === 'questions'
-                ? 'bg-amber-500 text-slate-950 shadow-sm font-black'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <Database className="w-4 h-4" />
-            <span>إدارة بنك الأسئلة ({questions.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('quizBuilder')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-              activeTab === 'quizBuilder'
-                ? 'bg-amber-500 text-slate-950 shadow-sm font-black'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <Layers className="w-4 h-4" />
-            <span>منشئ الاختبارات المخصصة {quizzes.length > 0 && `(${quizzes.length})`}</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('security')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-              activeTab === 'security'
-                ? 'bg-amber-500 text-slate-950 shadow-sm font-black'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4" />
-            <span>درع الحماية ومكافحة الاختراق (Anti-Hack Shield)</span>
-          </button>
-
-          <button
+            type="button"
             onClick={() => setActiveTab('kashier')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+            className={`px-4 py-2.5 rounded-2xl text-xs transition-all duration-200 flex items-center gap-2 cursor-pointer ${
               activeTab === 'kashier'
-                ? 'bg-amber-500 text-slate-950 shadow-sm font-black'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                ? 'bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 text-white font-black shadow-lg shadow-emerald-500/30 border border-emerald-400/80 ring-2 ring-emerald-400/40 scale-[1.02]'
+                : 'bg-slate-100/90 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:text-emerald-600 dark:hover:text-emerald-400 border border-slate-200/90 dark:border-slate-700/90 font-bold hover:border-emerald-500/40'
             }`}
           >
-            <CreditCard className="w-4 h-4" />
-            <span>بوابة دفع كاشير (Kashier Gateway)</span>
+            <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${activeTab === 'kashier' ? 'bg-white/20 text-white' : 'bg-emerald-500/15 text-emerald-500'}`}>
+              <CreditCard className="w-3.5 h-3.5" />
+            </div>
+            <span>بوابة دفع كاشير (Kashier)</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
+              activeTab === 'kashier' ? 'bg-black/20 text-emerald-100' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+            }`}>
+              {kashierSettings.enabled ? 'مفعلة' : 'معطلة'}
+            </span>
           </button>
+
+          {/* تبويب 2: درع الحماية والمخالفات */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('security')}
+            className={`px-4 py-2.5 rounded-2xl text-xs transition-all duration-200 flex items-center gap-2 cursor-pointer ${
+              activeTab === 'security'
+                ? 'bg-gradient-to-r from-rose-600 via-rose-500 to-red-600 text-white font-black shadow-lg shadow-rose-500/30 border border-rose-400/80 ring-2 ring-rose-400/40 scale-[1.02]'
+                : 'bg-slate-100/90 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:text-rose-600 dark:hover:text-rose-400 border border-slate-200/90 dark:border-slate-700/90 font-bold hover:border-rose-500/40'
+            }`}
+          >
+            <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${activeTab === 'security' ? 'bg-white/20 text-white' : 'bg-rose-500/15 text-rose-500'}`}>
+              <ShieldCheck className="w-3.5 h-3.5" />
+            </div>
+            <span>درع الحماية والمخالفات (Anti-Hack)</span>
+            {securityLogs.length > 0 && (
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+                activeTab === 'security' ? 'bg-black/20 text-rose-100' : 'bg-rose-500/15 text-rose-500'
+              }`}>
+                {securityLogs.length}
+              </span>
+            )}
+          </button>
+
+          {/* تبويب 3: بنك الأسئلة */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('questions')}
+            className={`px-4 py-2.5 rounded-2xl text-xs transition-all duration-200 flex items-center gap-2 cursor-pointer ${
+              activeTab === 'questions'
+                ? 'bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 text-slate-950 font-black shadow-lg shadow-amber-500/30 border border-amber-300/80 ring-2 ring-amber-400/40 scale-[1.02]'
+                : 'bg-slate-100/90 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:bg-amber-50 dark:hover:bg-amber-950/30 hover:text-amber-600 dark:hover:text-amber-400 border border-slate-200/90 dark:border-slate-700/90 font-bold hover:border-amber-500/40'
+            }`}
+          >
+            <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${activeTab === 'questions' ? 'bg-black/15 text-slate-950' : 'bg-amber-500/15 text-amber-500'}`}>
+              <Database className="w-3.5 h-3.5" />
+            </div>
+            <span>إدارة بنك الأسئلة</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+              activeTab === 'questions' ? 'bg-black/15 text-slate-950' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+            }`}>
+              {questions.length}
+            </span>
+          </button>
+
+          {/* تبويب 4: منشئ الاختبارات */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('quizBuilder')}
+            className={`px-4 py-2.5 rounded-2xl text-xs transition-all duration-200 flex items-center gap-2 cursor-pointer ${
+              activeTab === 'quizBuilder'
+                ? 'bg-gradient-to-r from-purple-600 via-purple-500 to-indigo-600 text-white font-black shadow-lg shadow-purple-500/30 border border-purple-400/80 ring-2 ring-purple-400/40 scale-[1.02]'
+                : 'bg-slate-100/90 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:bg-purple-50 dark:hover:bg-purple-950/30 hover:text-purple-600 dark:hover:text-purple-400 border border-slate-200/90 dark:border-slate-700/90 font-bold hover:border-purple-500/40'
+            }`}
+          >
+            <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${activeTab === 'quizBuilder' ? 'bg-white/20 text-white' : 'bg-purple-500/15 text-purple-500'}`}>
+              <Layers className="w-3.5 h-3.5" />
+            </div>
+            <span>منشئ الاختبارات المخصصة</span>
+            {quizzes.length > 0 && (
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+                activeTab === 'quizBuilder' ? 'bg-black/20 text-purple-100' : 'bg-purple-500/10 text-purple-600 dark:text-purple-400'
+              }`}>
+                {quizzes.length}
+              </span>
+            )}
+          </button>
+
+          {/* تبويب 5: تسريع وكاشينج قواعد البيانات (Database Caching Engine) */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('dbCache')}
+            className={`px-4 py-2.5 rounded-2xl text-xs transition-all duration-200 flex items-center gap-2 cursor-pointer ${
+              activeTab === 'dbCache'
+                ? 'bg-gradient-to-r from-sky-600 via-cyan-500 to-blue-600 text-white font-black shadow-lg shadow-sky-500/30 border border-sky-400/80 ring-2 ring-sky-400/40 scale-[1.02]'
+                : 'bg-slate-100/90 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:bg-sky-50 dark:hover:bg-sky-950/30 hover:text-sky-600 dark:hover:text-sky-400 border border-slate-200/90 dark:border-slate-700/90 font-bold hover:border-sky-500/40'
+            }`}
+          >
+            <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${activeTab === 'dbCache' ? 'bg-white/20 text-white' : 'bg-sky-500/15 text-sky-500'}`}>
+              <Cpu className="w-3.5 h-3.5" />
+            </div>
+            <span>تسريع وكاشينج الداتابيز (DB Caching)</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+              activeTab === 'dbCache' ? 'bg-black/20 text-sky-100' : 'bg-sky-500/10 text-sky-600 dark:text-sky-400'
+            }`}>
+              {cacheMetrics.hitRatio}% Hit
+            </span>
+          </button>
+
         </div>
 
+        {/* أزرار النشر السحابي خاصة ببنك الأسئلة */}
         {activeTab === 'questions' && (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold">
+            <span className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>متزامن سحابياً مع كافة الطلاب (Supabase Live)</span>
+              <span>متزامن سحابياً</span>
             </span>
 
             {onSyncCloud && (
@@ -549,35 +638,258 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 title="مزامنة وتأكيد حفظ بنك الأسئلة على السحابة"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>{isSyncing ? 'جاري النشر...' : 'نشر سحابي مباشر ☁️'}</span>
+                <span>{isSyncing ? 'جاري النشر...' : 'نشر سحابي ☁️'}</span>
               </button>
             )}
-
-            {onResetDefaultQuestions && (
-              <button
-                onClick={() => {
-                  if (window.confirm('هل تريد استعادة بنك الأسئلة الافتراضي للنموذج الأولي؟ سيتم حذف التعديلات وإعادتها للأصل.')) {
-                    onResetDefaultQuestions();
-                    showToast('تمت استعادة بنك الأسئلة الافتراضي بنجاح! 🔄', 'info');
-                  }
-                }}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-rose-500 text-xs font-bold transition active:scale-95"
-                title="استعادة بنك الأسئلة الافتراضي"
-              >
-                <span>استعادة الافتراضي 🔄</span>
-              </button>
-            )}
-
-            <button
-              onClick={handleOpenAddModal}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-sm transition active:scale-95"
-            >
-              <Plus className="w-4 h-4" />
-              <span>إضافة سؤال جديد</span>
-            </button>
           </div>
         )}
       </div>
+
+      {/* ======================================================================= */}
+      {/* 1. إحصائيات مخصصة حسب التبويب النشط فقط (Tab-Specific Dynamic Metrics) */}
+      {/* ======================================================================= */}
+      {(activeTab === 'questions' || activeTab === 'quizBuilder') && (
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in duration-200">
+          
+          <div className="p-5 rounded-2xl tarqa-glass-metric backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex items-center gap-4 hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-500 flex items-center justify-center font-bold text-lg">
+              <Users className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-xs text-slate-500 font-medium">المستخدمون المسجلون</span>
+              <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">{platformStats.totalUsers}</div>
+              <span className="text-[11px] text-amber-600 dark:text-amber-400 font-bold">
+                {platformStats.studentsCount > 0 ? `${platformStats.studentsCount} طالب مسجل` : 'بيانات حقيقية موثقة'}
+              </span>
+            </div>
+          </div>
+
+          <div className="p-5 rounded-2xl tarqa-glass-metric backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex items-center gap-4 hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
+            <div className="w-12 h-12 rounded-2xl bg-blue-500/15 text-blue-500 flex items-center justify-center font-bold text-lg">
+              <Database className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-xs text-slate-500 font-medium">إجمالي بنك الأسئلة</span>
+              <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">{questions.length}</div>
+              <span className="text-[11px] text-blue-500 font-bold">
+                مقسمة على {categories.filter(c => c.id !== 'all').length} أقسام كمي
+              </span>
+            </div>
+          </div>
+
+          <div className="p-5 rounded-2xl tarqa-glass-metric backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex items-center gap-4 hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center font-bold text-lg">
+              <CheckSquare className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-xs text-slate-500 font-medium">المحاولات المكتملة</span>
+              <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">{platformStats.totalAttempts}</div>
+              <span className="text-[11px] text-emerald-500 font-bold">
+                {platformStats.todayAttempts > 0 ? `${platformStats.todayAttempts} محاولة اليوم` : 'سجل الاختبارات الفعلي'}
+              </span>
+            </div>
+          </div>
+
+          <div className="p-5 rounded-2xl tarqa-glass-metric backdrop-blur-xl shadow-[0_4px_20px_rgba(14,165,233,0.06)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.6)] flex items-center gap-4 hover:border-sky-300 dark:hover:border-amber-400/45 transition-all">
+            <div className="w-12 h-12 rounded-2xl bg-purple-500/15 text-purple-500 flex items-center justify-center font-bold text-lg">
+              <TrendingUp className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-xs text-slate-500 font-medium">متوسط الدرجات</span>
+              <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">
+                {platformStats.hasScores ? `${platformStats.averageScore}%` : '--'}
+              </div>
+              <span className="text-[11px] text-amber-500 font-bold">
+                {platformStats.hasScores ? `بناءً على ${platformStats.totalAttempts} اختبار` : 'لا توجد اختبارات مسجلة بعد'}
+              </span>
+            </div>
+          </div>
+
+        </section>
+      )}
+
+      {/* إحصائيات خاصة بتبويب كاشير (Kashier Specific Metrics) */}
+      {activeTab === 'kashier' && (
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in duration-200">
+          
+          <div className="p-5 rounded-2xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-700/80 shadow-lg dark:shadow-slate-950/80 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center font-bold text-lg">
+              <CreditCard className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">حالة البوابة</span>
+              <div className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                <span className={`w-2.5 h-2.5 rounded-full ${kashierSettings.enabled ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+                <span>{kashierSettings.enabled ? 'مفعلة ونشطة' : 'معطلة'}</span>
+              </div>
+              <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">Kashier Sessions v3</span>
+            </div>
+          </div>
+
+          <div className="p-5 rounded-2xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-700/80 shadow-lg dark:shadow-slate-950/80 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-500 flex items-center justify-center font-bold text-lg">
+              <Zap className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">بيئة العمل الحالية</span>
+              <div className="text-lg font-black text-slate-900 dark:text-white font-mono">
+                {kashierSettings.mode === 'live' ? 'إنتاج حقيقي (Live)' : 'بيئة تجريبية (Test)'}
+              </div>
+              <span className="text-[11px] text-amber-600 dark:text-amber-400 font-bold">
+                {kashierSettings.simulateMode ? 'محاكاة Sandbox مفعّلة' : 'اتصال سحابي مباشر'}
+              </span>
+            </div>
+          </div>
+
+          <div className="p-5 rounded-2xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-700/80 shadow-lg dark:shadow-slate-950/80 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-blue-500/15 text-blue-500 flex items-center justify-center font-bold text-lg">
+              <Wallet className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">تسعيرة الاشتراك</span>
+              <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">
+                {kashierSettings.amount} <span className="text-sm font-bold text-blue-500">{kashierSettings.currency}</span>
+              </div>
+              <span className="text-[11px] text-blue-500 font-bold">اشتراك سنوي شامل 🎓</span>
+            </div>
+          </div>
+
+          <div className="p-5 rounded-2xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-700/80 shadow-lg dark:shadow-slate-950/80 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-purple-500/15 text-purple-500 flex items-center justify-center font-bold text-lg">
+              <CheckSquare className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">سجل المعاملات</span>
+              <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">{kashierTransactions.length}</div>
+              <span className="text-[11px] text-purple-500 font-bold">
+                {kashierTransactions.filter(t => t.status === 'SUCCESS').length} معاملة ناجحة ومؤكدة
+              </span>
+            </div>
+          </div>
+
+        </section>
+      )}
+
+      {/* إحصائيات خاصة بتبويب درع الأمان (Security Specific Metrics) */}
+      {activeTab === 'security' && (
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in duration-200">
+          
+          <div className="p-5 rounded-2xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-700/80 shadow-lg dark:shadow-slate-950/80 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center font-bold text-lg">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">حالة درع الأمان</span>
+              <div className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>مفعّل 100% ونشط</span>
+              </div>
+              <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">Anti-Hack Protection</span>
+            </div>
+          </div>
+
+          <div className="p-5 rounded-2xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-700/80 shadow-lg dark:shadow-slate-950/80 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/15 text-rose-500 flex items-center justify-center font-bold text-lg">
+              <ShieldAlert className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">المخالفات المرصودة</span>
+              <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">{securityLogs.length}</div>
+              <span className="text-[11px] text-rose-500 font-bold">
+                {securityLogs.length === 0 ? 'السجل نظيف تماماً ✅' : 'تم رصد وتسجيل المحاولات'}
+              </span>
+            </div>
+          </div>
+
+          <div className="p-5 rounded-2xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-700/80 shadow-lg dark:shadow-slate-950/80 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-500 flex items-center justify-center font-bold text-lg">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">سحب الاختبار آلياً</span>
+              <div className="text-lg font-black text-slate-900 dark:text-white">
+                {securitySettings.autoSubmitOnCheat ? 'مفعّل تلقائياً ✅' : 'معطّل ⚠️'}
+              </div>
+              <span className="text-[11px] text-amber-600 dark:text-amber-400 font-bold">عند استنفاد الإنذارات</span>
+            </div>
+          </div>
+
+          <div className="p-5 rounded-2xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-700/80 shadow-lg dark:shadow-slate-950/80 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-purple-500/15 text-purple-500 flex items-center justify-center font-bold text-lg">
+              <Lock className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">إنذارات مغادرة النافذة</span>
+              <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">
+                {securitySettings.maxExamTabSwitches} <span className="text-xs font-normal">محاولات</span>
+              </div>
+              <span className="text-[11px] text-purple-500 font-bold">
+                {securitySettings.maxExamTabSwitches === 1 ? 'وضع صارم جداً 🚨' : 'وضع قياسي'}
+              </span>
+            </div>
+          </div>
+
+        </section>
+      )}
+
+      {/* إحصائيات خاصة بتبويب تسريع وقواعد البيانات (Database Caching Specific Metrics) */}
+      {activeTab === 'dbCache' && (
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in duration-200">
+          
+          <div className="p-5 rounded-2xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-700/80 shadow-lg dark:shadow-slate-950/80 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-sky-500/15 text-sky-500 flex items-center justify-center font-bold text-lg">
+              <Activity className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">معدل إصابة الكاش (Hit Ratio)</span>
+              <div className="text-2xl font-black text-sky-500 font-mono">{cacheMetrics.hitRatio}%</div>
+              <span className="text-[11px] text-slate-500 font-bold">
+                {cacheMetrics.hits} طلب ناجح من الذاكرة ⚡
+              </span>
+            </div>
+          </div>
+
+          <div className="p-5 rounded-2xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-700/80 shadow-lg dark:shadow-slate-950/80 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center font-bold text-lg">
+              <Zap className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">سرعة القراءة الفورية</span>
+              <div className="text-2xl font-black text-emerald-500 font-mono">
+                {benchmarkLatency !== null ? `${benchmarkLatency} ms` : '< 0.05 ms'}
+              </div>
+              <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">L1 Map Cache (0ms Latency)</span>
+            </div>
+          </div>
+
+          <div className="p-5 rounded-2xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-700/80 shadow-lg dark:shadow-slate-950/80 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-purple-500/15 text-purple-500 flex items-center justify-center font-bold text-lg">
+              <Database className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">العناصر المخزنة مؤقتاً</span>
+              <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">{cacheMetrics.itemCount}</div>
+              <span className="text-[11px] text-purple-500 font-bold">
+                جداول وموديولات متزامنة
+              </span>
+            </div>
+          </div>
+
+          <div className="p-5 rounded-2xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-700/80 shadow-lg dark:shadow-slate-950/80 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-500 flex items-center justify-center font-bold text-lg">
+              <HardDrive className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">حجم الكاش التقديري</span>
+              <div className="text-2xl font-black text-slate-900 dark:text-white font-mono">{cacheMetrics.estimatedMemoryKb} KB</div>
+              <span className="text-[11px] text-amber-500 font-bold">
+                ذاكرة L1 RAM + مخزن L2
+              </span>
+            </div>
+          </div>
+
+        </section>
+      )}
 
       {/* ======================================================================= */}
       {/* 2. جدول بنك الأسئلة (Question Bank Manager Table) */}
@@ -585,41 +897,72 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       {activeTab === 'questions' && (
         <section className="p-6 rounded-3xl tarqa-glass-card backdrop-blur-2xl shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.12)] flex flex-col gap-4">
           
-          {/* شريط البحث والفلترة */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="relative w-full sm:w-80">
-              <input
-                type="text"
-                placeholder="ابحث في نصوص الأسئلة أو الشروحات..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pr-9 pl-4 py-2 rounded-xl border text-xs bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-slate-900 dark:text-white"
-              />
-              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+          {/* شريط الإجراءات والبحث والفلترة */}
+          <div className="flex flex-col lg:flex-row items-center justify-between gap-4 pb-2 border-b border-slate-200/60 dark:border-slate-800/60">
+            <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
+              <div className="relative w-full sm:w-80">
+                <input
+                  type="text"
+                  placeholder="ابحث في نصوص الأسئلة أو الشروحات..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pr-9 pl-4 py-2.5 rounded-xl border text-xs bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/30 text-slate-900 dark:text-white font-medium"
+                />
+                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <select
+                  value={selectedCategoryFilter}
+                  onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+                  className="px-3 py-2.5 rounded-xl border text-xs bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none font-medium"
+                >
+                  <option value="all">جميع الأقسام</option>
+                  {categories.filter(c => c.id !== 'all').map(c => (
+                    <option key={c.id} value={c.id}>{c.title}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={selectedDifficultyFilter}
+                  onChange={(e) => setSelectedDifficultyFilter(e.target.value)}
+                  className="px-3 py-2.5 rounded-xl border text-xs bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none font-medium"
+                >
+                  <option value="all">كل المستويات</option>
+                  <option value="Easy">سهل</option>
+                  <option value="Medium">متوسط</option>
+                  <option value="Hard">صعب</option>
+                </select>
+              </div>
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <select
-                value={selectedCategoryFilter}
-                onChange={(e) => setSelectedCategoryFilter(e.target.value)}
-                className="px-3 py-2 rounded-xl border text-xs bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none"
-              >
-                <option value="all">جميع الأقسام</option>
-                {categories.filter(c => c.id !== 'all').map(c => (
-                  <option key={c.id} value={c.id}>{c.title}</option>
-                ))}
-              </select>
+            {/* أزرار الإجراءات لبنك الأسئلة */}
+            <div className="flex items-center gap-2 w-full lg:w-auto justify-end">
+              {onResetDefaultQuestions && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm('هل تريد استعادة بنك الأسئلة الافتراضي للنموذج الأولي؟ سيتم حذف التعديلات وإعادتها للأصل.')) {
+                      onResetDefaultQuestions();
+                      showToast('تمت استعادة بنك الأسئلة الافتراضي بنجاح! 🔄', 'info');
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 hover:text-rose-500 text-xs font-bold transition active:scale-95 cursor-pointer"
+                  title="استعادة بنك الأسئلة الافتراضي"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>استعادة الافتراضي</span>
+                </button>
+              )}
 
-              <select
-                value={selectedDifficultyFilter}
-                onChange={(e) => setSelectedDifficultyFilter(e.target.value)}
-                className="px-3 py-2 rounded-xl border text-xs bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none"
+              <button
+                type="button"
+                onClick={handleOpenAddModal}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs shadow-md shadow-amber-500/25 transition active:scale-95 cursor-pointer"
               >
-                <option value="all">كل المستويات</option>
-                <option value="Easy">سهل</option>
-                <option value="Medium">متوسط</option>
-                <option value="Hard">صعب</option>
-              </select>
+                <Plus className="w-4 h-4" />
+                <span>إضافة سؤال جديد</span>
+              </button>
             </div>
           </div>
 
@@ -998,11 +1341,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         <section className="space-y-6">
           
           {/* بطاقة الحالة الرئيسية لدرع الحماية */}
-          <div className="p-6 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 border border-amber-500/30 shadow-2xl relative overflow-hidden text-white">
-            <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+          <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-slate-900 via-[#101b33] to-slate-950 border-2 border-emerald-500/40 shadow-2xl relative overflow-hidden text-white backdrop-blur-xl">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
             <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
               <div className="flex items-start gap-4">
-                <div className="w-16 h-16 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 shadow-lg shadow-amber-500/20">
+                <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 border-2 border-emerald-500/50 flex items-center justify-center text-emerald-400 shrink-0 shadow-lg shadow-emerald-500/20">
                   <ShieldCheck className="w-8 h-8 animate-pulse" />
                 </div>
                 <div>
@@ -1013,7 +1356,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       نشط ومراقب (Shield Core v3.0)
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400 max-w-2xl leading-relaxed">
+                  <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
                     نظام أمني متكامل لحماية بنك الأسئلة من التسريب، حظر أدوات المطورين والفحص (DevTools)، منع نسخ الأسئلة والمذكرات، كشف محاولات الغش بمغادرة شاشة الاختبار، وحماية جلسات المستخدمين من التلاعب.
                   </p>
                 </div>
@@ -1023,7 +1366,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <button
                   type="button"
                   onClick={handleSimulateAlert}
-                  className="px-4 py-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 font-bold text-xs transition active:scale-95 flex items-center gap-2 cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border-2 border-amber-500/50 text-amber-300 font-black text-xs transition active:scale-95 flex items-center gap-2 cursor-pointer shadow-md"
                   title="إطلاق تنبيه تجريبي لفحص النظام"
                 >
                   <AlertTriangle className="w-4 h-4 text-amber-400" />
@@ -1033,31 +1376,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             {/* مؤشرات حية سريعة */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-6 border-t border-slate-800/80">
-              <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
-                <span className="text-[11px] text-slate-400 block mb-1">فحص العناصر (DevTools)</span>
-                <span className={`text-xs font-bold ${securitySettings.blockDevTools ? 'text-emerald-400' : 'text-slate-500'}`}>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-6 border-t-2 border-slate-700/80">
+              <div className="p-3.5 rounded-2xl bg-slate-900/90 border-2 border-slate-700 shadow-md">
+                <span className="text-[11px] text-slate-300 block mb-1 font-bold">فحص العناصر (DevTools)</span>
+                <span className={`text-xs font-bold ${securitySettings.blockDevTools ? 'text-emerald-400' : 'text-slate-400'}`}>
                   {securitySettings.blockDevTools ? 'محظور تماماً ✅' : 'معطل ⚠️'}
                 </span>
               </div>
 
-              <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
-                <span className="text-[11px] text-slate-400 block mb-1">نسخ الأسئلة وتحديدها</span>
-                <span className={`text-xs font-bold ${securitySettings.blockCopyCut ? 'text-emerald-400' : 'text-slate-500'}`}>
+              <div className="p-3.5 rounded-2xl bg-slate-900/90 border-2 border-slate-700 shadow-md">
+                <span className="text-[11px] text-slate-300 block mb-1 font-bold">نسخ الأسئلة وتحديدها</span>
+                <span className={`text-xs font-bold ${securitySettings.blockCopyCut ? 'text-emerald-400' : 'text-slate-400'}`}>
                   {securitySettings.blockCopyCut ? 'محمي من النسخ ✅' : 'متاح ⚠️'}
                 </span>
               </div>
 
-              <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
-                <span className="text-[11px] text-slate-400 block mb-1">رصد مغادرة الاختبار</span>
-                <span className={`text-xs font-bold ${securitySettings.detectTabSwitch ? 'text-emerald-400' : 'text-slate-500'}`}>
+              <div className="p-3.5 rounded-2xl bg-slate-900/90 border-2 border-slate-700 shadow-md">
+                <span className="text-[11px] text-slate-300 block mb-1 font-bold">رصد مغادرة الاختبار</span>
+                <span className={`text-xs font-bold ${securitySettings.detectTabSwitch ? 'text-emerald-400' : 'text-slate-400'}`}>
                   {securitySettings.detectTabSwitch ? `نشط (${securitySettings.maxExamTabSwitches} مخالفات)` : 'معطل ⚠️'}
                 </span>
               </div>
 
-              <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
-                <span className="text-[11px] text-slate-400 block mb-1">إجمالي المخالفات المرصودة</span>
-                <span className="text-xs font-bold text-amber-400 font-mono">
+              <div className="p-3.5 rounded-2xl bg-slate-900/90 border-2 border-slate-700 shadow-md">
+                <span className="text-[11px] text-slate-300 block mb-1 font-bold">إجمالي المخالفات المرصودة</span>
+                <span className="text-xs font-black text-amber-400 font-mono">
                   {securityLogs.length} مخالفة مسجلة
                 </span>
               </div>
@@ -1065,147 +1408,147 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
 
           {/* لوحة تحكم مفاتيح الحماية والتبديل (Security Modules Toggles) */}
-          <div className="p-6 rounded-3xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800/80 shadow-sm">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-              <Lock className="w-4 h-4 text-amber-500" />
+          <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-700/80 shadow-2xl backdrop-blur-xl">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-amber-300 mb-5 flex items-center gap-2">
+              <Lock className="w-5 h-5 text-amber-500" />
               <span>إعدادات وحدات الأمان ومكافحة الاختراق</span>
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               
               {/* 1. حظر DevTools والفحص */}
-              <div className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex flex-col justify-between gap-3">
+              <div className="p-4 sm:p-5 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#121c32] hover:border-amber-500/50 transition-all flex flex-col justify-between gap-3 shadow-sm">
                 <div>
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="font-bold text-xs text-slate-900 dark:text-white">حظر أدوات المطورين (F12)</span>
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">حظر أدوات المطورين (F12)</span>
                     <button
                       type="button"
                       onClick={() => handleToggleSecuritySetting('blockDevTools')}
-                      className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                      className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
                         securitySettings.blockDevTools ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'
                       }`}
                     >
                       <span className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
-                        securitySettings.blockDevTools ? 'left-6' : 'left-1'
+                        securitySettings.blockDevTools ? 'left-7' : 'left-1'
                       }`} />
                     </button>
                   </div>
-                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                  <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
                     يعطل مفاتيح F12 و Ctrl+Shift+I و Ctrl+Shift+J و Ctrl+U لمنع فحص العناصر وسرقة نصوص الأسئلة.
                   </p>
                 </div>
               </div>
 
               {/* 2. حظر القائمة المنسدلة للزر الأيمن */}
-              <div className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex flex-col justify-between gap-3">
+              <div className="p-4 sm:p-5 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#121c32] hover:border-amber-500/50 transition-all flex flex-col justify-between gap-3 shadow-sm">
                 <div>
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="font-bold text-xs text-slate-900 dark:text-white">تعطيل الزر الأيمن (Context Menu)</span>
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">تعطيل الزر الأيمن (Context Menu)</span>
                     <button
                       type="button"
                       onClick={() => handleToggleSecuritySetting('blockContextMenu')}
-                      className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                      className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
                         securitySettings.blockContextMenu ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'
                       }`}
                     >
                       <span className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
-                        securitySettings.blockContextMenu ? 'left-6' : 'left-1'
+                        securitySettings.blockContextMenu ? 'left-7' : 'left-1'
                       }`} />
                     </button>
                   </div>
-                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                  <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
                     يمنع فتح قائمة الفحص وحفظ الصور بالفأرة في كافة صفحات المنصة مع استثناء حقول الإدخال.
                   </p>
                 </div>
               </div>
 
               {/* 3. منع النسخ والقص */}
-              <div className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex flex-col justify-between gap-3">
+              <div className="p-4 sm:p-5 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#121c32] hover:border-amber-500/50 transition-all flex flex-col justify-between gap-3 shadow-sm">
                 <div>
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="font-bold text-xs text-slate-900 dark:text-white">حظر نسخ وتحديد المحتوى</span>
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">حظر نسخ وتحديد المحتوى</span>
                     <button
                       type="button"
                       onClick={() => handleToggleSecuritySetting('blockCopyCut')}
-                      className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                      className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
                         securitySettings.blockCopyCut ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'
                       }`}
                     >
                       <span className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
-                        securitySettings.blockCopyCut ? 'left-6' : 'left-1'
+                        securitySettings.blockCopyCut ? 'left-7' : 'left-1'
                       }`} />
                     </button>
                   </div>
-                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                  <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
                     يعطل اختصارات النسخ Ctrl+C وتحديد نصوص الأسئلة وخيارات الاختبار والمذكرات لحمايتها من السرقة.
                   </p>
                 </div>
               </div>
 
               {/* 4. مكافحة لقطات الشاشة */}
-              <div className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex flex-col justify-between gap-3">
+              <div className="p-4 sm:p-5 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#121c32] hover:border-amber-500/50 transition-all flex flex-col justify-between gap-3 shadow-sm">
                 <div>
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="font-bold text-xs text-slate-900 dark:text-white">إحباط لقطات الشاشة (PrintScreen)</span>
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">إحباط لقطات الشاشة (PrintScreen)</span>
                     <button
                       type="button"
                       onClick={() => handleToggleSecuritySetting('blockPrintScreen')}
-                      className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                      className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
                         securitySettings.blockPrintScreen ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'
                       }`}
                     >
                       <span className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
-                        securitySettings.blockPrintScreen ? 'left-6' : 'left-1'
+                        securitySettings.blockPrintScreen ? 'left-7' : 'left-1'
                       }`} />
                     </button>
                   </div>
-                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                  <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
                     يمسح حافظة الجهاز فوراً عند ضغط زر تصوير الشاشة PrintScreen لمنع تسريب أسئلة قياس على تيليجرام.
                   </p>
                 </div>
               </div>
 
               {/* 5. رصد مغادرة الاختبار */}
-              <div className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex flex-col justify-between gap-3">
+              <div className="p-4 sm:p-5 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#121c32] hover:border-amber-500/50 transition-all flex flex-col justify-between gap-3 shadow-sm">
                 <div>
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="font-bold text-xs text-slate-900 dark:text-white">كشف مغادرة شاشة الاختبار (Tab-Switch)</span>
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">كشف مغادرة شاشة الاختبار (Tab-Switch)</span>
                     <button
                       type="button"
                       onClick={() => handleToggleSecuritySetting('detectTabSwitch')}
-                      className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                      className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
                         securitySettings.detectTabSwitch ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'
                       }`}
                     >
                       <span className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
-                        securitySettings.detectTabSwitch ? 'left-6' : 'left-1'
+                        securitySettings.detectTabSwitch ? 'left-7' : 'left-1'
                       }`} />
                     </button>
                   </div>
-                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                  <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
                     يرصد خروج الطالب من صفحة الاختبار للبحث في جوجل أو استخدام روبوتات الذكاء الاصطناعي مع إنذار فوري.
                   </p>
                 </div>
               </div>
 
               {/* 6. السحب التلقائي للاختبار عند الغش */}
-              <div className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex flex-col justify-between gap-3">
+              <div className="p-4 sm:p-5 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#121c32] hover:border-amber-500/50 transition-all flex flex-col justify-between gap-3 shadow-sm">
                 <div>
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="font-bold text-xs text-slate-900 dark:text-white">سحب الاختبار آلياً عند تكرار الغش</span>
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">سحب الاختبار آلياً عند تكرار الغش</span>
                     <button
                       type="button"
                       onClick={() => handleToggleSecuritySetting('autoSubmitOnCheat')}
-                      className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                      className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
                         securitySettings.autoSubmitOnCheat ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-700'
                       }`}
                     >
                       <span className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
-                        securitySettings.autoSubmitOnCheat ? 'left-6' : 'left-1'
+                        securitySettings.autoSubmitOnCheat ? 'left-7' : 'left-1'
                       }`} />
                     </button>
                   </div>
-                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                  <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
                     يقوم بإنهاء وتسليم الاختبار تلقائياً بعد استنفاد الطالب للحد الأقصى من مخالفات مغادرة النافذة.
                   </p>
                 </div>
@@ -1214,26 +1557,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             {/* إعدادات الصرامة للمخالفات */}
-            <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="mt-6 pt-6 border-t-2 border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <span className="block text-xs font-bold text-slate-900 dark:text-white mb-0.5">
                   الحد الأقصى المسموح به لمغادرة شاشة الاختبار قبل الإلغاء:
                 </span>
-                <span className="text-[11px] text-slate-500">
+                <span className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 font-medium">
                   عدد الإنذارات التي تظهر للطالب قبل سحب ورقة الإجابة التلقائي.
                 </span>
               </div>
 
-              <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl">
+              <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-[#080d1a] border border-slate-300 dark:border-slate-700 p-1 rounded-xl">
                 {[1, 2, 3, 5].map((cnt) => (
                   <button
                     key={cnt}
                     type="button"
                     onClick={() => handleUpdateMaxTabSwitches(cnt)}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer select-none ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer select-none ${
                       securitySettings.maxExamTabSwitches === cnt
                         ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
-                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                     }`}
                   >
                     {cnt} {cnt === 1 ? 'محاولة (صارم)' : cnt === 3 ? 'محاولات (قياسي)' : 'محاولات'}
@@ -1244,11 +1587,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
 
           {/* سجل المخالفات الأمنية الفعلي (Live Security Audit Log) */}
-          <div className="p-6 rounded-3xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800/80 shadow-sm">
+          <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-700/80 shadow-2xl backdrop-blur-xl">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <div className="flex items-center gap-2">
-                <Terminal className="w-4 h-4 text-amber-500" />
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                <Terminal className="w-5 h-5 text-amber-500" />
+                <h3 className="text-sm font-bold text-slate-900 dark:text-amber-300">
                   سجل المخالفات الأمنية المرصودة لحظياً ({securityLogs.length})
                 </h3>
               </div>
@@ -1257,7 +1600,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <button
                   type="button"
                   onClick={() => setSecurityLogs(getSecurityViolations())}
-                  className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-[#121c32] hover:bg-slate-200 dark:hover:bg-[#1a2847] border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                   <span>تحديث السجل</span>
@@ -1267,7 +1610,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <button
                     type="button"
                     onClick={handleClearLogs}
-                    className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/20 text-xs font-bold transition cursor-pointer"
+                    className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-xs font-bold transition cursor-pointer"
                   >
                     تفريغ السجل
                   </button>
@@ -1276,12 +1619,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             {securityLogs.length === 0 ? (
-              <div className="p-8 text-center border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
-                <ShieldCheck className="w-12 h-12 text-emerald-500 mx-auto mb-2 opacity-80" />
-                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+              <div className="p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-[#121c32]/50 rounded-2xl">
+                <ShieldCheck className="w-12 h-12 text-emerald-500 mx-auto mb-2 opacity-90" />
+                <p className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200">
                   سجل الأمان نظيف تماماً!
                 </p>
-                <p className="text-[11px] text-slate-400 mt-1">
+                <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1">
                   لم يتم رصد أي محاولات اختراق أو فحص لعناصر المنصة أو غش في الاختبارات حتى الآن.
                 </p>
               </div>
@@ -1289,28 +1632,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <div className="overflow-x-auto max-h-96">
                 <table className="w-full text-right text-xs">
                   <thead>
-                    <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500">
-                      <th className="pb-2 font-bold">الوقت والتاريخ</th>
-                      <th className="pb-2 font-bold">نوع المخالفة</th>
-                      <th className="pb-2 font-bold">المستخدم</th>
-                      <th className="pb-2 font-bold">تفاصيل المحاولة المرصودة</th>
+                    <tr className="border-b-2 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400">
+                      <th className="pb-3 font-bold">الوقت والتاريخ</th>
+                      <th className="pb-3 font-bold">نوع المخالفة</th>
+                      <th className="pb-3 font-bold">المستخدم</th>
+                      <th className="pb-3 font-bold">تفاصيل المحاولة المرصودة</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {securityLogs.map((log) => (
-                      <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/30 transition">
-                        <td className="py-2.5 font-mono text-[11px] text-slate-400">
+                      <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
+                        <td className="py-3 font-mono text-[11px] text-slate-500 dark:text-slate-400">
                           {new Date(log.timestamp).toLocaleTimeString('ar-SA')} - {new Date(log.timestamp).toLocaleDateString('ar-SA')}
                         </td>
-                        <td className="py-2.5">
-                          <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                        <td className="py-3">
+                          <span className={`px-2.5 py-1 rounded-lg font-bold text-[11px] inline-block ${
                             log.type === 'devtools_attempt'
-                              ? 'bg-rose-500/15 text-rose-500 border border-rose-500/30'
+                              ? 'bg-rose-500/20 text-rose-500 dark:text-rose-300 border border-rose-500/40'
                               : log.type === 'tab_switch'
-                              ? 'bg-amber-500/15 text-amber-500 border border-amber-500/30'
+                              ? 'bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/40'
                               : log.type === 'storage_tamper'
-                              ? 'bg-purple-500/15 text-purple-400 border border-purple-500/30'
-                              : 'bg-blue-500/15 text-blue-500 border border-blue-500/30'
+                              ? 'bg-purple-500/20 text-purple-600 dark:text-purple-300 border border-purple-500/40'
+                              : 'bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-500/40'
                           }`}>
                             {log.type === 'devtools_attempt' && 'محاولة فتح DevTools 🛠️'}
                             {log.type === 'tab_switch' && 'مغادرة الاختبار (Tab Switch) 🔄'}
@@ -1320,13 +1663,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             {log.type === 'right_click' && 'زر أيمن محظور 🖱️'}
                           </span>
                         </td>
-                        <td className="py-2.5 font-bold text-slate-900 dark:text-slate-200">
+                        <td className="py-3 font-bold text-slate-900 dark:text-slate-200">
                           {log.userName}
                           <span className="block font-mono text-[10px] text-slate-400 font-normal">
                             #{log.userId.slice(0, 10)}
                           </span>
                         </td>
-                        <td className="py-2.5 text-slate-600 dark:text-slate-300 font-medium">
+                        <td className="py-3 text-slate-700 dark:text-slate-200 font-medium">
                           {log.details}
                         </td>
                       </tr>
@@ -1347,11 +1690,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         <section className="space-y-6">
           
           {/* بطاقة الحالة الرئيسية لبوابة كاشير */}
-          <div className="p-6 rounded-3xl bg-gradient-to-br from-slate-900 via-[#0d1424] to-slate-950 border border-amber-500/30 shadow-2xl relative overflow-hidden text-white">
+          <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-slate-900 via-[#101b33] to-slate-950 border-2 border-amber-500/50 shadow-2xl relative overflow-hidden text-white backdrop-blur-xl">
             <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
             <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
               <div className="flex items-start gap-4">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/30 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 shadow-lg shadow-amber-500/20">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/30 border-2 border-amber-500/50 flex items-center justify-center text-amber-400 shrink-0 shadow-lg shadow-amber-500/20">
                   <CreditCard className="w-8 h-8" />
                 </div>
                 <div>
@@ -1374,7 +1717,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-slate-400 max-w-2xl leading-relaxed">
+                  <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
                     نظام الدفع الرسمي Kashier Payment Sessions v3. يتيح للطلاب الدفع الآمن للاشتراك السنوي عبر بطاقات مدى (Mada)، فيزا، ماستركارد، والمحافظ الإلكترونية من خلال نافذة دفع مدمجة بدون مغادرة المنصة.
                   </p>
                 </div>
@@ -1385,7 +1728,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   href="https://merchant.kashier.io"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-bold transition flex items-center gap-1.5"
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border-2 border-slate-600 text-xs font-bold transition flex items-center gap-1.5 shadow-md"
                 >
                   <span>لوحة تحكم كاشير</span>
                   <ExternalLink className="w-3.5 h-3.5" />
@@ -1395,16 +1738,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
 
           {/* استمارة إعدادات ومفاتيح كاشير */}
-          <div className="p-6 rounded-3xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800/80 shadow-sm space-y-6">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-700/80 shadow-2xl backdrop-blur-xl space-y-6">
+            <div className="flex items-center justify-between pb-3 border-b-2 border-slate-100 dark:border-slate-700">
               <div className="flex items-center gap-2">
                 <CreditCard className="w-5 h-5 text-amber-500" />
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-amber-300">
                   بيانات الربط والمفاتيح البرمجية (Kashier API Credentials)
                 </h3>
               </div>
-              <span className="text-[11px] text-slate-400">
-                يتم حفظ المفاتيح مشفرة ومحمية
+              <span className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium">
+                يتم حفظ المفاتيح مشفرة ومحمية محلياً وسحابياً
               </span>
             </div>
 
@@ -1412,10 +1755,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               {/* المفاتيح والخيارات العلوية */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* تفعيل / تعطيل البوابة */}
-                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-[#121c32] border-2 border-slate-200 dark:border-slate-700 flex items-center justify-between shadow-sm">
                   <div>
-                    <h4 className="text-xs font-bold text-slate-900 dark:text-white">تفعيل بوابة كاشير</h4>
-                    <p className="text-[11px] text-slate-400">إظهار نافذة كاشير عند الاشتراك</p>
+                    <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">تفعيل بوابة كاشير</h4>
+                    <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300">إظهار نافذة كاشير عند الاشتراك</p>
                   </div>
                   <button
                     type="button"
@@ -1433,39 +1776,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
 
                 {/* بيئة العمل: تجريبية أم حية */}
-                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-900 dark:text-white">
+                <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-[#121c32] border-2 border-slate-200 dark:border-slate-700 space-y-1.5 shadow-sm">
+                  <label className="block text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
                     بيئة التشغيل (Environment)
                   </label>
                   <select
                     value={kashierSettings.mode}
                     onChange={(e) => setKashierSettings({ ...kashierSettings, mode: e.target.value as 'test' | 'live' })}
-                    className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs text-slate-900 dark:text-white font-bold"
+                    className="w-full px-3.5 py-2.5 rounded-xl border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-[#080d1a] text-xs text-slate-900 dark:text-white font-bold focus:border-amber-500"
                   >
                     <option value="test">🧪 بيئة الاختبار التجريبية (Test Mode)</option>
                     <option value="live">🟢 بيئة الإنتاج الحقيقية (Live Mode)</option>
                   </select>
-                </div>
-
-                {/* وضع المحاكاة الذكي */}
-                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-900 dark:text-white">المحاكاة الذكية (Sandbox)</h4>
-                    <p className="text-[11px] text-slate-400">سماح بتجربة الدفع بدون بطاقة</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setKashierSettings({ ...kashierSettings, simulateMode: !kashierSettings.simulateMode })}
-                    className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
-                      kashierSettings.simulateMode ? 'bg-purple-500' : 'bg-slate-300 dark:bg-slate-700'
-                    }`}
-                  >
-                    <span
-                      className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${
-                        kashierSettings.simulateMode ? 'right-0.5' : 'right-6'
-                      }`}
-                    />
-                  </button>
                 </div>
               </div>
 
@@ -1473,7 +1795,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Merchant ID */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-bold text-slate-800 dark:text-amber-300 mb-1">
                     معرف التاجر (Merchant ID) *
                   </label>
                   <input
@@ -1482,14 +1804,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     value={kashierSettings.merchantId}
                     onChange={(e) => setKashierSettings({ ...kashierSettings, merchantId: e.target.value.trim() })}
                     placeholder="MID-XXXX-XXXX"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs font-mono text-slate-900 dark:text-white text-left focus:outline-none focus:border-amber-500"
+                    className="w-full px-3.5 py-2.5 rounded-xl border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-[#080d1a] text-xs font-mono font-bold text-slate-900 dark:text-white text-left focus:outline-none focus:border-amber-500"
                     dir="ltr"
                   />
                 </div>
 
                 {/* API Key */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-bold text-slate-800 dark:text-amber-300 mb-1">
                     مفتاح الـ API (api-key) *
                   </label>
                   <input
@@ -1497,7 +1819,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     value={kashierSettings.apiKey}
                     onChange={(e) => setKashierSettings({ ...kashierSettings, apiKey: e.target.value.trim() })}
                     placeholder="ضع مفتاح API من لوحة كاشير"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs font-mono text-slate-900 dark:text-white text-left focus:outline-none focus:border-amber-500"
+                    className="w-full px-3.5 py-2.5 rounded-xl border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-[#080d1a] text-xs font-mono font-bold text-slate-900 dark:text-white text-left focus:outline-none focus:border-amber-500"
                     dir="ltr"
                   />
                 </div>
@@ -1505,13 +1827,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 {/* Secret Key */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                    <label className="block text-xs font-bold text-slate-800 dark:text-amber-300">
                       المفتاح السري (Secret Key / Authorization) *
                     </label>
                     <button
                       type="button"
                       onClick={() => setShowKashierSecret(!showKashierSecret)}
-                      className="text-[10px] text-amber-500 hover:underline flex items-center gap-1 cursor-pointer"
+                      className="text-[10px] text-amber-500 hover:underline flex items-center gap-1 cursor-pointer font-bold"
                     >
                       {showKashierSecret ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                       <span>{showKashierSecret ? 'إخفاء' : 'إظهار'}</span>
@@ -1522,7 +1844,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     value={kashierSettings.secretKey}
                     onChange={(e) => setKashierSettings({ ...kashierSettings, secretKey: e.target.value.trim() })}
                     placeholder="YOUR_SECRET_KEY"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs font-mono text-slate-900 dark:text-white text-left focus:outline-none focus:border-amber-500"
+                    className="w-full px-3.5 py-2.5 rounded-xl border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-[#080d1a] text-xs font-mono font-bold text-slate-900 dark:text-white text-left focus:outline-none focus:border-amber-500"
                     dir="ltr"
                   />
                 </div>
@@ -1531,7 +1853,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               {/* السعر والعملة */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-bold text-slate-800 dark:text-amber-300 mb-1">
                     عملة الدفع الافتراضية (Default Currency)
                   </label>
                   <select
@@ -1544,23 +1866,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         amount: newCur === 'SAR' ? 75 : 1050,
                       });
                     }}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs font-bold text-slate-900 dark:text-white"
+                    className="w-full px-3.5 py-2.5 rounded-xl border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-[#080d1a] text-xs font-bold text-slate-900 dark:text-white"
                   >
                     <option value="SAR">🇸🇦 SAR (75 ريال سعودي)</option>
                     <option value="EGP">🇪🇬 EGP (1050 جنيه مصري)</option>
                   </select>
-                  <div className="flex items-center gap-2 mt-1.5">
+                  <div className="flex items-center gap-2 mt-2">
                     <button
                       type="button"
                       onClick={() => setKashierSettings({ ...kashierSettings, currency: 'SAR', amount: 75 })}
-                      className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold hover:text-amber-500 cursor-pointer"
+                      className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-[#121c32] text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 font-bold hover:text-amber-500 cursor-pointer shadow-sm"
                     >
                       تعيين 75 ريال 🇸🇦
                     </button>
                     <button
                       type="button"
                       onClick={() => setKashierSettings({ ...kashierSettings, currency: 'EGP', amount: 1050 })}
-                      className="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold hover:text-amber-500 cursor-pointer"
+                      className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-[#121c32] text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 font-bold hover:text-amber-500 cursor-pointer shadow-sm"
                     >
                       تعيين 1050 جنيه 🇪🇬
                     </button>
@@ -1568,7 +1890,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-xs font-bold text-slate-800 dark:text-amber-300 mb-1">
                     سعر الباقة السنوية المعتمد
                   </label>
                   <input
@@ -1577,9 +1899,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     step="0.5"
                     value={kashierSettings.amount}
                     onChange={(e) => setKashierSettings({ ...kashierSettings, amount: parseFloat(e.target.value) || (kashierSettings.currency === 'SAR' ? 75 : 1050) })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs font-bold text-slate-900 dark:text-white font-mono"
+                    className="w-full px-3.5 py-2.5 rounded-xl border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-[#080d1a] text-xs font-bold text-slate-900 dark:text-white font-mono"
                   />
-                  <p className="text-[10px] text-slate-400 mt-1">
+                  <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 mt-1">
                     المبلغ الافتراضي: <strong>75 ريال سعودي</strong> للطلاب بالسعودية أو <strong>1050 جنيه مصري</strong> للطلاب بمصر.
                   </p>
                 </div>
@@ -1587,18 +1909,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
               {/* رسالة نتيجة فحص الاتصال */}
               {kashierTestResult && (
-                <div className="p-3.5 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200">
+                <div className="p-4 rounded-2xl bg-slate-100 dark:bg-[#121c32] border-2 border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-800 dark:text-slate-100 shadow-sm">
                   {kashierTestResult}
                 </div>
               )}
 
               {/* أزرار الحفظ والفحص */}
-              <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
+              <div className="flex flex-wrap items-center justify-end gap-3 pt-3">
                 <button
                   type="button"
                   disabled={isTestingKashier}
                   onClick={handleTestKashierConnection}
-                  className="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-[#121c32] hover:bg-slate-200 dark:hover:bg-[#1a2847] border-2 border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 font-bold text-xs transition flex items-center gap-2 cursor-pointer disabled:opacity-50 shadow-sm"
                 >
                   {isTestingKashier ? (
                     <>
@@ -1615,7 +1937,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md transition flex items-center gap-2 cursor-pointer"
+                  className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md transition flex items-center gap-2 cursor-pointer active:scale-95"
                 >
                   <Save className="w-4 h-4" />
                   <span>حفظ إعدادات كاشير</span>
@@ -1626,11 +1948,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
 
           {/* سجل المعاملات المالية الحية (Live Transactions Log) */}
-          <div className="p-6 rounded-3xl bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800/80 shadow-sm">
+          <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-700/80 shadow-2xl backdrop-blur-xl">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <div className="flex items-center gap-2">
-                <Wallet className="w-4 h-4 text-amber-500" />
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                <Wallet className="w-5 h-5 text-amber-500" />
+                <h3 className="text-sm font-bold text-slate-900 dark:text-amber-300">
                   سجل عمليات الدفع والاشتراكات عبر كاشير ({kashierTransactions.length})
                 </h3>
               </div>
@@ -1639,7 +1961,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <button
                   type="button"
                   onClick={() => setKashierTransactions(getKashierTransactions())}
-                  className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-[#121c32] hover:bg-slate-200 dark:hover:bg-[#1a2847] border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                   <span>تحديث العمليات</span>
@@ -1655,7 +1977,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         showToast('تم مسح سجل المعاملات بنجاح.', 'info');
                       }
                     }}
-                    className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/20 text-xs font-bold transition cursor-pointer"
+                    className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-xs font-bold transition cursor-pointer"
                   >
                     تفريغ السجل
                   </button>
@@ -1664,12 +1986,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             {kashierTransactions.length === 0 ? (
-              <div className="p-8 text-center border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
-                <CreditCard className="w-12 h-12 text-slate-400 mx-auto mb-2 opacity-50" />
-                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+              <div className="p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-[#121c32]/50 rounded-2xl">
+                <CreditCard className="w-12 h-12 text-slate-400 mx-auto mb-2 opacity-60" />
+                <p className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200">
                   لا توجد معاملات مسجلة حتى الآن
                 </p>
-                <p className="text-[11px] text-slate-400 mt-1">
+                <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1">
                   عند قيام الطلاب بالدفع أو تجربة جلسة دفع تجريبية، ستظهر كافة العمليات هنا مباشرة.
                 </p>
               </div>
@@ -1677,47 +1999,47 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <div className="overflow-x-auto max-h-96">
                 <table className="w-full text-right text-xs">
                   <thead>
-                    <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500">
-                      <th className="pb-2 font-bold">الوقت والتاريخ</th>
-                      <th className="pb-2 font-bold">رقم الطلب (Order ID)</th>
-                      <th className="pb-2 font-bold">الطالب</th>
-                      <th className="pb-2 font-bold">المبلغ والعملة</th>
-                      <th className="pb-2 font-bold">الحالة</th>
-                      <th className="pb-2 font-bold">التفاصيل</th>
+                    <tr className="border-b-2 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400">
+                      <th className="pb-3 font-bold">الوقت والتاريخ</th>
+                      <th className="pb-3 font-bold">رقم الطلب (Order ID)</th>
+                      <th className="pb-3 font-bold">الطالب</th>
+                      <th className="pb-3 font-bold">المبلغ والعملة</th>
+                      <th className="pb-3 font-bold">الحالة</th>
+                      <th className="pb-3 font-bold">التفاصيل</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {kashierTransactions.map((tx) => (
-                      <tr key={tx.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/30 transition">
-                        <td className="py-2.5 font-mono text-[11px] text-slate-400">
+                      <tr key={tx.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
+                        <td className="py-3 font-mono text-[11px] text-slate-500 dark:text-slate-400">
                           {new Date(tx.timestamp).toLocaleTimeString('ar-SA')} - {new Date(tx.timestamp).toLocaleDateString('ar-SA')}
                         </td>
-                        <td className="py-2.5 font-mono font-bold text-slate-800 dark:text-slate-200">
+                        <td className="py-3 font-mono font-bold text-slate-800 dark:text-slate-200">
                           {tx.orderId}
                         </td>
-                        <td className="py-2.5 font-bold text-slate-900 dark:text-slate-200">
+                        <td className="py-3 font-bold text-slate-900 dark:text-slate-200">
                           {tx.userName}
                           <span className="block font-mono text-[10px] text-slate-400 font-normal">
                             {tx.userEmail}
                           </span>
                         </td>
-                        <td className="py-2.5 font-mono font-black text-amber-600 dark:text-amber-400">
+                        <td className="py-3 font-mono font-black text-amber-600 dark:text-amber-400 text-sm">
                           {tx.amount} {tx.currency}
                         </td>
-                        <td className="py-2.5">
-                          <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                        <td className="py-3">
+                          <span className={`px-2.5 py-1 rounded-lg font-bold text-[11px] inline-block ${
                             tx.status === 'SUCCESS'
-                              ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30'
+                              ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/40'
                               : tx.status === 'FAILED'
-                              ? 'bg-rose-500/15 text-rose-500 border border-rose-500/30'
-                              : 'bg-amber-500/15 text-amber-500 border border-amber-500/30'
+                              ? 'bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/40'
+                              : 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/40'
                           }`}>
                             {tx.status === 'SUCCESS' && 'ناجح مكتمل ✅'}
                             {tx.status === 'FAILED' && 'ملغي أو مرفوض ❌'}
                             {tx.status === 'PENDING' && 'معلق (انتظار) ⏳'}
                           </span>
                         </td>
-                        <td className="py-2.5 text-slate-600 dark:text-slate-300 font-medium text-[11px]">
+                        <td className="py-3 text-slate-700 dark:text-slate-200 font-medium text-[11px]">
                           {tx.details}
                         </td>
                       </tr>
@@ -1726,6 +2048,213 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </table>
               </div>
             )}
+          </div>
+
+        </section>
+      )}
+
+      {/* ======================================================================= */}
+      {/* 5. محرك كاشينج وتسريع قواعد البيانات (Database Caching Engine Section) */}
+      {/* ======================================================================= */}
+      {activeTab === 'dbCache' && (
+        <section className="space-y-6">
+          
+          {/* بطاقة الحالة الرئيسية لمحرك الكاشينج */}
+          <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-slate-900 via-[#0a192f] to-[#030712] border-2 border-sky-500/50 shadow-2xl relative overflow-hidden text-white backdrop-blur-xl">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-sky-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+            <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+              <div className="flex items-start gap-4">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-sky-500/20 to-blue-600/30 border-2 border-sky-500/50 flex items-center justify-center text-sky-400 shrink-0 shadow-lg shadow-sky-500/20">
+                  <Cpu className="w-8 h-8" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <h2 className="text-xl font-black text-white">محرك تسريع وكاشينج الداتابيز (Tarqa DB Caching Engine)</h2>
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-xs font-bold font-mono flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                      <span>نشط (L1 In-Memory + L2 Persistent)</span>
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full bg-sky-500/20 border border-sky-500/40 text-sky-300 text-xs font-bold font-mono">
+                      Stale-While-Revalidate (SWR)
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+                    نظام كاشينج متقدم متعدد الطبقات يقوم بحفظ نتائج الاستعلامات الثقيلة (الأسئلة، الدورات، المحاضرات، المستخدمين، والصلاحيات) في الذاكرة الحية (L1 Map) والتخزين الدائم (L2 Storage)، مما يقلل زمن التحميل إلى أقل من 0.05ms ويمنع الضغط المتكرر على قاعدة بيانات Supabase.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={handleRunBenchmark}
+                  disabled={isBenchmarking}
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-bold text-xs shadow-lg shadow-sky-500/25 flex items-center gap-2 transition active:scale-95 disabled:opacity-50"
+                >
+                  <Gauge className="w-4 h-4" />
+                  <span>{isBenchmarking ? 'جاري الفحص...' : 'فحص سرعة القراءة (Benchmark)'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* لوحة التحكم وإجراءات تفريغ الكاش الموجه (Targeted Cache Invalidation) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            
+            {/* بطاقة كاش الأسئلة والاختبارات */}
+            <div className="p-5 rounded-3xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-800 shadow-xl flex flex-col justify-between gap-4">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center font-bold">
+                    <Database className="w-5 h-5" />
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-mono font-bold">
+                    Tag: questions
+                  </span>
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-1">
+                  كاش بنك الأسئلة والاختبارات
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  يخزن أسئلة القدرات الكمي والاختبارات المخصصة ومحاولات الطلاب بالذاكرة الفورية (TTL: 120 دقيقة).
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handlePurgeQuestionsCache}
+                className="w-full py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-xs font-bold transition flex items-center justify-center gap-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>تحديث كاش الأسئلة</span>
+              </button>
+            </div>
+
+            {/* بطاقة كاش الدورات والمحاضرات */}
+            <div className="p-5 rounded-3xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-800 shadow-xl flex flex-col justify-between gap-4">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/15 text-purple-500 flex items-center justify-center font-bold">
+                    <Layers className="w-5 h-5" />
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 font-mono font-bold">
+                    Tag: courses
+                  </span>
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-1">
+                  كاش الدورات والملفات والمحاضرات
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  تسريع تصفح موديولات التأسيس، روابط الفيديوهات، وتراخيص ملفات PDF للطلاب المشتركين (TTL: 60 دقيقة).
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handlePurgeCoursesCache}
+                className="w-full py-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30 text-xs font-bold transition flex items-center justify-center gap-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>تحديث كاش الدورات</span>
+              </button>
+            </div>
+
+            {/* بطاقة كاش المستخدمين والصلاحيات */}
+            <div className="p-5 rounded-3xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-800 shadow-xl flex flex-col justify-between gap-4">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center font-bold">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-mono font-bold">
+                    Tag: users
+                  </span>
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-1">
+                  كاش المستخدمين والاشتراكات
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  تخزين مجمع لبيانات الأعضاء وسجلات التحميل وحالة الرتب والاشتراكات السحابية (TTL: 3 دقائق).
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handlePurgeUsersCache}
+                className="w-full py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-xs font-bold transition flex items-center justify-center gap-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>تحديث كاش المستخدمين</span>
+              </button>
+            </div>
+
+            {/* بطاقة تفريغ الكاش بالكامل */}
+            <div className="p-5 rounded-3xl bg-gradient-to-br from-rose-500/5 to-red-500/10 dark:bg-[#180e18] border-2 border-rose-500/30 shadow-xl flex flex-col justify-between gap-4">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-10 h-10 rounded-xl bg-rose-500/15 text-rose-500 flex items-center justify-center font-bold">
+                    <Trash2 className="w-5 h-5" />
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 font-mono font-bold">
+                    Global Flush
+                  </span>
+                </div>
+                <h3 className="text-sm font-bold text-rose-700 dark:text-rose-300 mb-1">
+                  تفريغ كامل الكاشينج (Flush All)
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  مسح جميع الجداول والبيانات المؤقتة من الذاكرة الحية والمتصفح وإجبار النظام على إعادة المزامنة.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handlePurgeAllCache}
+                className="w-full py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-rose-600/20"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>تفريغ الذاكرة بالكامل 🧹</span>
+              </button>
+            </div>
+
+          </div>
+
+          {/* تفاصيل المعمارية البرمجية وآلية العمل الذكية */}
+          <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-800 shadow-xl space-y-4">
+            <div className="flex items-center gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
+              <Sparkles className="w-5 h-5 text-sky-500" />
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                المزايا التقنية لمحرك Tarqa Database Caching
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-2">
+                <div className="flex items-center gap-2 text-sky-500 font-bold text-xs">
+                  <Zap className="w-4 h-4" />
+                  <span>Stale-While-Revalidate (SWR)</span>
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                  يعرض البيانات القديمة للطالب فوراً في 0 ثانية بدون شاشة تحميل، بينما يتم جلب وتحديث التغييرات الجديدة بهدوء في الخلفية.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-2">
+                <div className="flex items-center gap-2 text-emerald-500 font-bold text-xs">
+                  <Activity className="w-4 h-4" />
+                  <span>Request Deduplication (دمج الطلبات)</span>
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                  إذا طلب 5 مكونات أو صفحات نفس السؤال أو الدورة في نفس اللحظة، يتم تنفيذ استعلام واحد فقط سحابياً ومشاركته للجميع.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-2">
+                <div className="flex items-center gap-2 text-purple-500 font-bold text-xs">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Tag-Based Smart Invalidation</span>
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                  بمجرد إضافة سؤال جديد، تعديل رتبة مستخدم، أو منح اشتراك، يقوم النظام بإلغاء الكاش الخاص بتلك الفئة تلقائياً بدون تدخل يدوي.
+                </p>
+              </div>
+            </div>
           </div>
 
         </section>

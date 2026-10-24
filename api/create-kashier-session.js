@@ -35,6 +35,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
+  try {
     let body = req.body;
     if (typeof body === 'string') {
       try {
@@ -54,9 +55,9 @@ export default async function handler(req, res) {
     } = body;
 
     const mode = settingsMode || process.env.KASHIER_MODE || 'test';
-    const merchantId = customMerchantId || process.env.KASHIER_MERCHANT_ID || 'MID-TARQA-TEST';
-    const apiKey = customApiKey || process.env.KASHIER_API_KEY || '';
-    const secretKey = customSecretKey || process.env.KASHIER_SECRET_KEY || '';
+    const merchantId = customMerchantId || process.env.KASHIER_MERCHANT_ID || 'MID-50598-297';
+    const apiKey = customApiKey || process.env.KASHIER_API_KEY || '980f3d9b-9782-40a0-ad47-f49ae98fdbb7';
+    const secretKey = customSecretKey || process.env.KASHIER_SECRET_KEY || '6ec661c17fe95a9faae76df553f6ecb6$c02d309b502aa7a0f1eb27dbdb37f61f58e17df14f8a04b43ffa526a9e51b2f9281357acae5ca6412eb4ba540b919776';
 
     // Choose Kashier official endpoint based on mode
     const endpoint = mode === 'live'

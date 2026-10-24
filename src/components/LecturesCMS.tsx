@@ -30,7 +30,8 @@ import {
   BookOpen,
   FolderOpen
 } from 'lucide-react';
-import { CourseModule, Lesson, LessonAttachment, VideoProvider, CourseFileItem, AttachmentType, CourseEnrollmentStatus } from '../types';
+import { CourseModule, Lesson, LessonAttachment, VideoProvider, CourseFileItem, AttachmentType, CourseEnrollmentStatus, TeacherId, InstructorInfo } from '../types';
+import { AVAILABLE_INSTRUCTORS } from '../data/foundationModules';
 import { FileUploadZone } from './FileUploadZone';
 import { uploadLessonVideo } from '../lib/videoUploadService';
 import { fileStorageService } from '../lib/fileStorageService';
@@ -74,12 +75,15 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
   // تبويب العرض الحالي: المحاضرات أو المذكرات والملفات
   const [activeTab, setActiveTab] = useState<'lectures' | 'files'>('lectures');
   const [selectedModuleId, setSelectedModuleId] = useState<string>('all');
+  const [selectedTeacherFilter, setSelectedTeacherFilter] = useState<TeacherId>('teacher_1');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
 
   // حالة ملفات ومذكرات الدورة
   const [courseFiles, setCourseFiles] = useState<CourseFileItem[]>(() => (files !== undefined ? files : coursesStorage.getFiles()));
+  // حالة المدرسين
+  const [instructors, setInstructors] = useState<InstructorInfo[]>(() => coursesStorage.getInstructors());
 
   useEffect(() => {
     if (files !== undefined) {
@@ -92,15 +96,29 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
       const updated = e.detail !== undefined ? e.detail : coursesStorage.getFiles();
       setCourseFiles([...updated]);
     };
+    const handleInstructorsChanged = (e: any) => {
+      const updated = e.detail !== undefined ? e.detail : coursesStorage.getInstructors();
+      setInstructors([...updated]);
+    };
+
     window.addEventListener('tarqa_courses_files_changed', handleFilesChanged);
-    return () => window.removeEventListener('tarqa_courses_files_changed', handleFilesChanged);
+    window.addEventListener('tarqa_instructors_changed', handleInstructorsChanged);
+    return () => {
+      window.removeEventListener('tarqa_courses_files_changed', handleFilesChanged);
+      window.removeEventListener('tarqa_instructors_changed', handleInstructorsChanged);
+    };
   }, []);
+
+  const teacher1Info = instructors.find((i) => i.id === 'teacher_1') || AVAILABLE_INSTRUCTORS[0];
+  const teacher2Info = instructors.find((i) => i.id === 'teacher_2') || AVAILABLE_INSTRUCTORS[1];
 
   // حالة نموذج إضافة/تعديل درس
   const [formData, setFormData] = useState<{
     moduleId: string;
     title: string;
     description: string;
+    teacherId: TeacherId;
+    teacherName: string;
     videoProvider: VideoProvider;
     videoUrl: string;
     durationMinutes: number;
@@ -112,6 +130,8 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
     moduleId: modules[0]?.id || '',
     title: '',
     description: '',
+    teacherId: 'teacher_1',
+    teacherName: teacher1Info.name,
     videoProvider: 'youtube',
     videoUrl: '',
     durationMinutes: 15,
@@ -256,10 +276,14 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
 
   const openAddModal = (defaultModuleId?: string) => {
     setEditingLesson(null);
+    const defaultTeacherId: TeacherId = selectedTeacherFilter === 'teacher_2' ? 'teacher_2' : 'teacher_1';
+    const defaultTeacher = AVAILABLE_INSTRUCTORS.find((i) => i.id === defaultTeacherId);
     setFormData({
       moduleId: defaultModuleId || modules[0]?.id || '',
       title: '',
       description: '',
+      teacherId: defaultTeacherId,
+      teacherName: defaultTeacher?.name || (defaultTeacherId === 'teacher_2' ? 'مدرس 2' : 'مدرس 1'),
       videoProvider: 'youtube',
       videoUrl: '',
       durationMinutes: 15,
@@ -273,10 +297,14 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
 
   const openEditModal = (lesson: Lesson) => {
     setEditingLesson(lesson);
+    const currentTeacherId = (lesson.teacherId as TeacherId) || 'teacher_1';
+    const currentTeacher = AVAILABLE_INSTRUCTORS.find((i) => i.id === currentTeacherId);
     setFormData({
       moduleId: lesson.moduleId,
       title: lesson.title,
       description: lesson.description,
+      teacherId: currentTeacherId,
+      teacherName: lesson.teacherName || currentTeacher?.name || (currentTeacherId === 'teacher_2' ? 'مدرس 2' : 'مدرس 1'),
       videoProvider: lesson.videoProvider || 'youtube',
       videoUrl: lesson.videoUrl,
       durationMinutes: lesson.durationMinutes,
@@ -359,6 +387,8 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
 
     const defaultVideoUrl = 'https://vjs.zencdn.net/v/oceans.mp4';
     const finalVideoUrl = formData.videoUrl.trim() || defaultVideoUrl;
+    const currentTeacher = AVAILABLE_INSTRUCTORS.find((i) => i.id === formData.teacherId);
+    const resolvedTeacherName = formData.teacherName?.trim() || currentTeacher?.name || (formData.teacherId === 'teacher_2' ? 'مدرس 2' : 'مدرس 1');
 
     if (editingLesson) {
       const updated: Lesson = {
@@ -366,6 +396,8 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
         moduleId: formData.moduleId,
         title: formData.title.trim(),
         description: formData.description.trim(),
+        teacherId: formData.teacherId,
+        teacherName: resolvedTeacherName,
         videoProvider: formData.videoProvider,
         videoUrl: finalVideoUrl,
         durationMinutes: Number(formData.durationMinutes) || 15,
@@ -375,13 +407,15 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
         attachments: formData.attachments,
       };
       onUpdateLesson(updated);
-      setToast({ text: 'تم حفظ تعديلات المحاضرة بنجاح في الموقع! ✅', type: 'success' });
+      setToast({ text: `تم حفظ تعديلات المحاضرة (${resolvedTeacherName}) بنجاح! ✅`, type: 'success' });
     } else {
       const newLesson: Lesson = {
         id: 'les-' + Date.now(),
         moduleId: formData.moduleId,
         title: formData.title.trim(),
         description: formData.description.trim(),
+        teacherId: formData.teacherId,
+        teacherName: resolvedTeacherName,
         videoProvider: formData.videoProvider,
         videoUrl: finalVideoUrl,
         durationMinutes: Number(formData.durationMinutes) || 15,
@@ -392,7 +426,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
         attachments: formData.attachments,
       };
       onAddLesson(formData.moduleId, newLesson);
-      setToast({ text: 'تمت إضافة المحاضرة ونشرها بنجاح في الموقع! ✅', type: 'success' });
+      setToast({ text: `تمت إضافة المحاضرة ونشرها للمدرس (${resolvedTeacherName}) بنجاح! ✅`, type: 'success' });
     }
 
     setIsModalOpen(false);
@@ -512,9 +546,12 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
     setToast({ text: 'تم تحديث حالة المعاينة المجانية للملف 🎁', type: 'info' });
   };
 
-  const filteredModules = selectedModuleId === 'all' 
-    ? modules 
-    : modules.filter((m) => m.id === selectedModuleId);
+  const filteredModules = modules
+    .filter((m) => selectedModuleId === 'all' || m.id === selectedModuleId)
+    .map((m) => ({
+      ...m,
+      lessons: m.lessons.filter((l) => (l.teacherId || 'teacher_1') === selectedTeacherFilter),
+    }));
 
   const filteredFiles = courseFiles.filter((file) => {
     const matchesSearch = file.title.toLowerCase().includes(fileSearchQuery.toLowerCase()) ||
@@ -544,9 +581,14 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
       {/* رأس الصفحة والإجراءات الرئيسية */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-bold mb-2">
-            <Video className="w-3.5 h-3.5" />
-            <span>لوحة إدارة المحاضرات والمذكرات (Lectures CMS)</span>
+          <div className="flex items-center gap-2.5 mb-2">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-b from-amber-400 to-amber-500 p-0.5 flex items-center justify-center shrink-0 shadow-sm">
+              <img src="/frame_00012.png" alt="شعار طرقع" className="w-full h-full object-contain" />
+            </div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-bold">
+              <Video className="w-3.5 h-3.5" />
+              <span>لوحة إدارة المحاضرات والمذكرات (Lectures CMS)</span>
+            </div>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
             {activeTab === 'lectures' ? 'إدارة مسار تأسيس القدرات بالفيديو' : 'إدارة بنك المذكرات وملفات الـ PDF'}
@@ -687,6 +729,43 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
       {/* ======================================================================= */}
       {activeTab === 'lectures' && (
         <div className="space-y-6">
+          {/* شريط تصفية المدرس 1 والمدرس 2 */}
+          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-slate-50 dark:via-slate-900/60 to-emerald-500/10 border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <span>👨‍🏫 تصفية المحاضرات حسب المدرس:</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSelectedTeacherFilter('teacher_1')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                  selectedTeacherFilter === 'teacher_1'
+                    ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                    : 'bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/10'
+                }`}
+              >
+                <span>{teacher1Info.avatarIcon || '👨‍🏫'} {teacher1Info.fullName || teacher1Info.name}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 font-mono">
+                  {allLessons.filter(l => (l.teacherId || 'teacher_1') === 'teacher_1').length}
+                </span>
+              </button>
+              <button
+                onClick={() => setSelectedTeacherFilter('teacher_2')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                  selectedTeacherFilter === 'teacher_2'
+                    ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
+                    : 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/10'
+                }`}
+              >
+                <span>{teacher2Info.avatarIcon || '⚡'} {teacher2Info.fullName || teacher2Info.name}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 font-mono">
+                  {allLessons.filter(l => l.teacherId === 'teacher_2').length}
+                </span>
+              </button>
+            </div>
+          </div>
+
           {/* الفلترة حسب الباب */}
           <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
             <button
@@ -801,6 +880,16 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                               <h4 className="font-bold text-sm text-slate-900 dark:text-white">
                                 {lesson.title}
                               </h4>
+                              {/* شارة المدرس */}
+                              {(lesson.teacherId === 'teacher_2') ? (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                                  <span>{teacher2Info.avatarIcon || '⚡'} {lesson.teacherName || teacher2Info.name || 'مدرس 2'}</span>
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                                  <span>{teacher1Info.avatarIcon || '👨‍🏫'} {lesson.teacherName || teacher1Info.name || 'مدرس 1'}</span>
+                                </span>
+                              )}
                               {lesson.isFreePreview && (
                                 <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-500 text-[10px] font-bold">
                                   معاينة مجانية
@@ -1135,6 +1224,50 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
 
             <form onSubmit={handleSaveLesson} className="space-y-5">
               
+              {/* اختيار المدرس (مدرس 1 vs مدرس 2) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
+                  مدرس المحاضرة:
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  {instructors.map((teacher) => {
+                    const isSelected = formData.teacherId === teacher.id;
+                    const isTeacher1 = teacher.id === 'teacher_1';
+                    return (
+                      <button
+                        key={teacher.id}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, teacherId: teacher.id as TeacherId, teacherName: teacher.name })}
+                        className={`p-3 rounded-2xl border text-right transition cursor-pointer flex items-center gap-3 ${
+                          isSelected
+                            ? isTeacher1
+                              ? 'bg-amber-500/15 border-amber-500 text-slate-900 dark:text-white shadow-md shadow-amber-500/10 ring-2 ring-amber-500/30'
+                              : 'bg-emerald-500/15 border-emerald-500 text-slate-900 dark:text-white shadow-md shadow-emerald-500/10 ring-2 ring-emerald-500/30'
+                            : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700'
+                        }`}
+                      >
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0 ${
+                          isSelected
+                            ? isTeacher1 ? 'bg-amber-500 text-slate-950' : 'bg-emerald-500 text-slate-950'
+                            : 'bg-slate-200 dark:bg-slate-800'
+                        }`}>
+                          {teacher.avatarIcon || (isTeacher1 ? '👨‍🏫' : '⚡')}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black truncate">{teacher.fullName || teacher.name}</span>
+                            {isSelected && (
+                              <Check className={`w-3.5 h-3.5 shrink-0 ${isTeacher1 ? 'text-amber-500' : 'text-emerald-500'}`} />
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-400 truncate">{teacher.title} • {teacher.tagline}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* اختيار الباب التأسيسي */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">

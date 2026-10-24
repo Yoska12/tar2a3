@@ -82,7 +82,12 @@ export const OrangeGalaxyBackground: React.FC = () => {
     <div
       className="fixed inset-0 pointer-events-none overflow-hidden z-0"
       aria-hidden="true"
-      style={{ willChange: 'transform', transform: 'translate3d(0,0,0)' }}
+      style={{
+        willChange: 'transform',
+        transform: 'translate3d(0,0,0)',
+        WebkitTransform: 'translate3d(0,0,0)',
+        contain: 'strict',
+      }}
     >
       {/* 1. عمق الفضاء الأساسي لجميع الشاشات */}
       <div className="absolute inset-0 bg-[#f0f7ff] dark:bg-[#030509] transition-colors duration-500" />

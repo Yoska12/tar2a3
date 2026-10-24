@@ -18,9 +18,11 @@ import {
   Maximize2,
   AlertTriangle,
   Clock,
+  Crown,
 } from 'lucide-react';
 import { CourseFileItem } from '../types';
 import { fileStorageService, isMobileDevice, isIOSDevice } from '../lib/fileStorageService';
+import { downloadTrackingService } from '../lib/downloadTrackingService';
 
 interface PdfPreviewModalProps {
   isOpen: boolean;
@@ -155,6 +157,17 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
     setShowFallbackBanner(false);
 
     try {
+      downloadTrackingService.trackDownload(
+        {
+          id: file.id,
+          title: file.title,
+          fileUrl: file.fileUrl,
+          fileType: file.fileType,
+          fileSize: file.fileSize,
+        },
+        currentUser
+      );
+
       if (onDownloadClick) {
         onDownloadClick(file);
       }
@@ -420,14 +433,12 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
                     onClick={() => {
                       if (onSubscribeClick) {
                         onSubscribeClick();
-                      } else {
-                        alert('الاشتراك سيكون متاحاً قريباً جداً فور تدشين وتفعيل بوابة الدفع الإلكتروني! ⏳');
                       }
                     }}
                     className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-sm shadow-xl shadow-amber-500/20 transition flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                   >
-                    <Clock className="w-4 h-4" />
-                    <span>الاشتراك متاح قريباً ⏳</span>
+                    <Sparkles className="w-4 h-4 text-slate-950" />
+                    <span>اشترك الآن للوصول الكامل 🚀</span>
                   </button>
 
                   <button
@@ -488,13 +499,12 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
                         <button
                           onClick={() => {
                             if (onSubscribeClick) onSubscribeClick();
-                            else alert('الاشتراك في الباقة سيكون متاحاً قريباً جداً فور تدشين بوابة الدفع! ⏳');
                           }}
-                          className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/30 font-bold flex items-center gap-1 transition text-[11px] sm:text-xs shadow-sm cursor-pointer"
-                          title="الاشتراك متاح قريباً"
+                          className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black flex items-center gap-1 transition text-[11px] sm:text-xs shadow-sm cursor-pointer"
+                          title="اشترك الآن لتحميل الملف"
                         >
-                          <Clock className="w-3.5 h-3.5" />
-                          <span>الاشتراك قريباً ⏳</span>
+                          <Sparkles className="w-3.5 h-3.5 text-slate-950" />
+                          <span>اشترك الآن 🚀</span>
                         </button>
                       ) : (
                         <button
@@ -534,18 +544,18 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
                         {!hasAccess ? (
                           <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-center space-y-3">
                             <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-500 flex items-center justify-center mx-auto shadow-inner">
-                              <Lock className="w-6 h-6" />
+                              <Crown className="w-6 h-6" />
                             </div>
                             <div className="space-y-1">
-                              <h4 className="text-xs sm:text-sm font-black text-white">تحميل المذكرة الكاملة متاح قريباً ⏳</h4>
-                              <p className="text-[11px] text-slate-300">الاشتراك وتنزيل كافة المذكرات سيكون متاحاً قريباً جداً فور تدشين بوابة الدفع</p>
+                              <h4 className="text-xs sm:text-sm font-black text-white">تحميل المذكرة الكاملة للمشتركين 🎯</h4>
+                              <p className="text-[11px] text-slate-300">اشترك في باقة طرقع السنوية الشاملة لفتح وتحميل كافة المذكرات والمحاضرات</p>
                             </div>
                             <button
                               onClick={onSubscribeClick}
-                              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500/20 to-amber-600/20 border border-amber-500/40 hover:bg-amber-500/30 text-amber-400 font-black text-xs shadow-sm transition active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
+                              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs shadow-md transition active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
                             >
-                              <Clock className="w-4 h-4 animate-pulse" />
-                              <span>الاشتراك متاح قريباً ⏳</span>
+                              <Sparkles className="w-4 h-4 text-slate-950" />
+                              <span>اشترك الآن 🚀</span>
                             </button>
                           </div>
                         ) : (
@@ -676,80 +686,38 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
             </div>
             )
           ) : (
-            /* تبويب الفهرس والأبواب */
+            /* تبويب تفاصيل ومعلومات الملف */
             <div className="w-full h-full overflow-y-auto p-4 space-y-4 bg-white dark:bg-[#0c1324] rounded-2xl border border-slate-200 dark:border-slate-800">
               <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-xs sm:text-sm leading-relaxed">
                 <div className="font-black flex items-center gap-2 mb-1">
                   <ShieldCheck className="w-4 h-4 text-amber-500" />
-                  <span>دليل طرقع التأسيسي الشامل لاختبار القدرات العامة (محوسب وورقي)</span>
+                  <span>{file.title || 'الملف المعتمد'}</span>
                 </div>
                 <p className="text-slate-600 dark:text-slate-300 text-xs leading-relaxed">
-                  تم إعداد هذا المحتوى التدريبي وفق أحدث معايير المركز الوطني قياس وتجميعات عام 2025/2026 لضمان التأسيس من الصفر وحتى إتقان استراتيجيات الحل الخاطف في 30 ثانية.
+                  {file.description || 'ملف تعليمي ومذكرة تدريبية مقدمة من إدارة منصة طرقع.'}
                 </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                 <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="w-7 h-7 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center font-black text-xs">
-                      1
-                    </span>
-                    <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
-                      الحساب والكسور والنسب المئوية 🧮
-                    </h4>
-                  </div>
-                  <ul className="text-xs text-slate-500 dark:text-slate-400 space-y-1 pr-2 list-disc list-inside">
-                    <li>استراتيجية التدرج المنتظم لحل مسائل النسب والتخفيضات</li>
-                    <li>المقص السريع للمقارنة بين الكسور وتوحيد المقامات في ثانية</li>
-                    <li>قوانين المتتابعات الحسابية والهندسية ومجموع الحدود</li>
+                  <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
+                    📄 بيانات الملف
+                  </h4>
+                  <ul className="text-xs text-slate-500 dark:text-slate-400 space-y-1.5 pr-2">
+                    <li>حجم الملف: <strong>{file.fileSize || 'غير محدد'}</strong></li>
+                    <li>نوع الملف: <strong>{file.fileType ? file.fileType.toUpperCase() : 'PDF'}</strong></li>
+                    <li>عدد الصفحات: <strong>{file.pagesCount || 'النسخة الكاملة'}</strong></li>
                   </ul>
                 </div>
 
                 <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="w-7 h-7 rounded-xl bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center font-black text-xs">
-                      2
-                    </span>
-                    <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
-                      الجبر والمعادلات السريعة والأسس ⚡
-                    </h4>
-                  </div>
-                  <ul className="text-xs text-slate-500 dark:text-slate-400 space-y-1 pr-2 list-disc list-inside">
-                    <li>المتطابقات الشهيرة وفك المربعات وفرق المربعين</li>
-                    <li>قواعد الأسس، الأس السالب، والجذور التكعيبية والتربيعية</li>
-                    <li>استراتيجية التعويض بالأرقام البسيطة (0، 1، 2) للحل الخاطف</li>
-                  </ul>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="w-7 h-7 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-black text-xs">
-                      3
-                    </span>
-                    <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
-                      الهندسة والزوايا والأشكال المظللة 📐
-                    </h4>
-                  </div>
-                  <ul className="text-xs text-slate-500 dark:text-slate-400 space-y-1 pr-2 list-disc list-inside">
-                    <li>المثلثات الذهبية الشهيرة (3:4:5، 5:12:13، 30-60-90)</li>
-                    <li>طرق حساب مساحة الأجزاء المظللة بحيلة الطرح التراكمي</li>
-                    <li>قوانين محيط ومساحة الدائرة والمضلعات المنتظمة</li>
-                  </ul>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="w-7 h-7 rounded-xl bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center font-black text-xs">
-                      4
-                    </span>
-                    <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
-                      المقارنات والإحصاء والاحتمالات 📊
-                    </h4>
-                  </div>
-                  <ul className="text-xs text-slate-500 dark:text-slate-400 space-y-1 pr-2 list-disc list-inside">
-                    <li>الحالات الأربع للمقارنة وحيل اختيار (المعطيات غير كافية)</li>
-                    <li>المتوسط الحسابي والوسيط والمنوال وقراءة الرسوم البيانية</li>
-                    <li>مبدأ العد الأساسي والاحتمالات المركبة والتباديل</li>
+                  <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
+                    🔒 معلومات الترخيص والحماية
+                  </h4>
+                  <ul className="text-xs text-slate-500 dark:text-slate-400 space-y-1.5 pr-2">
+                    <li>حالة الملف: <strong>{file.isFreePreview ? 'معاينة مجانية متاحة' : 'مخصص للمشتركين'}</strong></li>
+                    <li>تاريخ التحديث: <strong>{file.uploadedAt || 'مُحدث سحابياً'}</strong></li>
+                    <li>التحميل: <strong>مشفّر ومحمي للطلاب المسجلين</strong></li>
                   </ul>
                 </div>
               </div>
@@ -833,12 +801,11 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
               <button
                 onClick={() => {
                   if (onSubscribeClick) onSubscribeClick();
-                  else alert('الاشتراك في الباقة سيكون متاحاً قريباً جداً فور تدشين بوابة الدفع! ⏳');
                 }}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500/20 to-amber-600/20 border border-amber-500/40 hover:bg-amber-500/30 text-amber-500 dark:text-amber-400 text-xs sm:text-sm font-black transition shadow-sm flex items-center justify-center gap-2 cursor-pointer flex-1 sm:flex-initial active:scale-95"
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs sm:text-sm font-black transition shadow-md flex items-center justify-center gap-2 cursor-pointer flex-1 sm:flex-initial active:scale-95"
               >
-                <Clock className="w-4 h-4" />
-                <span>الاشتراك متاح قريباً ⏳</span>
+                <Sparkles className="w-4 h-4 text-slate-950" />
+                <span>اشترك الآن 🚀</span>
               </button>
             ) : (
               <button

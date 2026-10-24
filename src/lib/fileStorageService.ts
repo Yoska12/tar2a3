@@ -392,9 +392,9 @@ export const createMultiPageTarqaPdf = async (
     color: rgb(0.5, 0.5, 0.5),
   });
 
-  // --- PAGE 2: القوانين الذهبية الأساسية ---
+  // --- PAGE 2: صفحة إرشادات المذاكرة والترخيص ---
   const page2 = doc.addPage([595.28, 841.89]);
-  safeDrawText(page2, 'PART 1 & 2: ARITHMETIC AND ALGEBRA GOLDEN LAWS', {
+  safeDrawText(page2, 'DOCUMENT METADATA & STUDENT ACCESS POLICY', {
     x: 60,
     y: 770,
     size: 14,
@@ -402,53 +402,17 @@ export const createMultiPageTarqaPdf = async (
     color: rgb(0.1, 0.15, 0.25),
   });
 
-  const rulesPage2 = [
-    '1. Cross-Multiplication: Compare a/b and c/d by computing a*d vs b*c instantly.',
-    '2. Percentage Shortcut: 10% = divide by 10, 5% = half of 10%, 25% = divide by 4.',
-    '3. Arithmetic Sequence Sum: Sum = (First + Last) * (Number of terms) / 2.',
-    '4. Difference of Two Squares: a^2 - b^2 = (a - b)(a + b).',
-    '5. Perfect Square Expansion: (a + b)^2 = a^2 + 2ab + b^2.',
-    '6. Exponent Rules: x^a * x^b = x^(a+b), (x^a)^b = x^(a*b), x^0 = 1 (x != 0).',
-    '7. Negative Exponent: x^(-n) = 1 / x^n.',
-    '8. Fractional Root Exponent: x^(m/n) = n-th root of (x^m).',
-    '9. Smart Substitution: Test 0, 1, 2 or -1 to eliminate incorrect answer choices in seconds.',
+  const infoLines = [
+    '1. Official Student Copy: Licensed exclusively for the registered platform member.',
+    '2. Watermark Security: Each document contains digital student identifiers.',
+    '3. Live Cloud Updates: Materials and files are synced live with the management dashboard.',
+    '4. Support & Guidance: Reach out to the Tarqa team via the official support channels.',
   ];
 
-  rulesPage2.forEach((rule, idx) => {
-    safeDrawText(page2, rule, {
+  infoLines.forEach((info, idx) => {
+    safeDrawText(page2, info, {
       x: 60,
       y: 730 - idx * 45,
-      size: 10,
-      font: fontRegular,
-      color: rgb(0.2, 0.25, 0.3),
-    });
-  });
-
-  // --- PAGE 3: الهندسة والمقارنات والإحصاء ---
-  const page3 = doc.addPage([595.28, 841.89]);
-  safeDrawText(page3, 'PART 3 & 4: GEOMETRY AND SPEED COMPARISON TACTICS', {
-    x: 60,
-    y: 770,
-    size: 14,
-    font: fontBold,
-    color: rgb(0.1, 0.15, 0.25),
-  });
-
-  const rulesPage3 = [
-    '1. Pythagorean Famous Triples: (3, 4, 5), (5, 12, 13), (8, 15, 17), (7, 24, 25).',
-    '2. 30-60-90 Triangle: Side opposite 30 is x, opposite 60 is x*sqrt(3), hypotenuse is 2x.',
-    '3. 45-45-90 Triangle: Legs are x, hypotenuse is x*sqrt(2).',
-    '4. Circle Area: Area = pi * r^2, Circumference = 2 * pi * r.',
-    '5. Shaded Area Principle: Total outer shape area minus unshaded inner shape area.',
-    '6. Four Comparison Options: (A) Val 1 > Val 2, (B) Val 2 > Val 1, (C) Equal, (D) Insufficient.',
-    '7. Insufficient Data Detection: When variables can be positive, negative, fraction, or zero.',
-    '8. Statistical Shortcuts: Mean = Sum / Count, Median = middle value after sorting.',
-  ];
-
-  rulesPage3.forEach((rule, idx) => {
-    safeDrawText(page3, rule, {
-      x: 60,
-      y: 730 - idx * 50,
       size: 10,
       font: fontRegular,
       color: rgb(0.2, 0.25, 0.3),

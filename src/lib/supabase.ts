@@ -11,9 +11,19 @@ import {
 
 export { isOwnerEmail } from './securityUtils';
 
-// قراءة بيانات الاتصال بـ Supabase حصراً من متغيرات بيئة .env
-const rawSupabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
-const rawSupabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
+// قراءة بيانات الاتصال بـ Supabase من متغيرات بيئة .env أو Hostinger المباشرة
+const rawSupabaseUrl = (
+  import.meta.env.VITE_SUPABASE_URL ||
+  (import.meta.env as any).SUPABASE_URL ||
+  'https://djkwgwdlygxqcateivbc.supabase.co'
+).trim();
+
+const rawSupabaseAnonKey = (
+  import.meta.env.VITE_SUPABASE_ANON_KEY ||
+  (import.meta.env as any).SUPABASE_ANON_KEY ||
+  (import.meta.env as any).SUPABASE_KEY ||
+  'sb_publishable_kC-Ok9GoiYyg3ffh0rpyXg_mS8fY8Gm'
+).trim();
 
 export const isSupabaseConfigured = Boolean(
   rawSupabaseUrl && 
@@ -26,8 +36,8 @@ if (!isSupabaseConfigured) {
   console.warn('[Supabase Config] Supabase URL or Anon Key is missing or invalid in .env. Running in offline/demo mode.');
 }
 
-const supabaseUrl = rawSupabaseUrl || 'https://placeholder.supabase.co';
-const supabaseAnonKey = rawSupabaseAnonKey || 'placeholder-anon-key';
+const supabaseUrl = rawSupabaseUrl || 'https://djkwgwdlygxqcateivbc.supabase.co';
+const supabaseAnonKey = rawSupabaseAnonKey || 'sb_publishable_kC-Ok9GoiYyg3ffh0rpyXg_mS8fY8Gm';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 export { createClient };
@@ -302,6 +312,91 @@ export const authService = {
       return parsed;
     } catch {
       return null;
+    }
+  },
+
+  // تحديث ومزامنة بيانات المستخدم الحالي فوراً مع السيرفر السحابي (Background Profile & Subscription Refresh)
+  refreshCurrentUser: async (): Promise<TarqaUser | null> => {
+    try {
+      const current = authService.getCurrentUser();
+      if (!current || (!current.id && !current.email)) return null;
+
+      const isOwner = isOwnerEmail(current.email);
+
+      // فحص أحدث الاشتراكات من السجل المحلي أولاً
+      try {
+        const subsRaw = localStorage.getItem('tarqa_subscriptions');
+        if (subsRaw) {
+          const subs = JSON.parse(subsRaw);
+          const sub = subs[current.id] || (current.email && (subs[current.email.toLowerCase()] || subs[current.email]));
+          if (sub && (sub.active === true || sub.isActive === true)) {
+            const expDate = sub.expiresDate || sub.expiresAt;
+            const isNotExp = !expDate || new Date(expDate).getTime() > Date.now();
+            if (isNotExp && !current.isSubscribed) {
+              current.isSubscribed = true;
+              current.subscriptionExpiresAt = expDate || current.subscriptionExpiresAt;
+              authService.setCurrentUser(current);
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('tarqa_subscription_changed', { detail: sub }));
+              }
+            }
+          }
+        }
+      } catch {}
+
+      if (isSupabaseConfigured && supabase) {
+        let profile: any = null;
+        if (isValidUuid(current.id)) {
+          const { data } = await supabase.from('profiles').select('*').eq('id', current.id).maybeSingle();
+          if (data) profile = data;
+        }
+        if (!profile && current.email && !current.email.includes('@telegram.tarqa')) {
+          const { data } = await supabase.from('profiles').select('*').eq('email', current.email.toLowerCase()).maybeSingle();
+          if (data) profile = data;
+        }
+        if (!profile && current.telegramId) {
+          const { data } = await supabase.from('profiles').select('*').eq('telegram_id', current.telegramId).maybeSingle();
+          if (data) profile = data;
+        }
+
+        if (profile) {
+          if (profile.is_banned) {
+            authService.clearCurrentUser();
+            return null;
+          }
+
+          const dbRole = isOwner ? 'super_admin' : ((profile.role as UserRole) || current.role || 'student');
+          const isSubscribed = isOwner ? true : (Boolean(profile.is_subscribed) || Boolean(current.isSubscribed));
+          const subscriptionExpiresAt = isOwner ? undefined : (profile.subscription_expires_at || current.subscriptionExpiresAt);
+
+          const updated: TarqaUser = {
+            ...current,
+            id: profile.id || current.id,
+            role: dbRole,
+            fullName: isOwner ? 'Yoska' : (profile.full_name || current.fullName),
+            isSubscribed,
+            subscriptionExpiresAt,
+          };
+
+          const changed =
+            current.role !== updated.role ||
+            current.isSubscribed !== updated.isSubscribed ||
+            current.subscriptionExpiresAt !== updated.subscriptionExpiresAt;
+
+          if (changed) {
+            authService.setCurrentUser(updated);
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('tarqa_subscription_changed', { detail: { isSubscribed: updated.isSubscribed } }));
+              window.dispatchEvent(new Event('tarqa_roles_changed'));
+            }
+          }
+          return updated;
+        }
+      }
+      return current;
+    } catch (e) {
+      console.warn('[authService.refreshCurrentUser] notice:', e);
+      return authService.getCurrentUser();
     }
   },
 

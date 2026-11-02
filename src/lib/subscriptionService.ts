@@ -240,6 +240,42 @@ export const canAccessLesson = (lesson: Lesson, user?: TarqaUser | null): boolea
 };
 
 /**
+ * وظيفة مساعدة لمزامنة الاشتراك مباشرة مع خادم الباك إند (Hostinger PHP Backend)
+ */
+export async function syncSubscriptionToBackend(
+  action: 'grant' | 'cancel',
+  payload: {
+    userId?: string;
+    userEmail?: string;
+    userName?: string;
+    telegramUsername?: string;
+    telegramId?: number;
+    days?: number;
+  }
+): Promise<boolean> {
+  try {
+    const res = await fetch('/api/subscriptions.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action,
+        userId: payload.userId,
+        userEmail: payload.userEmail,
+        userName: payload.userName,
+        telegramUsername: payload.telegramUsername,
+        telegramId: payload.telegramId,
+        days: payload.days || 365,
+      }),
+      keepalive: true,
+    });
+    return res.ok;
+  } catch (err) {
+    console.debug('[syncSubscriptionToBackend] notice:', err);
+    return false;
+  }
+}
+
+/**
  * تفعيل الاشتراك السنوي للطالب لمدة سنة كاملة (365 يوماً بـ 75 ر.س)
  */
 export const activateAnnualSubscription = async (
@@ -513,9 +549,20 @@ export const activateAnnualSubscription = async (
     }
   }
 
-  // 3. إطلاق حدث تحديث في النافذة
+  // 3. مزامنة مباشرة ومؤكدة مع خادم الباك إند (Hostinger PHP Backend)
+  syncSubscriptionToBackend('grant', {
+    userId: user.id,
+    userEmail: user.email,
+    userName: user.fullName,
+    telegramUsername: user.telegramUsername,
+    telegramId: user.telegramId,
+    days: 365,
+  }).catch(() => {});
+
+  // 4. إطلاق حدث تحديث في النافذة
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('tarqa_subscription_changed', { detail: subRecord }));
+    window.dispatchEvent(new CustomEvent('tarqa:subscription_updated', { detail: subRecord }));
     window.dispatchEvent(new CustomEvent('tarqa_user_changed'));
     window.dispatchEvent(new CustomEvent('tarqa_roles_changed'));
   }
@@ -754,7 +801,15 @@ export const cancelAnnualSubscription = async (
     }
   }
 
-  // 4. إطلاق الأحداث لتحديث كافة واجهات الموقع فوراً
+  // 4. مزامنة الإلغاء مع خادم الباك إند (Hostinger PHP Backend)
+  syncSubscriptionToBackend('cancel', {
+    userId,
+    userEmail: emailClean,
+    telegramUsername: tgClean,
+    telegramId,
+  }).catch(() => {});
+
+  // 5. إطلاق الأحداث لتحديث كافة واجهات الموقع فوراً
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('tarqa_subscription_changed', { detail: { userId, email: emailClean, isActive: false } }));
     window.dispatchEvent(new CustomEvent('tarqa:subscription_updated', { detail: { userId, email: emailClean, isActive: false } }));
@@ -1006,6 +1061,16 @@ export const grantAnnualSubscription = async (
       } catch {}
     } catch {}
   }
+
+  // 3. مزامنة التفعيل مع خادم الباك إند (Hostinger PHP Backend)
+  syncSubscriptionToBackend('grant', {
+    userId: targetUser.id,
+    userEmail: emailClean,
+    userName: targetUser.fullName,
+    telegramUsername: tgClean,
+    telegramId: targetUser.telegramId,
+    days,
+  }).catch(() => {});
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('tarqa_subscription_changed', { detail: subRecord }));
@@ -2173,7 +2238,7 @@ export const coursesStorage = {
 };
 
 /**
- * مزامنة وجلب كافة اشتراكات الطلاب من السحابة المركزية مباشرة
+ * مزامنة وجلب كافة اشتراكات الطلاب من السحابة المركزية والباك إند مباشرة
  */
 export async function syncSubscriptionsFromCloud(): Promise<Record<string, any>> {
   const rawLocal = localStorage.getItem('tarqa_subscriptions') || '{}';
@@ -2182,66 +2247,78 @@ export async function syncSubscriptionsFromCloud(): Promise<Record<string, any>>
     localSubs = JSON.parse(rawLocal);
   } catch {}
 
-  if (!isSupabaseConfigured || !supabase) {
-    return localSubs;
+  // 1. جلب الاشتراكات الموثقة في خادم الباك إند (Hostinger PHP Backend)
+  let backendSubs: Record<string, any> = {};
+  try {
+    const res = await fetch('/api/subscriptions.php');
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.subscriptions && typeof data.subscriptions === 'object') {
+        backendSubs = data.subscriptions;
+      }
+    }
+  } catch (bErr) {
+    console.debug('[syncSubscriptionsFromCloud] Backend fetch notice:', bErr);
   }
 
   try {
-    let cloudSubs: Record<string, any> = {};
+    let cloudSubs: Record<string, any> = { ...backendSubs };
 
-    // 1. استعلام كافة المشتركين الفعليين مباشرة من جدول profiles
-    try {
-      const { data: dbSubscribers, error: dbErr } = await supabase
-        .from('profiles')
-        .select('id, email, full_name, telegram_username, telegram_id, is_subscribed, subscription_expires_at, created_at')
-        .eq('is_subscribed', true);
+    // 1. استعلام كافة المشتركين الفعليين مباشرة من جدول profiles في Supabase
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data: dbSubscribers, error: dbErr } = await supabase
+          .from('profiles')
+          .select('id, email, full_name, telegram_username, telegram_id, is_subscribed, subscription_expires_at, created_at')
+          .eq('is_subscribed', true);
 
-      if (!dbErr && dbSubscribers && dbSubscribers.length > 0) {
-        for (const p of dbSubscribers) {
-          const expDate = p.subscription_expires_at || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
-          const subRecord = {
-            userId: p.id,
-            userEmail: p.email,
-            userName: p.full_name || 'طالب طرقع',
-            telegramUsername: p.telegram_username,
-            telegramId: p.telegram_id,
-            planId: 'annual_75',
-            planName: 'باقة طرقع السنوية الشاملة',
-            priceSAR: ANNUAL_SUBSCRIPTION_PRICE_SAR,
-            startDate: p.created_at || new Date().toISOString(),
-            expiresDate: expDate,
-            isActive: true,
-            active: true,
-            status: 'active',
-          };
+        if (!dbErr && dbSubscribers && dbSubscribers.length > 0) {
+          for (const p of dbSubscribers) {
+            const expDate = p.subscription_expires_at || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+            const subRecord = {
+              userId: p.id,
+              userEmail: p.email,
+              userName: p.full_name || 'طالب طرقع',
+              telegramUsername: p.telegram_username,
+              telegramId: p.telegram_id,
+              planId: 'annual_75',
+              planName: 'باقة طرقع السنوية الشاملة',
+              priceSAR: ANNUAL_SUBSCRIPTION_PRICE_SAR,
+              startDate: p.created_at || new Date().toISOString(),
+              expiresDate: expDate,
+              isActive: true,
+              active: true,
+              status: 'active',
+            };
 
-          if (p.id) cloudSubs[p.id] = subRecord;
-          if (p.email) cloudSubs[p.email.toLowerCase().trim()] = subRecord;
-          if (p.telegram_username) cloudSubs[p.telegram_username.replace(/^@/, '').toLowerCase().trim()] = subRecord;
-          if (p.telegram_id) cloudSubs[String(p.telegram_id)] = subRecord;
-        }
-      }
-    } catch (fetchErr) {
-      console.warn('[syncSubscriptionsFromCloud] DB profiles fetch notice:', fetchErr);
-    }
-
-    // 2. دمج الاشتراكات المسجلة في السحابة المركزية (CLOUD_LECTURES_STORE_ID)
-    try {
-      const { data: storeData } = await supabase
-        .from('profiles')
-        .select('ban_reason')
-        .eq('id', CLOUD_LECTURES_STORE_ID)
-        .maybeSingle();
-
-      if (storeData?.ban_reason) {
-        try {
-          const parsed = JSON.parse(storeData.ban_reason);
-          if (parsed.subscriptions && typeof parsed.subscriptions === 'object') {
-            cloudSubs = { ...cloudSubs, ...parsed.subscriptions };
+            if (p.id) cloudSubs[p.id] = subRecord;
+            if (p.email) cloudSubs[p.email.toLowerCase().trim()] = subRecord;
+            if (p.telegram_username) cloudSubs[p.telegram_username.replace(/^@/, '').toLowerCase().trim()] = subRecord;
+            if (p.telegram_id) cloudSubs[String(p.telegram_id)] = subRecord;
           }
-        } catch {}
+        }
+      } catch (fetchErr) {
+        console.warn('[syncSubscriptionsFromCloud] DB profiles fetch notice:', fetchErr);
       }
-    } catch {}
+
+      // 2. دمج الاشتراكات المسجلة في السحابة المركزية (CLOUD_LECTURES_STORE_ID)
+      try {
+        const { data: storeData } = await supabase
+          .from('profiles')
+          .select('ban_reason')
+          .eq('id', CLOUD_LECTURES_STORE_ID)
+          .maybeSingle();
+
+        if (storeData?.ban_reason) {
+          try {
+            const parsed = JSON.parse(storeData.ban_reason);
+            if (parsed.subscriptions && typeof parsed.subscriptions === 'object') {
+              cloudSubs = { ...cloudSubs, ...parsed.subscriptions };
+            }
+          } catch {}
+        }
+      } catch {}
+    }
 
     // 3. دمج ذكي: يتم دمج بيانات السحابة أولاً، ولكن أي إلغاء صريح محلياً أو سحابياً يحظى بالأولوية المطلقة
     const merged = { ...cloudSubs, ...localSubs };

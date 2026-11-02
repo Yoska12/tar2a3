@@ -119,6 +119,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $payload = $_POST;
     }
 
+    // دعم مسح سجل تحميلات طالب معين إذا طلب الأدمن ذلك
+    if (isset($payload['action']) && $payload['action'] === 'clear') {
+        $targetUser = !empty($payload['userId']) ? trim($payload['userId']) : (!empty($payload['userEmail']) ? strtolower(trim($payload['userEmail'])) : '');
+        $log = readDownloadsLog($logFile);
+        if (!empty($targetUser)) {
+            unset($log['users'][$targetUser]);
+            if (!empty($payload['userEmail'])) {
+                unset($log['users'][strtolower(trim($payload['userEmail']))]);
+            }
+            if (!empty($payload['userId'])) {
+                unset($log['users'][trim($payload['userId'])]);
+            }
+            writeDownloadsLog($logFile, $log);
+        }
+        echo json_encode(['success' => true, 'message' => 'تم مسح سجل التحميلات بنجاح من الخادم 🗑️']);
+        exit;
+    }
+
     $fileTitle = !empty($payload['fileTitle']) ? trim($payload['fileTitle']) : (!empty($payload['title']) ? trim($payload['title']) : 'مذكرة دراسية');
     $fileId    = !empty($payload['fileId']) ? trim($payload['fileId']) : (!empty($payload['id']) ? trim($payload['id']) : 'file-' . time());
     $fileUrl   = !empty($payload['fileUrl']) ? trim($payload['fileUrl']) : '';

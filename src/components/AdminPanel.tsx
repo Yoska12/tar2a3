@@ -39,7 +39,8 @@ import {
   UserCheck,
   UserX,
   Crown,
-  Wrench
+  Wrench,
+  Download,
 } from 'lucide-react';
 import { MathRenderer } from './MathRenderer';
 import { FeaturesManagementTab } from './FeaturesManagementTab';
@@ -47,6 +48,7 @@ import { SiteMaintenanceTab } from './SiteMaintenanceTab';
 import { maintenanceService } from '../lib/maintenanceService';
 import { Question, Category, OptionId, Difficulty, QuizMode, UserWithRole } from '../types';
 import { rolesService } from '../lib/rolesService';
+import { downloadTrackingService } from '../lib/downloadTrackingService';
 import { isOwnerEmail } from '../lib/securityUtils';
 import { localScoreStorage } from '../lib/supabase';
 import {
@@ -332,6 +334,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const [allPlatformUsers, setAllPlatformUsers] = useState<UserWithRole[]>([]);
   const [subscribedUsers, setSubscribedUsers] = useState<UserWithRole[]>([]);
+  const [subscribersTab, setSubscribersTab] = useState<'subscribed' | 'unsubscribed' | 'all' | 'downloaded'>('subscribed');
+  const [subscribersSearch, setSubscribersSearch] = useState<string>('');
+  const [selectedStudentForFiles, setSelectedStudentForFiles] = useState<UserWithRole | null>(null);
   const [selectedStudentToActivate, setSelectedStudentToActivate] = useState<string>('');
   const [customStudentEmail, setCustomStudentEmail] = useState<string>('');
   const [customStudentName, setCustomStudentName] = useState<string>('');
@@ -1878,59 +1883,105 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           {/* ======================================================================= */}
           {/* إحصائيات الاشتراكات والمشتركين المفعلين حالياً (Active Subscribers Banner) */}
           {/* ======================================================================= */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="p-5 rounded-3xl bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent border-2 border-emerald-500/30 shadow-lg backdrop-blur-xl flex items-center justify-between">
-              <div>
-                <span className="text-xs text-slate-500 dark:text-slate-400 font-bold block mb-1">
-                  الطلاب المشتركون المفعلون 🎓
-                </span>
-                <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
-                  {subscribedUsers.length}
+          {(() => {
+            const allStudents = allPlatformUsers.filter((u) => u.role === 'student' && !isOwnerEmail(u.email));
+            const subCount = allStudents.filter((u) => u.isSubscribed).length;
+            const unsubCount = allStudents.filter((u) => !u.isSubscribed).length;
+            const dlCount = allStudents.filter((u) => Boolean(u.hasDownloadedFiles || (u.downloadedFilesCount && u.downloadedFilesCount > 0))).length;
+            return (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div 
+                  onClick={() => setSubscribersTab('subscribed')}
+                  className={`p-5 rounded-3xl border-2 shadow-lg backdrop-blur-xl flex items-center justify-between cursor-pointer transition-all ${
+                    subscribersTab === 'subscribed'
+                      ? 'bg-emerald-500/15 border-emerald-500 ring-2 ring-emerald-500/30'
+                      : 'bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent border-emerald-500/30 hover:border-emerald-500/60'
+                  }`}
+                >
+                  <div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 font-bold block mb-1">
+                      الطلاب المشتركون 🎓
+                    </span>
+                    <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                      {subCount}
+                    </div>
+                    <span className="text-[11px] text-emerald-500 font-bold mt-1 inline-flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                      <span>اشتراك سنوي نشط ومفعل</span>
+                    </span>
+                  </div>
+                  <div className="w-13 h-13 rounded-2xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center font-bold text-xl shadow-inner">
+                    <Sparkles className="w-6 h-6" />
+                  </div>
                 </div>
-                <span className="text-[11px] text-emerald-500 font-bold mt-1 inline-flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                  <span>اشتراك سنوي شامل نشط</span>
-                </span>
-              </div>
-              <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center font-bold text-xl shadow-inner">
-                <Sparkles className="w-7 h-7" />
-              </div>
-            </div>
 
-            <div className="p-5 rounded-3xl bg-gradient-to-br from-amber-500/10 via-yellow-500/5 to-transparent border-2 border-amber-500/30 shadow-lg backdrop-blur-xl flex items-center justify-between">
-              <div>
-                <span className="text-xs text-slate-500 dark:text-slate-400 font-bold block mb-1">
-                  عمليات الدفع الناجحة (كاشير) 💳
-                </span>
-                <div className="text-3xl font-black text-amber-600 dark:text-amber-400 font-mono">
-                  {kashierTransactions.filter(t => t.status === 'SUCCESS').length}
+                <div 
+                  onClick={() => setSubscribersTab('unsubscribed')}
+                  className={`p-5 rounded-3xl border-2 shadow-lg backdrop-blur-xl flex items-center justify-between cursor-pointer transition-all ${
+                    subscribersTab === 'unsubscribed'
+                      ? 'bg-slate-500/15 border-slate-500 ring-2 ring-slate-500/30'
+                      : 'bg-gradient-to-br from-slate-500/10 via-slate-600/5 to-transparent border-slate-300 dark:border-slate-700 hover:border-slate-400'
+                  }`}
+                >
+                  <div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 font-bold block mb-1">
+                      الطلاب غير المشتركين ⚪
+                    </span>
+                    <div className="text-3xl font-black text-slate-700 dark:text-slate-300 font-mono">
+                      {unsubCount}
+                    </div>
+                    <span className="text-[11px] text-slate-500 font-bold mt-1 inline-block">
+                      طالب بانتظار التفعيل
+                    </span>
+                  </div>
+                  <div className="w-13 h-13 rounded-2xl bg-slate-500/15 text-slate-500 flex items-center justify-center font-bold text-xl shadow-inner">
+                    <UserX className="w-6 h-6" />
+                  </div>
                 </div>
-                <span className="text-[11px] text-amber-500 font-bold mt-1 inline-block">
-                  من أصل {kashierTransactions.length} عملية مسجلة
-                </span>
-              </div>
-              <div className="w-14 h-14 rounded-2xl bg-amber-500/15 text-amber-500 flex items-center justify-center font-bold text-xl shadow-inner">
-                <CreditCard className="w-7 h-7" />
-              </div>
-            </div>
 
-            <div className="p-5 rounded-3xl bg-gradient-to-br from-purple-500/10 via-indigo-500/5 to-transparent border-2 border-purple-500/30 shadow-lg backdrop-blur-xl flex items-center justify-between">
-              <div>
-                <span className="text-xs text-slate-500 dark:text-slate-400 font-bold block mb-1">
-                  سعر الباقة السنوية المعتمد 💰
-                </span>
-                <div className="text-3xl font-black text-purple-600 dark:text-purple-400 font-mono">
-                  {kashierSettings.amount} {kashierSettings.currency}
+                <div 
+                  onClick={() => setSubscribersTab('downloaded')}
+                  className={`p-5 rounded-3xl border-2 shadow-lg backdrop-blur-xl flex items-center justify-between cursor-pointer transition-all ${
+                    subscribersTab === 'downloaded'
+                      ? 'bg-amber-500/15 border-amber-500 ring-2 ring-amber-500/30'
+                      : 'bg-gradient-to-br from-amber-500/10 via-yellow-500/5 to-transparent border-amber-500/30 hover:border-amber-500/60'
+                  }`}
+                >
+                  <div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 font-bold block mb-1">
+                      قاموا بتحميل الملفات 📥
+                    </span>
+                    <div className="text-3xl font-black text-amber-600 dark:text-amber-400 font-mono">
+                      {dlCount}
+                    </div>
+                    <span className="text-[11px] text-amber-500 font-bold mt-1 inline-block">
+                      سجلات السيرفر المباشرة
+                    </span>
+                  </div>
+                  <div className="w-13 h-13 rounded-2xl bg-amber-500/15 text-amber-500 flex items-center justify-center font-bold text-xl shadow-inner">
+                    <FileText className="w-6 h-6" />
+                  </div>
                 </div>
-                <span className="text-[11px] text-purple-500 font-bold mt-1 inline-block">
-                  {kashierSettings.currency === 'EGP' ? '1100 جنيه (مصر) / 75 ريال (السعودية)' : '75 ريال (السعودية) / 1100 جنيه (مصر)'}
-                </span>
+
+                <div className="p-5 rounded-3xl bg-gradient-to-br from-purple-500/10 via-indigo-500/5 to-transparent border-2 border-purple-500/30 shadow-lg backdrop-blur-xl flex items-center justify-between">
+                  <div>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 font-bold block mb-1">
+                      كاشير والمدفوعات 💳
+                    </span>
+                    <div className="text-3xl font-black text-purple-600 dark:text-purple-400 font-mono">
+                      {kashierTransactions.filter(t => t.status === 'SUCCESS').length}
+                    </div>
+                    <span className="text-[11px] text-purple-500 font-bold mt-1 inline-block">
+                      {kashierSettings.amount} {kashierSettings.currency} (1100 ج.م / 75 ر.س)
+                    </span>
+                  </div>
+                  <div className="w-13 h-13 rounded-2xl bg-purple-500/15 text-purple-500 flex items-center justify-center font-bold text-xl shadow-inner">
+                    <CreditCard className="w-6 h-6" />
+                  </div>
+                </div>
               </div>
-              <div className="w-14 h-14 rounded-2xl bg-purple-500/15 text-purple-500 flex items-center justify-center font-bold text-xl shadow-inner">
-                <Wallet className="w-7 h-7" />
-              </div>
-            </div>
-          </div>
+            );
+          })()}
 
           {/* ======================================================================= */}
           {/* قسم تفعيل اشتراكات إنستاباي والتفعيل اليدوي السريع (InstaPay & Manual Activation) */}
@@ -2036,121 +2087,355 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
 
           {/* ======================================================================= */}
-          {/* جدول المشتركين المفعلين حالياً (Active Subscribed Students Table) */}
+          {/* إدارة المشتركين وغير المشتركين وتحميلات الملفات (قاعدة البيانات والباك إند) */}
           {/* ======================================================================= */}
-          <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-700/80 shadow-2xl backdrop-blur-xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b-2 border-slate-100 dark:border-slate-800 flex-wrap gap-2">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center font-bold">
-                  <CheckCircle2 className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
-                    <span>قائمة المشتركين المفعلين حالياً في باقة الدورات</span>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                      {subscribedUsers.length} مشترك
-                    </span>
-                  </h3>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    هؤلاء الطلاب لديهم وصول كامل وتلقائي لكافة المحاضرات والمذكرات والتسجيلات.
-                  </p>
-                </div>
-              </div>
+          {(() => {
+            const allStudents = allPlatformUsers.filter((u) => u.role === 'student' && !isOwnerEmail(u.email));
+            const activeSubscribedStudents = allStudents.filter((u) => u.isSubscribed);
+            const unsubscribedStudents = allStudents.filter((u) => !u.isSubscribed);
+            const downloadedStudents = allStudents.filter((u) => Boolean(u.hasDownloadedFiles || (u.downloadedFilesCount && u.downloadedFilesCount > 0)));
 
-              <button
-                type="button"
-                onClick={() => loadRealStats()}
-                className="px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>تحديث المشتركين</span>
-              </button>
-            </div>
+            let filteredStudents = allStudents;
+            if (subscribersTab === 'subscribed') filteredStudents = activeSubscribedStudents;
+            else if (subscribersTab === 'unsubscribed') filteredStudents = unsubscribedStudents;
+            else if (subscribersTab === 'downloaded') filteredStudents = downloadedStudents;
 
-            {subscribedUsers.length === 0 ? (
-              <div className="p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-[#121c32]/50 rounded-2xl">
-                <Users className="w-12 h-12 text-slate-400 mx-auto mb-2 opacity-60" />
-                <p className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200">
-                  لا يوجد أي طالب مشترك بالباقة حالياً
-                </p>
-                <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  عند قيام الطلاب بالدفع عبر كاشير أو تفعيلك للاشتراك عبر إنستاباي، سيظهرون هنا فوراً.
-                </p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto max-h-96">
-                <table className="w-full text-right text-xs">
-                  <thead>
-                    <tr className="border-b-2 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400">
-                      <th className="pb-3 font-bold">الطالب</th>
-                      <th className="pb-3 font-bold">البريد الإلكتروني</th>
-                      <th className="pb-3 font-bold">تليجرام</th>
-                      <th className="pb-3 font-bold">حالة الاشتراك</th>
-                      <th className="pb-3 font-bold">تاريخ الانتهاء</th>
-                      <th className="pb-3 font-bold text-center">إجراءات</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {subscribedUsers.map((subUser) => (
-                      <tr key={subUser.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                        <td className="py-3 font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-xs shrink-0">
-                            {subUser.fullName ? subUser.fullName.charAt(0) : 'ط'}
+            if (subscribersSearch.trim()) {
+              const q = subscribersSearch.trim().toLowerCase();
+              filteredStudents = filteredStudents.filter((u) =>
+                (u.fullName && u.fullName.toLowerCase().includes(q)) ||
+                (u.email && u.email.toLowerCase().includes(q)) ||
+                (u.telegramUsername && u.telegramUsername.toLowerCase().includes(q))
+              );
+            }
+
+            return (
+              <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-700/80 shadow-2xl backdrop-blur-xl space-y-5">
+                {/* رأس الجدول وعنوانه مع زر التحديث */}
+                <div className="flex items-center justify-between pb-3 border-b-2 border-slate-100 dark:border-slate-800 flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center font-bold">
+                      <CheckCircle2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                        <span>سجل المشتركين والطلاب (مربوط بالباك إند وقاعدة البيانات)</span>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-mono">
+                          {activeSubscribedStudents.length} مشترك / {allStudents.length} طالب
+                        </span>
+                      </h3>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        مزامنة حية ومباشرة من قاعدة البيانات وسيرفر الاستضافة لتتبع من هو مشترك ومن غير مشترك وسجلات تحميل الملفات بدقة.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => loadRealStats()}
+                    className="px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>تحديث السجلات من السيرفر</span>
+                  </button>
+                </div>
+
+                {/* أزرار التبديل الفورية والبحث (Segmented Filter & Search) */}
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setSubscribersTab('subscribed')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                        subscribersTab === 'subscribed'
+                          ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/25 font-black'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      <span>🎓 المشتركون</span>
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-black/10 dark:bg-white/10 font-mono font-bold">
+                        {activeSubscribedStudents.length}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSubscribersTab('unsubscribed')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                        subscribersTab === 'unsubscribed'
+                          ? 'bg-slate-700 text-white shadow-md font-black dark:bg-slate-600'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      <span>⚪ غير المشتركين</span>
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-black/10 dark:bg-white/10 font-mono font-bold">
+                        {unsubscribedStudents.length}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSubscribersTab('all')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                        subscribersTab === 'all'
+                          ? 'bg-purple-600 text-white shadow-md shadow-purple-600/25 font-black'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      <span>👥 جميع الطلاب</span>
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-black/10 dark:bg-white/10 font-mono font-bold">
+                        {allStudents.length}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSubscribersTab('downloaded')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                        subscribersTab === 'downloaded'
+                          ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/25 font-black'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      <span>📥 قاموا بالتحميل</span>
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-black/10 dark:bg-white/10 font-mono font-bold">
+                        {downloadedStudents.length}
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* حقل البحث بالاسم أو الإيميل */}
+                  <div className="relative w-full sm:w-64">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={subscribersSearch}
+                      onChange={(e) => setSubscribersSearch(e.target.value)}
+                      placeholder="بحث باسم الطالب أو بريده..."
+                      className="w-full pl-3 pr-8 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#121c32] text-xs font-medium text-slate-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                {/* جدول العرض الشامل */}
+                {filteredStudents.length === 0 ? (
+                  <div className="p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-[#121c32]/50 rounded-2xl">
+                    <Users className="w-12 h-12 text-slate-400 mx-auto mb-2 opacity-60" />
+                    <p className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200">
+                      {subscribersSearch.trim()
+                        ? 'لم يتم العثور على أي طالب يطابق البحث'
+                        : subscribersTab === 'subscribed'
+                        ? 'لا يوجد أي طالب مشترك بالباقة حالياً'
+                        : subscribersTab === 'unsubscribed'
+                        ? 'لا يوجد طلاب غير مشتركين حالياً'
+                        : subscribersTab === 'downloaded'
+                        ? 'لم يقم أي طالب بتحميل ملفات بعد'
+                        : 'لا يوجد طلاب مسجلون حالياً'}
+                    </p>
+                    <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      يمكنك تفعيل الاشتراك يدوياً لأي طالب أو استخدام كاشير وإنستاباي لتفعيل الوصول.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto max-h-[420px] rounded-xl border border-slate-100 dark:border-slate-800">
+                    <table className="w-full text-right text-xs">
+                      <thead className="bg-slate-50 dark:bg-slate-900/60 sticky top-0 z-10">
+                        <tr className="border-b-2 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400">
+                          <th className="py-3 px-3 font-bold">الطالب</th>
+                          <th className="py-3 px-3 font-bold">البريد الإلكتروني</th>
+                          <th className="py-3 px-3 font-bold">تليجرام</th>
+                          <th className="py-3 px-3 font-bold text-center">حالة الاشتراك 🎓</th>
+                          <th className="py-3 px-3 font-bold text-center">تحميل الملفات 📥</th>
+                          <th className="py-3 px-3 font-bold">الصلاحية</th>
+                          <th className="py-3 px-3 font-bold text-center">إجراءات</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                        {filteredStudents.map((st) => (
+                          <tr key={st.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
+                            <td className="py-3 px-3 font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                              <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
+                                st.isSubscribed
+                                  ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                  : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                              }`}>
+                                {st.fullName ? st.fullName.charAt(0) : 'ط'}
+                              </div>
+                              <span className="truncate max-w-[140px]">{st.fullName || 'طالب طرقع'}</span>
+                            </td>
+
+                            <td className="py-3 px-3 font-mono text-[11px] text-slate-600 dark:text-slate-300">
+                              {st.email || 'غير مسجل'}
+                            </td>
+
+                            <td className="py-3 px-3 text-[11px] text-slate-600 dark:text-slate-300">
+                              {st.telegramUsername ? (
+                                <a
+                                  href={`https://t.me/${st.telegramUsername.replace(/^@/, '')}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-sky-500 hover:underline font-mono"
+                                >
+                                  @{st.telegramUsername.replace(/^@/, '')}
+                                </a>
+                              ) : (
+                                <span className="text-slate-400 italic">غير مربوط</span>
+                              )}
+                            </td>
+
+                            <td className="py-3 px-3 text-center">
+                              {st.isSubscribed ? (
+                                <span className="px-2.5 py-1 rounded-lg font-black text-[11px] bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/40 inline-flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  <span>مشترك بالباقة ✅</span>
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-lg font-bold text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 inline-flex items-center gap-1">
+                                  <span>⚪ غير مشترك</span>
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="py-3 px-3 text-center">
+                              {st.hasDownloadedFiles || (st.downloadedFilesCount && st.downloadedFilesCount > 0) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedStudentForFiles(st)}
+                                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 transition cursor-pointer inline-flex items-center gap-1"
+                                  title="عرض تفاصيل الملفات المحملة"
+                                >
+                                  <Download className="w-3 h-3" />
+                                  <span>{st.downloadedFilesCount || st.downloadedFiles?.length || 1} ملفات 📥</span>
+                                </button>
+                              ) : (
+                                <span className="text-[10px] text-slate-400 font-medium">لم يحمّل بعد</span>
+                              )}
+                            </td>
+
+                            <td className="py-3 px-3 font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                              {st.isSubscribed ? (
+                                st.subscriptionExpiresAt ? (
+                                  new Date(st.subscriptionExpiresAt).toLocaleDateString('ar-SA', {
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric',
+                                  })
+                                ) : (
+                                  '365 يوماً'
+                                )
+                              ) : (
+                                '-'
+                              )}
+                            </td>
+
+                            <td className="py-3 px-3 text-center">
+                              {st.isSubscribed ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleManualCancelSubscription(st)}
+                                  className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-[11px] font-bold transition cursor-pointer"
+                                  title="إلغاء اشتراك الطالب"
+                                >
+                                  <UserX className="w-3 h-3 inline ml-1" />
+                                  <span>إلغاء الاشتراك</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleManualActivateSubscription(st)}
+                                  className="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[11px] font-bold transition cursor-pointer inline-flex items-center gap-1"
+                                  title="تفعيل الاشتراك السنوي للطالب"
+                                >
+                                  <Sparkles className="w-3 h-3" />
+                                  <span>تفعيل الاشتراك 🚀</span>
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* نافذة منبثقة لعرض ملفات الطالب المحملة (Files Download Modal) */}
+                {selectedStudentForFiles && (
+                  <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-700 shadow-2xl p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center font-bold">
+                            <Download className="w-4 h-4" />
                           </div>
-                          <span>{subUser.fullName || 'طالب مشترك'}</span>
-                        </td>
-                        <td className="py-3 font-mono text-[11px] text-slate-600 dark:text-slate-300">
-                          {subUser.email || 'غير مسجل'}
-                        </td>
-                        <td className="py-3 text-[11px] text-slate-600 dark:text-slate-300">
-                          {subUser.telegramUsername ? (
-                            <a
-                              href={`https://t.me/${subUser.telegramUsername.replace(/^@/, '')}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-sky-500 hover:underline font-mono"
-                            >
-                              @{subUser.telegramUsername.replace(/^@/, '')}
-                            </a>
-                          ) : (
-                            <span className="text-slate-400 italic">غير مربوط</span>
-                          )}
-                        </td>
-                        <td className="py-3">
-                          <span className="px-2.5 py-1 rounded-lg font-black text-[11px] bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/40 inline-flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3" />
-                            <span>مشترك بالباقة ✅</span>
-                          </span>
-                        </td>
-                        <td className="py-3 font-mono text-[11px] text-slate-500 dark:text-slate-400">
-                          {subUser.subscriptionExpiresAt ? (
-                            new Date(subUser.subscriptionExpiresAt).toLocaleDateString('ar-SA', {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric',
-                            })
-                          ) : (
-                            '365 يوماً'
-                          )}
-                        </td>
-                        <td className="py-3 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleManualCancelSubscription(subUser)}
-                            className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-[11px] font-bold transition cursor-pointer"
-                            title="إلغاء اشتراك الطالب"
-                          >
-                            <UserX className="w-3 h-3 inline ml-1" />
-                            <span>إلغاء الاشتراك</span>
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                          <div>
+                            <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
+                              سجل تحميلات الطالب: {selectedStudentForFiles.fullName || selectedStudentForFiles.email}
+                            </h4>
+                            <p className="text-[10px] text-slate-400">
+                              إجمالي الملفات: {selectedStudentForFiles.downloadedFilesCount || selectedStudentForFiles.downloadedFiles?.length || 0} ملفاً مسجلاً في السيرفر
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedStudentForFiles(null)}
+                          className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
+                        {selectedStudentForFiles.downloadedFiles && selectedStudentForFiles.downloadedFiles.length > 0 ? (
+                          selectedStudentForFiles.downloadedFiles.map((file, idx) => (
+                            <div key={idx} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 text-xs">
+                              <div className="flex items-center gap-2 truncate">
+                                <FileText className="w-4 h-4 text-amber-500 shrink-0" />
+                                <span className="font-bold text-slate-800 dark:text-slate-200 truncate">{file.title}</span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0 text-[10px] text-slate-400 font-mono">
+                                <span>{file.fileSize || 'PDF'}</span>
+                                {file.downloadedAt && (
+                                  <span>{new Date(file.downloadedAt).toLocaleDateString('ar-SA')}</span>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-center text-xs text-slate-400 py-4">لا توجد تفاصيل للملفات الفردية مسجلة</p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (window.confirm('هل أنت متأكد من تصفير سجل تحميلات هذا الطالب؟')) {
+                              await downloadTrackingService.clearUserDownloads(selectedStudentForFiles.id, selectedStudentForFiles.email);
+                              setSelectedStudentForFiles(null);
+                              await loadRealStats();
+                              showToast('تم تصفير سجل تحميلات الطالب بنجاح! 🗑️', 'info');
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 text-[11px] font-bold border border-rose-500/30 transition cursor-pointer"
+                        >
+                          تصفير سجل التحميلات 🗑️
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setSelectedStudentForFiles(null)}
+                          className="px-4 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold transition hover:bg-slate-200"
+                        >
+                          إغلاق
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            );
+          })()}
 
           {/* استمارة إعدادات ومفاتيح كاشير */}
           <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-700/80 shadow-2xl backdrop-blur-xl space-y-6">

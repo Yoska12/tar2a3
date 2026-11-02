@@ -459,6 +459,16 @@ class DownloadTrackingService {
     try {
       const emailClean = email ? email.toLowerCase().trim() : '';
       
+      // 0. مسح السجل من خادم الباك إند (Hostinger PHP Backend)
+      try {
+        fetch('/api/track-download.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'clear', userId, userEmail: emailClean }),
+          keepalive: true,
+        }).catch(() => {});
+      } catch {}
+
       // 1. مسح من السجل المحلي
       const records = this.getAllDownloads();
       delete records[userId];

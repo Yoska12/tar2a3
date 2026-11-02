@@ -20,7 +20,8 @@ import {
   Award,
   Eye,
   X,
-  Lock
+  Lock,
+  Shield
 } from 'lucide-react';
 import { Lesson, CourseModule, LessonAttachment, CourseFileItem } from '../types';
 import { TarqaUser } from '../lib/supabase';
@@ -131,6 +132,79 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
     url: string;
     title: string;
   } | null>(null);
+
+  // هوية الطالب للعلامة المائية المانعة للتسريب
+  const studentName =
+    currentUser?.fullName?.trim() ||
+    (currentUser as any)?.full_name?.trim() ||
+    (currentUser as any)?.name?.trim() ||
+    currentUser?.email?.split('@')[0] ||
+    'طالب منصة طرقع';
+  const studentId =
+    (currentUser as any)?.phone ||
+    (currentUser as any)?.phoneNumber ||
+    (currentUser as any)?.phone_number ||
+    currentUser?.email ||
+    (currentUser as any)?.telegramUsername ||
+    (currentUser as any)?.telegram_username ||
+    (currentUser?.id ? `#${currentUser.id.slice(0, 10)}` : 'حساب مسجل');
+  const studentUid = currentUser?.id ? `#${currentUser.id.slice(0, 8)}` : 'TRQ-STUDENT';
+
+  // موضع العلامة المائية المتحركة عشوائياً كل 10 ثوانٍ لمنع تصوير الشاشة
+  const [watermarkPos, setWatermarkPos] = useState({ x: 15, y: 20 });
+
+  useEffect(() => {
+    const move = () => {
+      const rx = Math.floor(Math.random() * 60) + 10;
+      const ry = Math.floor(Math.random() * 60) + 10;
+      setWatermarkPos({ x: rx, y: ry });
+    };
+    const timer = setInterval(move, 10000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const renderVideoWatermark = () => (
+    <>
+      {/* أ. علامة مائية شبكية خافتة متكررة على كامل إطار الفيديو */}
+      <div
+        className="absolute inset-0 pointer-events-none z-10 overflow-hidden flex flex-wrap items-center justify-around opacity-[0.10] select-none"
+        aria-hidden="true"
+      >
+        {Array.from({ length: 15 }).map((_, i) => (
+          <div
+            key={i}
+            className="transform -rotate-12 text-[10px] font-mono font-black text-white whitespace-nowrap p-4"
+          >
+            منصة طرقع • {studentName} • {studentUid}
+          </div>
+        ))}
+      </div>
+
+      {/* ب. العلامة المائية الديناميكية المتحركة برقم المعرّف واسم الطالب */}
+      <div
+        style={{
+          left: `${watermarkPos.x}%`,
+          top: `${watermarkPos.y}%`,
+          transition: 'all 2.5s cubic-bezier(0.4, 0, 0.2, 1)',
+        }}
+        className="absolute pointer-events-none z-20 select-none p-2 sm:p-2.5 rounded-2xl bg-black/70 backdrop-blur-md border border-amber-500/40 text-white shadow-xl shadow-black/80"
+      >
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <Shield className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+          <span className="text-[10px] font-black text-amber-400 font-mono tracking-wider">
+            منصة طرقع • محتوى محمي 🔒
+          </span>
+        </div>
+        <div className="text-[11px] font-black text-slate-100 flex items-center gap-1.5">
+          <span>طالب:</span>
+          <span className="font-bold text-amber-300">{studentName}</span>
+        </div>
+        <div className="text-[9px] text-slate-300 font-mono font-medium truncate max-w-[200px]">
+          معرّف: {studentId} • {studentUid}
+        </div>
+      </div>
+    </>
+  );
 
   // استخراج رابط الـ Embed ليوتيوب
   // فحص واستخراج روابط التشغيل لليوتيوب وفيميو والروابط المباشرة
@@ -521,11 +595,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                     } catch (e) {}
                   }}
                 />
-                {/* علامة مائية عائمة لمعرّف المستخدم */}
-                <div className="absolute top-4 left-4 pointer-events-none z-10 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-amber-500/30 text-white text-[10px] font-mono select-none">
-                  <span className="text-amber-400 font-bold">طالب طرقع: </span>
-                  <span>#{currentUser?.id?.slice(0, 10) || 'GUEST'}</span>
-                </div>
+                {renderVideoWatermark()}
               </div>
             ) : isVimeo(currentLesson?.videoUrl, currentLesson?.videoProvider) ? (
               <div className={`relative aspect-video overflow-hidden bg-black shadow-2xl ${
@@ -541,10 +611,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                   allow="autoplay; fullscreen; picture-in-picture"
                   allowFullScreen
                 />
-                <div className="absolute top-4 left-4 pointer-events-none z-10 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-amber-500/30 text-white text-[10px] font-mono select-none">
-                  <span className="text-amber-400 font-bold">طالب طرقع: </span>
-                  <span>#{currentUser?.id?.slice(0, 10) || 'GUEST'}</span>
-                </div>
+                {renderVideoWatermark()}
               </div>
             ) : (
               <SecureVideoPlayer

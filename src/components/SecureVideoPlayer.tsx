@@ -94,8 +94,18 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
 
   // بيانات المستخدم للعلامة المائية المانعة للتسريب
   const userId = currentUser?.id || 'GUEST-' + Math.random().toString(36).substring(2, 8).toUpperCase();
-  const userName = currentUser?.fullName || 'طالب منصة طرقع';
-  const userEmail = currentUser?.email || 'طالب مصرح';
+  const userName =
+    currentUser?.fullName?.trim() ||
+    (currentUser as any)?.full_name?.trim() ||
+    (currentUser as any)?.name?.trim() ||
+    currentUser?.email?.split('@')[0] ||
+    'طالب منصة طرقع';
+  const userEmail =
+    (currentUser as any)?.phone ||
+    (currentUser as any)?.phoneNumber ||
+    (currentUser as any)?.phone_number ||
+    currentUser?.email ||
+    'طالب مصرح';
 
   // تنسيق الوقت بالدقائق والثواني
   const formatTime = (timeInSeconds: number) => {
@@ -658,7 +668,7 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
 
       {/* أ. علامة مائية شبكية متكررة خافتة تغطي كامل إطار الفيديو (Tiled Grid Watermark) */}
       <div
-        className="absolute inset-0 pointer-events-none z-10 overflow-hidden flex flex-wrap items-center justify-around opacity-[0.06] select-none"
+        className="absolute inset-0 pointer-events-none z-10 overflow-hidden flex flex-wrap items-center justify-around opacity-[0.10] select-none"
         aria-hidden="true"
       >
         {Array.from({ length: 16 }).map((_, i) => (
@@ -666,7 +676,7 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
             key={i}
             className="transform -rotate-12 text-[10px] font-mono font-black text-white whitespace-nowrap p-4"
           >
-            TARQA • ID:#{userId.slice(0, 10)} • {userEmail}
+            منصة طرقع • {userName} • #{userId.slice(0, 10)}
           </div>
         ))}
       </div>
@@ -679,20 +689,20 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
           top: `${watermarkPos.y}%`,
           transition: 'all 2.5s cubic-bezier(0.4, 0, 0.2, 1)',
         }}
-        className="absolute pointer-events-none z-20 select-none p-2.5 rounded-2xl bg-black/55 backdrop-blur-md border border-amber-500/30 text-white shadow-xl shadow-black/50"
+        className="absolute pointer-events-none z-20 select-none p-2.5 rounded-2xl bg-black/70 backdrop-blur-md border border-amber-500/40 text-white shadow-xl shadow-black/80"
       >
         <div className="flex items-center gap-1.5 mb-0.5">
-          <Shield className="w-3 h-3 text-amber-400 animate-pulse" />
+          <Shield className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
           <span className="text-[10px] font-black text-amber-400 font-mono tracking-wider">
-            محتوى محمي ومشفر 🔒
+            منصة طرقع • محتوى محمي 🔒
           </span>
         </div>
-        <div className="text-[11px] font-black text-slate-100 flex items-center gap-1">
-          <span>معرّف الطالب:</span>
-          <span className="font-mono text-amber-300">#{userId.slice(0, 12)}</span>
+        <div className="text-[11px] font-black text-slate-100 flex items-center gap-1.5">
+          <span>طالب:</span>
+          <span className="text-amber-300 font-bold">{userName}</span>
         </div>
-        <div className="text-[9px] text-slate-300 font-medium truncate max-w-[180px]">
-          {userName} • {userEmail}
+        <div className="text-[9px] text-slate-300 font-mono font-medium truncate max-w-[200px]">
+          معرّف: #{userId.slice(0, 12)} • {userEmail}
         </div>
       </div>
 

@@ -188,31 +188,34 @@ export const createStudentWatermarkPng = (
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // العلامات المائية المائلة عبر الصفحة فقط دون أي أشرطة علوية أو سفلية
+    // العلامات المائية المائلة عبر الصفحة لتغطية كامل الأبعاد (أعلى، وسط، وأسفل الصفحة)
     ctx.save();
     ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.rotate((-32 * Math.PI) / 180);
 
-    // خط مائي أول علوي
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.05)';
-    ctx.font = 'bold 30px "Cairo", "Tajawal", "Segoe UI", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(`منصة طرقع التعليمية - قدرات محوسب وورقي 2025/2026`, 0, -140);
+    const offsets = [-280, 0, 280];
+    offsets.forEach((offsetY) => {
+      // سطر 1: شعار واسم المنصة
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.14)';
+      ctx.font = 'bold 26px "Cairo", "Tajawal", "Segoe UI", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`منصة طرقع التعليمية 🎯 • قدرات 2025/2026`, 0, offsetY - 50);
 
-    // خط مائي رئيسي في المنتصف
-    ctx.fillStyle = 'rgba(185, 28, 28, 0.13)';
-    ctx.font = '900 34px "Cairo", "Tajawal", "Segoe UI", sans-serif';
-    ctx.fillText(`نسخة مرخصة حصرياً للطالب: ${studentName}`, 0, 0);
+      // سطر 2: اسم الطالب الرئيسي
+      ctx.fillStyle = 'rgba(220, 38, 38, 0.22)';
+      ctx.font = '900 32px "Cairo", "Tajawal", "Segoe UI", sans-serif';
+      ctx.fillText(`نسخة مرخصة ومحمية للطالب: ${studentName}`, 0, offsetY);
 
-    // خط مائي فرعي بالكود الأمني
-    ctx.fillStyle = 'rgba(71, 85, 105, 0.12)';
-    ctx.font = 'bold 20px "Segoe UI", Tahoma, sans-serif';
-    ctx.fillText(`${studentId} • كود التحقق الأمني: ${trackingCode}`, 0, 48);
+      // سطر 3: معرف الطالب والكود الأمني
+      ctx.fillStyle = 'rgba(30, 41, 59, 0.18)';
+      ctx.font = 'bold 20px "Segoe UI", Tahoma, sans-serif';
+      ctx.fillText(`${studentId} • كود التحقق: ${trackingCode}`, 0, offsetY + 42);
 
-    // خط مائي سفلي مكرر
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.06)';
-    ctx.font = 'bold 24px "Cairo", "Tajawal", "Segoe UI", sans-serif';
-    ctx.fillText(`يمنع النشر أو التداول تحت طائلة المساءلة القانونية`, 0, 170);
+      // سطر 4: تحذير أمني وقانوني
+      ctx.fillStyle = 'rgba(220, 38, 38, 0.12)';
+      ctx.font = 'bold 18px "Cairo", "Tajawal", "Segoe UI", sans-serif';
+      ctx.fillText(`يمنع النشر أو التداول تحت طائلة المساءلة القانونية 🔒`, 0, offsetY + 80);
+    });
     ctx.restore();
 
     // تحويل الرسم إلى بيانات ثنائية
@@ -302,14 +305,18 @@ export const getWatermarkedPdfBlob = async (
   }
 
   const studentName =
+    currentUser?.fullName?.trim() ||
     currentUser?.full_name?.trim() ||
+    currentUser?.name?.trim() ||
     currentUser?.email?.split('@')[0] ||
     'طالب منصة طرقع';
   const studentId =
+    currentUser?.phone ||
+    currentUser?.phoneNumber ||
+    currentUser?.phone_number ||
     currentUser?.email ||
     currentUser?.telegram_username ||
-    currentUser?.phone_number ||
-    (currentUser?.id ? `ID-${currentUser.id.slice(0, 8)}` : 'حساب مسجل');
+    (currentUser?.id ? `ID-#${currentUser.id.slice(0, 10)}` : 'حساب مسجل');
   const codeSeed = (currentUser?.id || currentUser?.email || 'tarqa_student')
     .split('')
     .reduce((acc: number, char: string) => (acc << 5) - acc + char.charCodeAt(0), 0);
@@ -344,9 +351,15 @@ export const getWatermarkedPdfBlob = async (
     } catch (e) {}
   }
 
-  // 2. إرجاع الملف الأصلي الحقيقي المرفوع تماماً كما هو دون أي اصطناع أو تلاعب
+  // 2. ختم الملف الأصلي الحقيقي المرفوع بالعلامة المائية الأمنية للطالب
   if (rawBytes && rawBytes.length > 0) {
-    return new Blob([rawBytes as any], { type: 'application/pdf' });
+    try {
+      const stampedBytes = await stampPdfWithWatermark(rawBytes, studentName, studentId, trackingCode);
+      return new Blob([stampedBytes as any], { type: 'application/pdf' });
+    } catch (stampErr) {
+      console.warn('Could not stamp PDF with watermark, returning original bytes:', stampErr);
+      return new Blob([rawBytes as any], { type: 'application/pdf' });
+    }
   }
 
   // 3. منع تام لتوليد أي ملف من تلقاء نفسه: إلقاء خطأ واضح إذا لم يكن الملف مرفوعاً

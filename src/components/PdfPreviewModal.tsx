@@ -56,15 +56,19 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
   const [pdfLoadError, setPdfLoadError] = useState<string | null>(null);
 
   const studentName =
+    currentUser?.fullName?.trim() ||
     currentUser?.full_name?.trim() ||
+    currentUser?.name?.trim() ||
     currentUser?.email?.split('@')[0] ||
     'طالب منصة طرقع';
 
   const studentId =
+    currentUser?.phone ||
+    currentUser?.phoneNumber ||
+    currentUser?.phone_number ||
     currentUser?.email ||
     currentUser?.telegram_username ||
-    currentUser?.phone_number ||
-    (currentUser?.id ? `ID-${currentUser.id.slice(0, 8)}` : 'حساب مسجل');
+    (currentUser?.id ? `ID-#${currentUser.id.slice(0, 8)}` : 'حساب مسجل');
 
   const hasAccess = Boolean(currentUser && (file?.isFreePreview || isSubscribed));
 
@@ -709,6 +713,19 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
                           title={file.title}
                         />
                       </object>
+                      {/* شارة مائية أمنية عائمة فوق عارض المستند بالكامل لمنع تصوير الشاشة */}
+                      <div className="absolute bottom-5 left-5 pointer-events-none z-20 px-3.5 py-2 rounded-2xl bg-black/80 backdrop-blur-md border border-amber-500/40 text-white shadow-2xl flex items-center gap-2.5 select-none">
+                        <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
+                        <div className="text-[11px] leading-tight text-right font-sans">
+                          <div className="font-black text-amber-300 flex items-center gap-1.5">
+                            <span>منصة طرقع التعليمية 🔒</span>
+                            <span className="text-[10px] text-slate-300 font-mono">#{currentUser?.id?.slice(0, 8) || 'STUDENT'}</span>
+                          </div>
+                          <div className="text-slate-200 text-[10px] mt-0.5 font-medium">
+                            مرخص للطالب: <strong className="text-white">{studentName}</strong> ({studentId})
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

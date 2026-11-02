@@ -33,27 +33,10 @@ export const questionBankStorage = {
     }
 
     try {
-      if (typeof window !== 'undefined' && !localStorage.getItem('tarqa_clean_mocks_questions_v2')) {
-        const stored = localStorage.getItem(STORAGE_KEY_QUESTIONS);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed)) {
-            const filtered = parsed.filter(
-              (q: Question) =>
-                !['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'q10'].includes(q.id)
-            );
-            localStorage.setItem(STORAGE_KEY_QUESTIONS, JSON.stringify(filtered));
-          }
-        }
-        localStorage.setItem('tarqa_clean_mocks_questions_v2', 'true');
-      }
-    } catch {}
-
-    try {
       const stored = localStorage.getItem(STORAGE_KEY_QUESTIONS);
       if (stored !== null) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
+        if (Array.isArray(parsed) && parsed.length > 0) {
           dbCache.set('db_questions_list', parsed, { tag: 'questions', ttlMs: 30 * 60 * 1000 });
           return parsed;
         }

@@ -1,0 +1,69 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schemas/server-card/v1.json",
+  "name": "tarqa3-qudurat",
+  "version": "1.0.0",
+  "description": "منصة طرقع قدرات - خادم بروتوكول سياق النموذج (MCP Server) لتوفير أدوات ومحتوى تدريب اختبار القدرات العامة (القسم الكمي) ونماذج قياس.",
+  "homepage": "https://tarqa3.net/",
+  "license": "Proprietary",
+  "endpoints": [
+    {
+      "type": "http",
+      "url": "https://tarqa3.net/api/mcp",
+      "description": "نقطة نهاية واجهة برمجة تطبيقات خادم MCP لمنصة طرقع"
+    }
+  ],
+  "capabilities": {
+    "tools": {
+      "listChanged": false
+    },
+    "resources": {
+      "subscribe": false,
+      "listChanged": false
+    },
+    "prompts": {
+      "listChanged": false
+    }
+  },
+  "tools": [
+    {
+      "name": "get_platform_info",
+      "description": "الحصول على معلومات تفصيلية عن منصة طرقع، المسارات التعليمية، وبنك الأسئلة.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "search_questions",
+      "description": "البحث في بنك أسئلة وتجميعات القدرات العامة (حساب، جبر، هندسة، إحصاء، مقارنات).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "كلمة البحث أو موضوع السؤال"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["arithmetic", "algebra", "geometry", "statistics", "comparisons", "all"],
+            "description": "القسم أو التصنيف المستهدف"
+          }
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "get_courses_overview",
+      "description": "استعراض قائمة الأبواب والفصول التدريبية والمذكرات المتاحة في دورة التأسيس.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ],
+  "contact": {
+    "name": "فريق دعم منصة طرقع",
+    "email": "tarqa3k@gmail.com",
+    "url": "https://tarqa3.net/contact.html"
+  }
+}

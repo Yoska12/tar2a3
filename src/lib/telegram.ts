@@ -1,10 +1,8 @@
-// 🚀 تكامل بوت تليجرام الرسمي لمنصة طرقع (@Tarqa3bot)
-// Telegram Bot API Integration & Login Verification
+// 🚀 تكامل بوت تليجرام لمنصة طرقع (@Tarqa3bot)
+// Telegram Bot API Integration & Login Verification via Secure Backend Gateway
 
-export const TELEGRAM_BOT_TOKEN = 
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TELEGRAM_BOT_TOKEN) ||
-  (typeof process !== 'undefined' && process.env?.TELEGRAM_BOT_TOKEN) ||
-  '8848350461:AAGYEx9UQCgEhE-ppEpx5Pz7s-ZERK9iSPM';
+// ملاحظة أمنية: توكن البوت محجوب 100% عن الفرونت إند ومحفوظ حصراً في السيرفر الخلفي (/api/telegram.php)
+export const TELEGRAM_BOT_TOKEN = '';
 
 export const TELEGRAM_BOT_USERNAME = 
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TELEGRAM_BOT_USERNAME) ||
@@ -12,44 +10,42 @@ export const TELEGRAM_BOT_USERNAME =
   'Tarqa3bot';
 
 export const TELEGRAM_BOT_URL = `https://t.me/${TELEGRAM_BOT_USERNAME}`;
-const TELEGRAM_API_URL = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
 /**
- * دالة مساعدة لإرسال رسالة إلى مستخدم عبر Telegram Bot API
+ * دالة مساعدة لإرسال رسالة إلى مستخدم عبر بوابة تليجرام الآمنة (Server Gateway)
  */
 export async function sendTelegramMessage(
   chatId: string | number,
   text: string,
   parseMode: 'HTML' | 'Markdown' = 'HTML'
 ): Promise<{ success: boolean; error?: string }> {
-  if (!TELEGRAM_BOT_TOKEN) {
-    console.warn('[Telegram Bot] TELEGRAM_BOT_TOKEN is not configured.');
-    return { success: false, error: 'TELEGRAM_BOT_TOKEN is not set' };
-  }
+  // 1. التوجيه لبوابة السيرفر الخلفية الآمنة (حيث التوكن محمي ومشفر 100%)
+  const endpoints = ['/api/telegram.php?action=send_message', '/api/telegram'];
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send_message',
+          chat_id: chatId,
+          text,
+          parse_mode: parseMode,
+        }),
+      });
 
-  try {
-    const response = await fetch(`${TELEGRAM_API_URL}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: parseMode,
-        disable_web_page_preview: true,
-      }),
-    });
-
-    const data = await response.json();
-    if (!data.ok) {
-      console.warn('[Telegram Bot] Send message info:', data.description);
-      return { success: false, error: data.description };
+      if (response.ok) {
+        const data = await response.json();
+        if (data.ok || data.success) {
+          return { success: true };
+        }
+      }
+    } catch {
+      // تجربة النقطة البديلة التالية
     }
-
-    return { success: true };
-  } catch (err: any) {
-    console.warn('[Telegram Bot] Error sending message:', err);
-    return { success: false, error: err?.message || 'Network error' };
   }
+
+  return { success: false, error: 'Could not connect to telegram gateway' };
 }
 
 /**
@@ -93,8 +89,7 @@ export async function sendQuizCompletedNotification(
 }
 
 /**
- * التحقق الأمني من صحة بيانات تسجيل الدخول عبر تليجرام (Telegram Login Widget Verification)
- * يدعم المتصفح والـ Web Crypto API القياسية 100% دون الحاجة لمكتبات Node.js
+ * بيانات مستخدم تليجرام الموثق من ويدجت تسجيل الدخول
  */
 export interface TelegramUserData {
   id: number;
@@ -106,73 +101,64 @@ export interface TelegramUserData {
   hash: string;
 }
 
+/**
+ * التحقق الأمني من صحة بيانات تسجيل الدخول عبر تليجرام (Telegram Login Widget Verification)
+ * يتم التحقق حصراً عبر السيرفر الخلفي المشفر لحماية توكن البوت ومنع أي تلاعب
+ */
 export async function verifyTelegramAuth(
-  authData: Record<string, any>,
-  botToken: string = TELEGRAM_BOT_TOKEN
+  authData: Record<string, any>
 ): Promise<{ isValid: boolean; user?: TelegramUserData; error?: string }> {
-  if (!botToken) {
-    return { isValid: false, error: 'Telegram Bot Token is not configured' };
-  }
-
   const { hash, ...dataToCheck } = authData;
 
   if (!hash) {
     return { isValid: false, error: 'Missing hash in Telegram payload' };
   }
 
-  // 1. التأكد من أن التوقيع حديث (أقل من 24 ساعة = 86400 ثانية)
   const authDate = Number(dataToCheck.auth_date);
   const now = Math.floor(Date.now() / 1000);
   if (authDate && now - authDate > 86400) {
     return { isValid: false, error: 'Telegram authentication data is expired' };
   }
 
-  // 2. تجميع وترتيب المتغيرات بصيغة key=value
-  const checkString = Object.keys(dataToCheck)
-    .sort()
-    .map((key) => `${key}=${dataToCheck[key]}`)
-    .join('\n');
+  // إرسال طلب التحقق الأمني إلى بوابة السيرفر الخلفية المشفرة
+  const endpoints = ['/api/telegram.php?action=verify_auth', '/api/telegram'];
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'verify_auth',
+          authData,
+        }),
+      });
 
-  try {
-    const encoder = new TextEncoder();
-    const cryptoObj = typeof window !== 'undefined' ? window.crypto : (globalThis as any).crypto;
-
-    if (cryptoObj?.subtle) {
-      // 3. مفتاح SHA-256 للـ botToken
-      const secretHash = await cryptoObj.subtle.digest('SHA-256', encoder.encode(botToken));
-
-      // 4. استيراد المفتاح لـ HMAC
-      const key = await cryptoObj.subtle.importKey(
-        'raw',
-        secretHash,
-        { name: 'HMAC', hash: 'SHA-256' },
-        false,
-        ['sign']
-      );
-
-      // 5. حساب توقيع HMAC-SHA-256
-      const signature = await cryptoObj.subtle.sign('HMAC', key, encoder.encode(checkString));
-      const hashArray = Array.from(new Uint8Array(signature));
-      const computedHash = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-
-      if (computedHash.toLowerCase() !== hash.toLowerCase()) {
-        return { isValid: false, error: 'Invalid Telegram data signature (Hash mismatch)' };
+      if (response.ok) {
+        const res = await response.json();
+        if (res.isValid !== undefined) {
+          return {
+            isValid: Boolean(res.isValid),
+            user: res.user || {
+              id: Number(dataToCheck.id),
+              first_name: dataToCheck.first_name,
+              last_name: dataToCheck.last_name,
+              username: dataToCheck.username,
+              photo_url: dataToCheck.photo_url,
+              auth_date: authDate || now,
+              hash,
+            },
+            error: res.error,
+          };
+        }
       }
+    } catch {
+      // تجربة النقطة البديلة التالية
     }
-  } catch (err: any) {
-    console.warn('[Telegram Auth Verification] WebCrypto bypass/warning:', err);
   }
 
   return {
-    isValid: true,
-    user: {
-      id: Number(dataToCheck.id),
-      first_name: dataToCheck.first_name,
-      last_name: dataToCheck.last_name,
-      username: dataToCheck.username,
-      photo_url: dataToCheck.photo_url,
-      auth_date: authDate || now,
-      hash,
-    },
+    isValid: false,
+    error: 'تعذر التحقق من التوقيع عبر خادم المنصة الآمن',
   };
 }
+

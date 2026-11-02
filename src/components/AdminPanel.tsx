@@ -35,11 +35,19 @@ import {
   Cpu,
   HardDrive,
   Activity,
-  Gauge
+  Gauge,
+  UserCheck,
+  UserX,
+  Crown,
+  Wrench
 } from 'lucide-react';
 import { MathRenderer } from './MathRenderer';
-import { Question, Category, OptionId, Difficulty, QuizMode } from '../types';
+import { FeaturesManagementTab } from './FeaturesManagementTab';
+import { SiteMaintenanceTab } from './SiteMaintenanceTab';
+import { maintenanceService } from '../lib/maintenanceService';
+import { Question, Category, OptionId, Difficulty, QuizMode, UserWithRole } from '../types';
 import { rolesService } from '../lib/rolesService';
+import { isOwnerEmail } from '../lib/securityUtils';
 import { localScoreStorage } from '../lib/supabase';
 import {
   getAntiHackSettings,
@@ -69,7 +77,7 @@ import {
   CacheMetrics
 } from '../lib/dbCache';
 
-export type AdminTab = 'questions' | 'quizBuilder' | 'security' | 'kashier' | 'dbCache';
+export type AdminTab = 'questions' | 'quizBuilder' | 'security' | 'kashier' | 'dbCache' | 'features' | 'maintenance';
 
 interface AdminPanelProps {
   questions: Question[];
@@ -117,6 +125,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [cacheMetrics, setCacheMetrics] = useState<CacheMetrics>(() => dbCache.getMetrics());
   const [benchmarkLatency, setBenchmarkLatency] = useState<number | null>(null);
   const [isBenchmarking, setIsBenchmarking] = useState(false);
+  const [isSiteUnderMaintenance, setIsSiteUnderMaintenance] = useState<boolean>(() => maintenanceService.getConfig().isEnabled);
+
+  useEffect(() => {
+    const handleMaint = () => {
+      setIsSiteUnderMaintenance(maintenanceService.getConfig().isEnabled);
+    };
+    window.addEventListener('tarqa_maintenance_changed', handleMaint);
+    return () => window.removeEventListener('tarqa_maintenance_changed', handleMaint);
+  }, []);
 
   useEffect(() => {
     const handleCacheChange = () => {
@@ -306,58 +323,139 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [platformStats, setPlatformStats] = useState({
     totalUsers: 0,
     studentsCount: 0,
+    subscribedCount: 0,
     totalAttempts: 0,
     todayAttempts: 0,
     averageScore: 0,
     hasScores: false,
   });
 
+  const [allPlatformUsers, setAllPlatformUsers] = useState<UserWithRole[]>([]);
+  const [subscribedUsers, setSubscribedUsers] = useState<UserWithRole[]>([]);
+  const [selectedStudentToActivate, setSelectedStudentToActivate] = useState<string>('');
+  const [customStudentEmail, setCustomStudentEmail] = useState<string>('');
+  const [customStudentName, setCustomStudentName] = useState<string>('');
+  const [isActivatingManualSub, setIsActivatingManualSub] = useState<boolean>(false);
+
+  const loadRealStats = async () => {
+    try {
+      const users = await rolesService.getUsers(true);
+      setAllPlatformUsers(users);
+      const activeSubs = users.filter((u) => u.isSubscribed && u.role !== 'super_admin' && !isOwnerEmail(u.email));
+      setSubscribedUsers(activeSubs);
+
+      const storedAttempts = localScoreStorage.getAttempts();
+      const realAttempts = Array.isArray(storedAttempts) 
+        ? storedAttempts.filter((a: any) => !['att-1', 'att-2', 'att-3', 'att-4'].includes(a.id))
+        : [];
+
+      const todayStr = new Date().toISOString().split('T')[0];
+      const todayAttempts = realAttempts.filter((a: any) => {
+        const d = a.completed_at ? new Date(a.completed_at).toISOString().split('T')[0] : '';
+        return d === todayStr;
+      });
+
+      const scores = realAttempts.map((a: any) => Number(a.score) || 0);
+      const avg = scores.length > 0
+        ? Math.round(scores.reduce((a: number, b: number) => a + b, 0) / scores.length)
+        : 0;
+
+      setPlatformStats({
+        totalUsers: users.length,
+        studentsCount: users.filter((u) => u.role === 'student').length,
+        subscribedCount: activeSubs.length,
+        totalAttempts: realAttempts.length,
+        todayAttempts: todayAttempts.length,
+        averageScore: avg,
+        hasScores: scores.length > 0,
+      });
+    } catch (err) {
+      console.warn('Failed to load real stats in AdminPanel:', err);
+    }
+  };
+
   useEffect(() => {
-    const loadRealStats = async () => {
-      try {
-        const users = await rolesService.getUsers();
-        const storedAttempts = localScoreStorage.getAttempts();
-        const realAttempts = Array.isArray(storedAttempts) 
-          ? storedAttempts.filter((a: any) => !['att-1', 'att-2', 'att-3', 'att-4'].includes(a.id))
-          : [];
-
-        const todayStr = new Date().toISOString().split('T')[0];
-        const todayAttempts = realAttempts.filter((a: any) => {
-          const d = a.completed_at ? new Date(a.completed_at).toISOString().split('T')[0] : '';
-          return d === todayStr;
-        });
-
-        const scores = realAttempts.map((a: any) => Number(a.score) || 0);
-        const avg = scores.length > 0
-          ? Math.round(scores.reduce((a: number, b: number) => a + b, 0) / scores.length)
-          : 0;
-
-        setPlatformStats({
-          totalUsers: users.length,
-          studentsCount: users.filter((u) => u.role === 'student').length,
-          totalAttempts: realAttempts.length,
-          todayAttempts: todayAttempts.length,
-          averageScore: avg,
-          hasScores: scores.length > 0,
-        });
-      } catch (err) {
-        console.warn('Failed to load real stats in AdminPanel:', err);
-      }
-    };
-
     loadRealStats();
 
     const handleDataChanged = () => {
       loadRealStats();
+      setKashierTransactions(getKashierTransactions());
     };
 
     window.addEventListener('tarqa_roles_changed', handleDataChanged);
     window.addEventListener('tarqa_user_changed', handleDataChanged);
+    window.addEventListener('tarqa_subscription_changed', handleDataChanged);
+    window.addEventListener('tarqa:subscription_updated', handleDataChanged);
+    window.addEventListener('tarqa_kashier_tx_logged', handleDataChanged);
+    window.addEventListener('storage', handleDataChanged);
+
     return () => {
       window.removeEventListener('tarqa_roles_changed', handleDataChanged);
       window.removeEventListener('tarqa_user_changed', handleDataChanged);
+      window.removeEventListener('tarqa_subscription_changed', handleDataChanged);
+      window.removeEventListener('tarqa:subscription_updated', handleDataChanged);
+      window.removeEventListener('tarqa_kashier_tx_logged', handleDataChanged);
+      window.removeEventListener('storage', handleDataChanged);
     };
   }, []);
+
+  const handleManualActivateSubscription = async (targetUser?: UserWithRole) => {
+    let userToActivate = targetUser;
+    if (!userToActivate && selectedStudentToActivate) {
+      userToActivate = allPlatformUsers.find(u => u.id === selectedStudentToActivate || u.email === selectedStudentToActivate);
+    }
+    if (!userToActivate && customStudentEmail.trim()) {
+      userToActivate = {
+        id: 'usr_' + Date.now(),
+        email: customStudentEmail.trim(),
+        fullName: customStudentName.trim() || 'طالب مشترك (إنستاباي)',
+        role: 'student',
+        targetScore: 100,
+        createdAt: new Date().toISOString(),
+      };
+    }
+
+    if (!userToActivate || (!userToActivate.id && !userToActivate.email)) {
+      showToast('يرجى اختيار طالب من القائمة أو إدخال بريده لتفعيل الاشتراك', 'info');
+      return;
+    }
+
+    setIsActivatingManualSub(true);
+    try {
+      await rolesService.grantSubscription(userToActivate, 365);
+      showToast(`تم تفعيل الاشتراك السنوي بنجاح للطالب "${userToActivate.fullName || userToActivate.email}" لمدة 365 يوماً! 🎓✅`, 'success');
+      setSelectedStudentToActivate('');
+      setCustomStudentEmail('');
+      setCustomStudentName('');
+      await loadRealStats();
+    } catch (e: any) {
+      showToast('حدث خطأ أثناء التفعيل: ' + (e?.message || 'تعذر التفعيل'), 'error');
+    } finally {
+      setIsActivatingManualSub(false);
+    }
+  };
+
+  const handleManualCancelSubscription = async (u: UserWithRole) => {
+    if (window.confirm(`هل أنت متأكد من إلغاء اشتراك الطالب "${u.fullName || u.email}"؟`)) {
+      // تحديث متفائل فوري للواجهة
+      setSubscribedUsers(prev => prev.filter(item => item.id !== u.id && item.email !== u.email));
+      setAllPlatformUsers(prev => prev.map(item => {
+        if ((u.id && item.id === u.id) || (u.email && item.email && item.email.toLowerCase() === u.email.toLowerCase())) {
+          return { ...item, isSubscribed: false, subscriptionExpiresAt: undefined };
+        }
+        return item;
+      }));
+
+      try {
+        await rolesService.cancelSubscription(u.id, u.email, u.telegramUsername, u.telegramId);
+        showToast(`تم إلغاء اشتراك ${u.fullName || u.email} بنجاح`, 'info');
+        await loadRealStats();
+      } catch {
+        showToast('حدث خطأ أثناء إلغاء الاشتراك', 'error');
+        await loadRealStats();
+      }
+    }
+  };
 
   // تصفية الأسئلة
   const filteredQuestions = questions.filter((q) => {
@@ -514,11 +612,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${activeTab === 'kashier' ? 'bg-white/20 text-white' : 'bg-emerald-500/15 text-emerald-500'}`}>
               <CreditCard className="w-3.5 h-3.5" />
             </div>
-            <span>بوابة دفع كاشير (Kashier)</span>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
+            <span>الاشتراكات والمدفوعات (Kashier & InstaPay)</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
               activeTab === 'kashier' ? 'bg-black/20 text-emerald-100' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
             }`}>
-              {kashierSettings.enabled ? 'مفعلة' : 'معطلة'}
+              {subscribedUsers.length} مشترك 🎓
             </span>
           </button>
 
@@ -588,6 +686,46 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </span>
             )}
           </button>
+
+          {/* تبويب 6: إدارة المميزات والروابط */}
+          <button
+            type="button"
+            data-admin-tab="features"
+            onClick={() => setActiveTab('features')}
+            className={`px-4 py-2.5 rounded-2xl text-xs transition-all duration-200 flex items-center gap-2 cursor-pointer ${
+              activeTab === 'features'
+                ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-slate-950 font-black shadow-lg shadow-amber-500/30 border border-amber-300/80 ring-2 ring-amber-400/40 scale-[1.02]'
+                : 'bg-slate-100/90 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:bg-amber-50 dark:hover:bg-amber-950/30 hover:text-amber-600 dark:hover:text-amber-400 border border-slate-200/90 dark:border-slate-700/90 font-bold hover:border-amber-500/40'
+            }`}
+          >
+            <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${activeTab === 'features' ? 'bg-black/15 text-slate-950' : 'bg-amber-500/15 text-amber-500'}`}>
+              <Sparkles className="w-3.5 h-3.5" />
+            </div>
+            <span>إدارة المميزات والروابط</span>
+          </button>
+
+          {/* تبويب 7: حالة الموقع ووضع الصيانة */}
+          <button
+            type="button"
+            data-admin-tab="maintenance"
+            onClick={() => setActiveTab('maintenance')}
+            className={`px-4 py-2.5 rounded-2xl text-xs transition-all duration-200 flex items-center gap-2 cursor-pointer ${
+              activeTab === 'maintenance'
+                ? 'bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 text-white font-black shadow-lg shadow-amber-500/30 border border-amber-400/80 ring-2 ring-amber-400/40 scale-[1.02]'
+                : 'bg-slate-100/90 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 hover:bg-amber-50 dark:hover:bg-amber-950/30 hover:text-amber-600 dark:hover:text-amber-400 border border-slate-200/90 dark:border-slate-700/90 font-bold hover:border-amber-500/40'
+            }`}
+          >
+            <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${activeTab === 'maintenance' ? 'bg-white/20 text-white' : 'bg-amber-500/15 text-amber-500'}`}>
+              <Wrench className="w-3.5 h-3.5" />
+            </div>
+            <span>حالة الموقع والصيانة</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+              isSiteUnderMaintenance ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30 animate-pulse' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+            }`}>
+              {isSiteUnderMaintenance ? 'مفعّلة ⚠️' : 'طبيعي 🟢'}
+            </span>
+          </button>
+
 
           {/* تبويب 5: تسريع وكاشينج قواعد البيانات (Database Caching Engine) */}
           <button
@@ -1737,6 +1875,283 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           </div>
 
+          {/* ======================================================================= */}
+          {/* إحصائيات الاشتراكات والمشتركين المفعلين حالياً (Active Subscribers Banner) */}
+          {/* ======================================================================= */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="p-5 rounded-3xl bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent border-2 border-emerald-500/30 shadow-lg backdrop-blur-xl flex items-center justify-between">
+              <div>
+                <span className="text-xs text-slate-500 dark:text-slate-400 font-bold block mb-1">
+                  الطلاب المشتركون المفعلون 🎓
+                </span>
+                <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                  {subscribedUsers.length}
+                </div>
+                <span className="text-[11px] text-emerald-500 font-bold mt-1 inline-flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                  <span>اشتراك سنوي شامل نشط</span>
+                </span>
+              </div>
+              <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center font-bold text-xl shadow-inner">
+                <Sparkles className="w-7 h-7" />
+              </div>
+            </div>
+
+            <div className="p-5 rounded-3xl bg-gradient-to-br from-amber-500/10 via-yellow-500/5 to-transparent border-2 border-amber-500/30 shadow-lg backdrop-blur-xl flex items-center justify-between">
+              <div>
+                <span className="text-xs text-slate-500 dark:text-slate-400 font-bold block mb-1">
+                  عمليات الدفع الناجحة (كاشير) 💳
+                </span>
+                <div className="text-3xl font-black text-amber-600 dark:text-amber-400 font-mono">
+                  {kashierTransactions.filter(t => t.status === 'SUCCESS').length}
+                </div>
+                <span className="text-[11px] text-amber-500 font-bold mt-1 inline-block">
+                  من أصل {kashierTransactions.length} عملية مسجلة
+                </span>
+              </div>
+              <div className="w-14 h-14 rounded-2xl bg-amber-500/15 text-amber-500 flex items-center justify-center font-bold text-xl shadow-inner">
+                <CreditCard className="w-7 h-7" />
+              </div>
+            </div>
+
+            <div className="p-5 rounded-3xl bg-gradient-to-br from-purple-500/10 via-indigo-500/5 to-transparent border-2 border-purple-500/30 shadow-lg backdrop-blur-xl flex items-center justify-between">
+              <div>
+                <span className="text-xs text-slate-500 dark:text-slate-400 font-bold block mb-1">
+                  سعر الباقة السنوية المعتمد 💰
+                </span>
+                <div className="text-3xl font-black text-purple-600 dark:text-purple-400 font-mono">
+                  {kashierSettings.amount} {kashierSettings.currency}
+                </div>
+                <span className="text-[11px] text-purple-500 font-bold mt-1 inline-block">
+                  {kashierSettings.currency === 'EGP' ? '1100 جنيه (مصر) / 75 ريال (السعودية)' : '75 ريال (السعودية) / 1100 جنيه (مصر)'}
+                </span>
+              </div>
+              <div className="w-14 h-14 rounded-2xl bg-purple-500/15 text-purple-500 flex items-center justify-center font-bold text-xl shadow-inner">
+                <Wallet className="w-7 h-7" />
+              </div>
+            </div>
+          </div>
+
+          {/* ======================================================================= */}
+          {/* قسم تفعيل اشتراكات إنستاباي والتفعيل اليدوي السريع (InstaPay & Manual Activation) */}
+          {/* ======================================================================= */}
+          <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#0c1324] border-2 border-purple-500/40 shadow-2xl backdrop-blur-xl space-y-5 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl pointer-events-none -mr-16 -mt-16" />
+            
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-purple-500/15 text-purple-500 flex items-center justify-center font-bold shrink-0">
+                  <UserCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                    <span>تفعيل اشتراكات إنستاباي والتفعيل اليدوي السريع</span>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/15 text-purple-600 dark:text-purple-300 border border-purple-500/30">
+                      InstaPay • Yoska
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    حساب الاستقبال: <strong className="text-purple-600 dark:text-purple-400 font-mono">yoska1@instapay</strong> (المستلم: <strong>YASSIEN</strong>) • واتساب الدعم: <strong className="font-mono">01104687320</strong>
+                  </p>
+                </div>
+              </div>
+
+              <div className="text-xs text-slate-500 dark:text-slate-400 bg-purple-500/5 dark:bg-purple-950/20 px-3.5 py-2 rounded-2xl border border-purple-500/20">
+                💡 عند تأكيد الطالب للتحويل عبر واتساب، اختر حسابه أدناه واضغط <strong>تفعيل الاشتراك فوراً</strong>.
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  1. اختر طالباً مسجلاً من المنصة:
+                </label>
+                <select
+                  value={selectedStudentToActivate}
+                  onChange={(e) => {
+                    setSelectedStudentToActivate(e.target.value);
+                    if (e.target.value) {
+                      setCustomStudentEmail('');
+                      setCustomStudentName('');
+                    }
+                  }}
+                  className="w-full px-3.5 py-2.5 rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#121c32] text-xs font-bold text-slate-900 dark:text-white"
+                >
+                  <option value="">-- اضغط للاختيار من الطلاب المسجلين ({allPlatformUsers.length}) --</option>
+                  {allPlatformUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.fullName || 'طالب'} ({u.email || u.telegramUsername || u.id}) {u.isSubscribed ? '✅ مشترك حالياً' : '⚪ غير مشترك'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  أو اكتب بريد/اسم الطالب مباشرة:
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="email"
+                    value={customStudentEmail}
+                    onChange={(e) => {
+                      setCustomStudentEmail(e.target.value);
+                      if (e.target.value) setSelectedStudentToActivate('');
+                    }}
+                    placeholder="student@gmail.com"
+                    className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#121c32] text-xs font-bold text-slate-900 dark:text-white"
+                    dir="ltr"
+                  />
+                  <input
+                    type="text"
+                    value={customStudentName}
+                    onChange={(e) => setCustomStudentName(e.target.value)}
+                    placeholder="اسم الطالب"
+                    className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#121c32] text-xs font-bold text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <button
+                  type="button"
+                  disabled={isActivatingManualSub || (!selectedStudentToActivate && !customStudentEmail.trim())}
+                  onClick={() => handleManualActivateSubscription()}
+                  className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-500 text-white font-black text-xs shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+                >
+                  {isActivatingManualSub ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>جاري التفعيل...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      <span>تفعيل الاشتراك للطالب فوراً (365 يوماً) 🚀</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* ======================================================================= */}
+          {/* جدول المشتركين المفعلين حالياً (Active Subscribed Students Table) */}
+          {/* ======================================================================= */}
+          <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-700/80 shadow-2xl backdrop-blur-xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b-2 border-slate-100 dark:border-slate-800 flex-wrap gap-2">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center font-bold">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                    <span>قائمة المشتركين المفعلين حالياً في باقة الدورات</span>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                      {subscribedUsers.length} مشترك
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    هؤلاء الطلاب لديهم وصول كامل وتلقائي لكافة المحاضرات والمذكرات والتسجيلات.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => loadRealStats()}
+                className="px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>تحديث المشتركين</span>
+              </button>
+            </div>
+
+            {subscribedUsers.length === 0 ? (
+              <div className="p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-[#121c32]/50 rounded-2xl">
+                <Users className="w-12 h-12 text-slate-400 mx-auto mb-2 opacity-60" />
+                <p className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200">
+                  لا يوجد أي طالب مشترك بالباقة حالياً
+                </p>
+                <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  عند قيام الطلاب بالدفع عبر كاشير أو تفعيلك للاشتراك عبر إنستاباي، سيظهرون هنا فوراً.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto max-h-96">
+                <table className="w-full text-right text-xs">
+                  <thead>
+                    <tr className="border-b-2 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400">
+                      <th className="pb-3 font-bold">الطالب</th>
+                      <th className="pb-3 font-bold">البريد الإلكتروني</th>
+                      <th className="pb-3 font-bold">تليجرام</th>
+                      <th className="pb-3 font-bold">حالة الاشتراك</th>
+                      <th className="pb-3 font-bold">تاريخ الانتهاء</th>
+                      <th className="pb-3 font-bold text-center">إجراءات</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {subscribedUsers.map((subUser) => (
+                      <tr key={subUser.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
+                        <td className="py-3 font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-xs shrink-0">
+                            {subUser.fullName ? subUser.fullName.charAt(0) : 'ط'}
+                          </div>
+                          <span>{subUser.fullName || 'طالب مشترك'}</span>
+                        </td>
+                        <td className="py-3 font-mono text-[11px] text-slate-600 dark:text-slate-300">
+                          {subUser.email || 'غير مسجل'}
+                        </td>
+                        <td className="py-3 text-[11px] text-slate-600 dark:text-slate-300">
+                          {subUser.telegramUsername ? (
+                            <a
+                              href={`https://t.me/${subUser.telegramUsername.replace(/^@/, '')}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sky-500 hover:underline font-mono"
+                            >
+                              @{subUser.telegramUsername.replace(/^@/, '')}
+                            </a>
+                          ) : (
+                            <span className="text-slate-400 italic">غير مربوط</span>
+                          )}
+                        </td>
+                        <td className="py-3">
+                          <span className="px-2.5 py-1 rounded-lg font-black text-[11px] bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/40 inline-flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" />
+                            <span>مشترك بالباقة ✅</span>
+                          </span>
+                        </td>
+                        <td className="py-3 font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                          {subUser.subscriptionExpiresAt ? (
+                            new Date(subUser.subscriptionExpiresAt).toLocaleDateString('ar-SA', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                            })
+                          ) : (
+                            '365 يوماً'
+                          )}
+                        </td>
+                        <td className="py-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleManualCancelSubscription(subUser)}
+                            className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 text-[11px] font-bold transition cursor-pointer"
+                            title="إلغاء اشتراك الطالب"
+                          >
+                            <UserX className="w-3 h-3 inline ml-1" />
+                            <span>إلغاء الاشتراك</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
           {/* استمارة إعدادات ومفاتيح كاشير */}
           <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#0c1324] border-2 border-slate-200 dark:border-slate-700/80 shadow-2xl backdrop-blur-xl space-y-6">
             <div className="flex items-center justify-between pb-3 border-b-2 border-slate-100 dark:border-slate-700">
@@ -1863,13 +2278,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       setKashierSettings({
                         ...kashierSettings,
                         currency: newCur,
-                        amount: newCur === 'SAR' ? 75 : 1050,
+                        amount: newCur === 'SAR' ? 75 : 1100,
                       });
                     }}
                     className="w-full px-3.5 py-2.5 rounded-xl border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-[#080d1a] text-xs font-bold text-slate-900 dark:text-white"
                   >
                     <option value="SAR">🇸🇦 SAR (75 ريال سعودي)</option>
-                    <option value="EGP">🇪🇬 EGP (1050 جنيه مصري)</option>
+                    <option value="EGP">🇪🇬 EGP (1100 جنيه مصري)</option>
                   </select>
                   <div className="flex items-center gap-2 mt-2">
                     <button
@@ -1881,10 +2296,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setKashierSettings({ ...kashierSettings, currency: 'EGP', amount: 1050 })}
+                      onClick={() => setKashierSettings({ ...kashierSettings, currency: 'EGP', amount: 1100 })}
                       className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-[#121c32] text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 font-bold hover:text-amber-500 cursor-pointer shadow-sm"
                     >
-                      تعيين 1050 جنيه 🇪🇬
+                      تعيين 1100 جنيه 🇪🇬
                     </button>
                   </div>
                 </div>
@@ -1898,11 +2313,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     min="1"
                     step="0.5"
                     value={kashierSettings.amount}
-                    onChange={(e) => setKashierSettings({ ...kashierSettings, amount: parseFloat(e.target.value) || (kashierSettings.currency === 'SAR' ? 75 : 1050) })}
+                    onChange={(e) => setKashierSettings({ ...kashierSettings, amount: parseFloat(e.target.value) || (kashierSettings.currency === 'SAR' ? 75 : 1100) })}
                     className="w-full px-3.5 py-2.5 rounded-xl border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-[#080d1a] text-xs font-bold text-slate-900 dark:text-white font-mono"
                   />
                   <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                    المبلغ الافتراضي: <strong>75 ريال سعودي</strong> للطلاب بالسعودية أو <strong>1050 جنيه مصري</strong> للطلاب بمصر.
+                    المبلغ الافتراضي: <strong>75 ريال سعودي</strong> للطلاب بالسعودية أو <strong>1100 جنيه مصري</strong> للطلاب بمصر.
                   </p>
                 </div>
               </div>
@@ -1960,11 +2375,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setKashierTransactions(getKashierTransactions())}
+                  onClick={async () => {
+                    await rolesService.deepSyncAllStudentsData();
+                    setKashierTransactions(getKashierTransactions());
+                    showToast('تمت المزامنة والتحديث الشامل لبيانات العمليات والاشتراكات بنجاح! 🚀', 'success');
+                  }}
                   className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-[#121c32] hover:bg-slate-200 dark:hover:bg-[#1a2847] border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  <span>تحديث العمليات</span>
+                  <span>تحديث ومزامنة شاملة للعمليات والاشتراكات 🔄</span>
                 </button>
 
                 {kashierTransactions.length > 0 && (
@@ -2259,6 +2678,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
         </section>
       )}
+
+      {/* ======================================================================= */}
+      {/* 6. تبويب إدارة المميزات وروابط مجتمع تليجرام */}
+      {/* ======================================================================= */}
+      {activeTab === 'features' && (
+        <section className="space-y-6 animate-in fade-in duration-300">
+          <FeaturesManagementTab />
+        </section>
+      )}
+
+      {/* ======================================================================= */}
+      {/* 7. تبويب حالة الموقع ووضع الصيانة */}
+      {/* ======================================================================= */}
+      {activeTab === 'maintenance' && (
+        <section className="space-y-6 animate-in fade-in duration-300">
+          <SiteMaintenanceTab />
+        </section>
+      )}
+
 
       {/* ======================================================================= */}
       {/* 5. نافذة إضافة وتعديل سؤال مع معاينة LaTeX الفورية (Live Math Preview) */}

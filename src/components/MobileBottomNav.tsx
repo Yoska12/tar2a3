@@ -19,10 +19,10 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 
   return (
     <nav 
-      aria-label="التنقل السفلي للموبايل"
-      className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/85 dark:bg-[#0c0814]/85 backdrop-blur-2xl border-t border-sky-200/60 dark:border-amber-500/20 px-2 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-4px_25px_rgba(14,165,233,0.08)] dark:shadow-[0_-4px_25px_rgba(0,0,0,0.8)] transition-all"
+      aria-label="التنقل السفلي للموبايل والتابلت"
+      className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 dark:bg-[#0c0814]/95 backdrop-blur-2xl border-t border-sky-200/60 dark:border-amber-500/20 px-2 sm:px-4 pt-1.5 pb-[max(0.6rem,env(safe-area-inset-bottom))] shadow-[0_-4px_25px_rgba(14,165,233,0.08)] dark:shadow-[0_-4px_25px_rgba(0,0,0,0.8)] transition-all"
     >
-      <div className="max-w-md mx-auto grid grid-cols-5 items-center gap-1 text-center font-cairo">
+      <div className="max-w-md sm:max-w-xl mx-auto grid grid-cols-5 items-center gap-1 sm:gap-2 text-center font-cairo">
         
         {/* 1. الصفحة الرئيسية */}
         <button

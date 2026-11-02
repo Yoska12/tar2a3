@@ -1,12 +1,14 @@
 /**
  * نظام النقاط ولوحة الأبطال (Tarqa Points & Leaderboard Service)
- * يدير نقاط الخبرة (XP)، مستويات ورتب الطلاب، وتصنيف المتصدرين بدقة ومزامنة مع قاعدة البيانات الحقيقية.
+ * يدير نقاط الخبرة (XP)، مستويات ورتب الطلاب، وتصنيف المتصدرين.
+ * النقاط مربوطة 100% بحساب الطالب في قاعدة البيانات (Supabase & Database Backend)
+ * ومفصولة تماماً عن كوكيز الجهاز والتخزين المحلي العام.
  */
 
-import { TarqaUser, supabase, isSupabaseConfigured } from './supabase';
+import { TarqaUser, supabase, isSupabaseConfigured, isValidUuid, authService } from './supabase';
 import { rolesService } from './rolesService';
 import { UserWithRole } from '../types';
-import { CLOUD_LECTURES_STORE_ID } from './subscriptionService';
+import { invalidateUsersCache } from './dbCache';
 
 export interface PointTransaction {
   id: string;
@@ -43,10 +45,6 @@ export interface LeaderboardEntry {
   isCurrentUser?: boolean;
 }
 
-const STORAGE_POINTS_KEY = 'tarqa_student_points_v1';
-const STORAGE_HISTORY_KEY = 'tarqa_student_points_history_v1';
-const STORAGE_USERS_POINTS_MAP = 'tarqa_users_points_map_v1';
-
 export const RANK_LEVELS: StudentRankLevel[] = [
   { level: 1, title: 'المستوى الأول', badge: '🥉', minPoints: 0, maxPoints: 250, color: 'slate' },
   { level: 2, title: 'فارس التأسيس', badge: '🥈', minPoints: 250, maxPoints: 600, color: 'blue' },
@@ -56,8 +54,9 @@ export const RANK_LEVELS: StudentRankLevel[] = [
 ];
 
 export function getRankLevel(points: number): StudentRankLevel {
+  const safePoints = Math.max(0, Number(points) || 0);
   for (let i = RANK_LEVELS.length - 1; i >= 0; i--) {
-    if (points >= RANK_LEVELS[i].minPoints) {
+    if (safePoints >= RANK_LEVELS[i].minPoints) {
       return RANK_LEVELS[i];
     }
   }
@@ -65,294 +64,492 @@ export function getRankLevel(points: number): StudentRankLevel {
 }
 
 class PointsService {
+  // مفاتيح التخزين المؤقت المحلي المرتبطة فقط بحساب المستخدم (User-Scoped Cache)
+  private readonly USER_POINTS_CACHE_PREFIX = 'tarqa_user_points_';
+  private readonly USER_HISTORY_CACHE_PREFIX = 'tarqa_user_history_';
+
   constructor() {
-    // تصفير النقاط التلقائي الشامل لجميع المستخدمين لتبدأ الحسابات من 0 XP
+    // تنظيف ملفات الكوكيز والتخزين المحلي القديمة الخاصة بالجهاز (Device Cleanup)
     if (typeof window !== 'undefined') {
       try {
-        const resetKey = 'tarqa_points_clean_zero_v4';
-        if (!localStorage.getItem(resetKey)) {
-          localStorage.setItem(STORAGE_POINTS_KEY, '0');
-          localStorage.setItem(STORAGE_HISTORY_KEY, JSON.stringify([]));
-          localStorage.setItem(STORAGE_USERS_POINTS_MAP, JSON.stringify({}));
-          localStorage.setItem(resetKey, 'true');
+        localStorage.removeItem('tarqa_student_points_v1');
+        localStorage.removeItem('tarqa_student_points_history_v1');
+        // مسح أي كوكيز قديمة كانت تسمى tarqa_student_points
+        if (typeof document !== 'undefined' && document.cookie) {
+          document.cookie = 'tarqa_student_points=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0';
         }
       } catch {}
     }
   }
 
   /**
-   * مزامنة خريطة النقاط مع السحابة المركزية
+   * استخراج المعرف الفريد لحساب المستخدم (ID أو البريد الإلكتروني)
    */
-  public async syncPointsFromCloud(): Promise<Record<string, number>> {
-    if (!isSupabaseConfigured || !supabase) {
-      return this.getUsersPointsMap();
+  private getUserKey(user?: TarqaUser | { id?: string; email?: string } | null): string | null {
+    if (!user) {
+      const current = authService.getCurrentUser();
+      if (!current) return null;
+      user = current;
+    }
+    if (user.id && user.id.trim()) return user.id.trim();
+    if (user.email && user.email.trim()) return user.email.toLowerCase().trim();
+    return null;
+  }
+
+  /**
+   * جلب رصيد نقاط الطالب الحالي بشكل فوري من ذاكرة الحساب المؤقتة (User-Scoped)
+   * إذا لم يكن هناك مستخدم مسجل، الرصيد هو 0 دائماً (ممنوع مشاركة نقاط الجهاز).
+   */
+  public getUserPoints(currentUser?: TarqaUser | null): number {
+    const user = currentUser || authService.getCurrentUser();
+    if (!user) return 0;
+
+    // 1. إذا كان كائن المستخدم يحمل النقاط بالفعل
+    if (typeof user.points === 'number' && !isNaN(user.points)) {
+      return Math.max(0, user.points);
     }
 
-    try {
-      const { data: storeData } = await supabase
-        .from('profiles')
-        .select('ban_reason')
-        .eq('id', CLOUD_LECTURES_STORE_ID)
-        .maybeSingle();
+    // 2. البحث في التخزين المؤقت المربوط بهذا الحساب تحديداً
+    const userKey = this.getUserKey(user);
+    if (userKey && typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem(`${this.USER_POINTS_CACHE_PREFIX}${userKey}`);
+        if (cached !== null) {
+          const val = parseInt(cached, 10);
+          return isNaN(val) ? 0 : Math.max(0, val);
+        }
+      } catch {}
+    }
 
-      let cloudMap: Record<string, number> = {};
-      if (storeData?.ban_reason) {
+    return 0;
+  }
+
+  /**
+   * جلب ومزامنة رصيد النقاط الحقيقي من قاعدة البيانات المركزية (Supabase & Database Backend)
+   * وتحديث حالة المستخدم في التطبيق فوراً.
+   */
+  public async fetchUserPoints(currentUser?: TarqaUser | null): Promise<number> {
+    const user = currentUser || authService.getCurrentUser();
+    if (!user) return 0;
+
+    const userKey = this.getUserKey(user);
+    if (!userKey) return 0;
+
+    let dbPoints: number | null = null;
+    let dbHistory: PointTransaction[] | null = null;
+
+    // 1. محاولة الجلب من قاعدة بيانات Supabase (جدول profiles)
+    if (isSupabaseConfigured && supabase) {
+      try {
+        let query = supabase.from('profiles').select('points, points_history');
+        if (isValidUuid(user.id)) {
+          query = query.eq('id', user.id);
+        } else if (user.email) {
+          query = query.ilike('email', user.email.toLowerCase().trim());
+        }
+
+        const { data, error } = await query.maybeSingle();
+        if (!error && data) {
+          if (typeof data.points === 'number') {
+            dbPoints = Math.max(0, data.points);
+          } else if (data.points) {
+            dbPoints = Math.max(0, parseInt(data.points, 10) || 0);
+          }
+          if (Array.isArray(data.points_history)) {
+            dbHistory = data.points_history;
+          }
+        }
+      } catch (err) {
+        console.warn('[pointsService] Supabase points fetch notice:', err);
+      }
+    }
+
+    // 2. محاولة الجلب من الباك إند المركزي (Vercel API / Hostinger PHP) إذا لم تتوفر في Supabase
+    if (dbPoints === null && typeof window !== 'undefined') {
+      const endpoints = [
+        `/api/points?userId=${encodeURIComponent(user.id || '')}&email=${encodeURIComponent(user.email || '')}`,
+        `/api/points.php?userId=${encodeURIComponent(user.id || '')}&email=${encodeURIComponent(user.email || '')}`,
+      ];
+
+      for (const ep of endpoints) {
         try {
-          const parsed = JSON.parse(storeData.ban_reason);
-          if (parsed.pointsMap && typeof parsed.pointsMap === 'object') {
-            cloudMap = parsed.pointsMap;
+          const res = await fetch(ep, { method: 'GET', headers: { 'Accept': 'application/json' } });
+          if (res.ok) {
+            const json = await res.json();
+            if (json.success && typeof json.points === 'number') {
+              dbPoints = Math.max(0, json.points);
+              if (Array.isArray(json.history)) dbHistory = json.history;
+              break;
+            }
           }
         } catch {}
       }
-
-      const localMap = this.getUsersPointsMap();
-      const mergedMap: Record<string, number> = { ...cloudMap };
-      for (const [k, v] of Object.entries(localMap)) {
-        if (mergedMap[k] === undefined || (v !== undefined && v > (mergedMap[k] || 0))) {
-          mergedMap[k] = v;
-        }
-      }
-
-      localStorage.setItem(STORAGE_USERS_POINTS_MAP, JSON.stringify(mergedMap));
-      return mergedMap;
-    } catch {
-      return this.getUsersPointsMap();
     }
+
+    // إذا تم جلب النقاط بنجاح من قاعدة البيانات، نحدث الذاكرة المربوطة بالحساب
+    if (dbPoints !== null) {
+      this.setUserCachedPoints(userKey, dbPoints);
+      if (dbHistory) {
+        this.setUserCachedHistory(userKey, dbHistory);
+      }
+      this.updateActiveUserSessionPoints(userKey, dbPoints);
+      return dbPoints;
+    }
+
+    return this.getUserPoints(user);
   }
 
   /**
-   * حفظ خريطة النقاط إلى السحابة المركزية
+   * تحديث رصيد النقاط المؤقت لحساب المستخدم المحدد فقط
    */
-  private async syncPointsToCloud(pointsMap: Record<string, number>): Promise<void> {
-    if (!isSupabaseConfigured || !supabase) return;
+  private setUserCachedPoints(userKey: string, points: number): void {
+    if (!userKey || typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(`${this.USER_POINTS_CACHE_PREFIX}${userKey}`, String(Math.max(0, points)));
+    } catch {}
+  }
+
+  /**
+   * تحديث سجل المعاملات المؤقت لحساب المستخدم المحدد فقط
+   */
+  private setUserCachedHistory(userKey: string, history: PointTransaction[]): void {
+    if (!userKey || typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(`${this.USER_HISTORY_CACHE_PREFIX}${userKey}`, JSON.stringify(history.slice(0, 50)));
+    } catch {}
+  }
+
+  /**
+   * تحديث كائن المستخدم النشط في الجلسة المحلية بالنقاط الجديدة
+   */
+  private updateActiveUserSessionPoints(userKey: string, newPoints: number): void {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem('tarqa_current_user');
+      if (raw) {
+        const parsed: TarqaUser = JSON.parse(raw);
+        const match =
+          (parsed.id && parsed.id === userKey) ||
+          (parsed.email && parsed.email.toLowerCase().trim() === userKey.toLowerCase().trim());
+        if (match) {
+          parsed.points = newPoints;
+          localStorage.setItem('tarqa_current_user', JSON.stringify(parsed));
+          window.dispatchEvent(new Event('tarqa_user_changed'));
+        }
+      }
+    } catch {}
+  }
+
+  /**
+   * جلب سجل معاملات النقاط لحساب المستخدم الحالي
+   */
+  public getPointsHistory(currentUser?: TarqaUser | null): PointTransaction[] {
+    const user = currentUser || authService.getCurrentUser();
+    if (!user) return [];
+
+    const userKey = this.getUserKey(user);
+    if (!userKey || typeof window === 'undefined') return [];
 
     try {
-      const { data: storeData } = await supabase
-        .from('profiles')
-        .select('ban_reason')
-        .eq('id', CLOUD_LECTURES_STORE_ID)
-        .maybeSingle();
+      const stored = localStorage.getItem(`${this.USER_HISTORY_CACHE_PREFIX}${userKey}`);
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch {}
+    return [];
+  }
 
-      let currentPayload: any = {};
-      if (storeData?.ban_reason) {
+  /**
+   * إضافة نقاط لحساب الطالب وحفظها مباشرة في قاعدة البيانات المركزية
+   */
+  public addPoints(
+    amount: number,
+    reason: string,
+    category: PointTransaction['category'] = 'bonus',
+    currentUser?: TarqaUser | null
+  ): number {
+    if (amount <= 0) return this.getUserPoints(currentUser);
+
+    const user = currentUser || authService.getCurrentUser();
+    if (!user) {
+      console.warn('[pointsService] Cannot add points: No user logged in.');
+      return 0;
+    }
+
+    const userKey = this.getUserKey(user);
+    if (!userKey) return 0;
+
+    const currentPoints = this.getUserPoints(user);
+    const newTotal = currentPoints + amount;
+
+    // 1. تحديث الكاش المربوط بالحساب فوراً لسرعة استجابة الواجهة
+    this.setUserCachedPoints(userKey, newTotal);
+    this.updateActiveUserSessionPoints(userKey, newTotal);
+
+    // 2. تسجيل المعاملة في سجل الحساب
+    const history = this.getPointsHistory(user);
+    const newTx: PointTransaction = {
+      id: 'tx-' + Date.now(),
+      amount,
+      reason,
+      timestamp: new Date().toISOString(),
+      category,
+    };
+    const updatedHistory = [newTx, ...history].slice(0, 50);
+    this.setUserCachedHistory(userKey, updatedHistory);
+
+    // 3. إشعار الواجهة بتحديث النقاط للحساب الحالي
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('tarqa_points_updated', {
+          detail: { points: newTotal, added: amount, reason, userId: user.id, transaction: newTx },
+        })
+      );
+    }
+
+    // 4. الحفظ الدائم في قاعدة بيانات Supabase (جدول profiles)
+    if (isSupabaseConfigured && supabase) {
+      Promise.resolve().then(async () => {
         try {
-          currentPayload = JSON.parse(storeData.ban_reason);
+          const updatePayload: any = {
+            points: newTotal,
+            points_history: updatedHistory,
+            updated_at: new Date().toISOString(),
+          };
+
+          if (isValidUuid(user.id)) {
+            const { error } = await supabase.from('profiles').update(updatePayload).eq('id', user.id);
+            if (error) {
+              console.warn('[pointsService] Supabase update profiles.points notice:', error.message);
+            }
+          } else if (user.email) {
+            await supabase
+              .from('profiles')
+              .update(updatePayload)
+              .ilike('email', user.email.toLowerCase().trim());
+          }
+        } catch (e) {
+          console.warn('[pointsService] Supabase points update failed:', e);
+        }
+      });
+    }
+
+    // 5. المزامنة مع خادم الباك إند (Vercel API / Hostinger PHP)
+    if (typeof window !== 'undefined') {
+      Promise.resolve().then(async () => {
+        const payload = {
+          userId: user.id,
+          userEmail: user.email,
+          userName: user.fullName || 'طالب طرقع',
+          action: 'add',
+          amount,
+          reason,
+          category,
+          points: newTotal,
+        };
+
+        try {
+          const res = await fetch('/api/points', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          if (!res.ok) {
+            await fetch('/api/points.php', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+          }
+        } catch {
+          try {
+            await fetch('/api/points.php', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+          } catch {}
+        }
+      });
+    }
+
+    invalidateUsersCache();
+    return newTotal;
+  }
+
+  /**
+   * تصفير نقاط الحساب الحالي في قاعدة البيانات
+   */
+  public async resetPointsToZero(currentUser?: TarqaUser | null): Promise<void> {
+    const user = currentUser || authService.getCurrentUser();
+    if (!user) return;
+
+    const userKey = this.getUserKey(user);
+    if (!userKey) return;
+
+    this.setUserCachedPoints(userKey, 0);
+    this.setUserCachedHistory(userKey, []);
+    this.updateActiveUserSessionPoints(userKey, 0);
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('tarqa_points_updated', {
+          detail: { points: 0, added: 0, reason: 'تصفير النقاط', userId: user.id },
+        })
+      );
+      window.dispatchEvent(new Event('tarqa_roles_changed'));
+    }
+
+    // المزامنة مع Supabase
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const updatePayload: any = {
+          points: 0,
+          points_history: [],
+          updated_at: new Date().toISOString(),
+        };
+        if (isValidUuid(user.id)) {
+          await supabase.from('profiles').update(updatePayload).eq('id', user.id);
+        } else if (user.email) {
+          await supabase
+            .from('profiles')
+            .update(updatePayload)
+            .ilike('email', user.email.toLowerCase().trim());
+        }
+      } catch (e) {
+        console.warn('[pointsService] Reset points Supabase notice:', e);
+      }
+    }
+
+    // المزامنة مع الباك إند
+    if (typeof window !== 'undefined') {
+      try {
+        await fetch('/api/points', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.id, userEmail: user.email, action: 'reset' }),
+        });
+      } catch {
+        try {
+          await fetch('/api/points.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.id, userEmail: user.email, action: 'reset' }),
+          });
         } catch {}
       }
+    }
 
-      const newPayload = {
-        ...currentPayload,
-        pointsMap,
-        updatedAt: new Date().toISOString(),
-      };
+    invalidateUsersCache();
+  }
 
-      await supabase
-        .from('profiles')
-        .update({
-          ban_reason: JSON.stringify(newPayload),
+  /**
+   * تصفير نقاط مستخدم محدد (مخصص للإدارة من لوحة التحكم) في قاعدة البيانات المركزية
+   */
+  public async resetUserPoints(userId: string, email?: string): Promise<void> {
+    if (!userId && !email) return;
+
+    const userKey = userId || (email ? email.toLowerCase().trim() : '');
+    if (userKey) {
+      this.setUserCachedPoints(userKey, 0);
+      this.setUserCachedHistory(userKey, []);
+      this.updateActiveUserSessionPoints(userKey, 0);
+    }
+
+    // إذا كان هو المستخدم المسجل حالياً في المتصفح
+    const current = authService.getCurrentUser();
+    if (
+      current &&
+      ((userId && current.id === userId) ||
+        (email && current.email && current.email.toLowerCase().trim() === email.toLowerCase().trim()))
+    ) {
+      current.points = 0;
+      authService.setCurrentUser(current);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('tarqa_points_updated', {
+            detail: { points: 0, added: 0, reason: 'تصفير نقاط الطالب' },
+          })
+        );
+      }
+    }
+
+    // المزامنة مع Supabase
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const updatePayload: any = {
+          points: 0,
+          points_history: [],
           updated_at: new Date().toISOString(),
-        } as any)
-        .eq('id', CLOUD_LECTURES_STORE_ID);
-    } catch (e) {
-      console.warn('syncPointsToCloud failed:', e);
-    }
-  }
-
-  /**
-   * قراءة خريطة نقاط جميع الأعضاء المسجلين
-   */
-  public getUsersPointsMap(): Record<string, number> {
-    try {
-      const stored = localStorage.getItem(STORAGE_USERS_POINTS_MAP);
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch {}
-    return {};
-  }
-
-  /**
-   * حفظ نقطة مستخدم في الخريطة
-   */
-  private saveUserPointToMap(userId: string, points: number) {
-    if (!userId) return;
-    try {
-      const map = this.getUsersPointsMap();
-      map[userId] = points;
-      localStorage.setItem(STORAGE_USERS_POINTS_MAP, JSON.stringify(map));
-      this.syncPointsToCloud(map);
-    } catch {}
-  }
-
-  /**
-   * جلب رصيد نقاط الطالب الحالي (يبدأ من 0 دائماً)
-   */
-  public getUserPoints(): number {
-    try {
-      const stored = localStorage.getItem(STORAGE_POINTS_KEY);
-      if (stored !== null) {
-        const val = parseInt(stored, 10);
-        return isNaN(val) ? 0 : Math.max(0, val);
-      }
-      return 0;
-    } catch {
-      return 0;
-    }
-  }
-
-  /**
-   * تصفير النقاط للمستخدم الحالي والبدء من الصفر
-   */
-  public resetPointsToZero(currentUser?: TarqaUser | null): void {
-    try {
-      localStorage.setItem(STORAGE_POINTS_KEY, '0');
-      localStorage.setItem(STORAGE_HISTORY_KEY, JSON.stringify([]));
-      
-      const map = this.getUsersPointsMap();
-      if (currentUser?.id) {
-        map[currentUser.id] = 0;
-      }
-      if (currentUser?.email) {
-        map[currentUser.email.toLowerCase().trim()] = 0;
-      }
-      localStorage.setItem(STORAGE_USERS_POINTS_MAP, JSON.stringify(map));
-      this.syncPointsToCloud(map);
-
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('tarqa_points_updated', {
-          detail: { points: 0, added: 0, reason: 'تصفير النقاط' }
-        }));
-        window.dispatchEvent(new Event('tarqa_roles_changed'));
-        window.dispatchEvent(new Event('storage'));
-      }
-    } catch (e) {
-      console.error('Failed to reset points:', e);
-    }
-  }
-
-  /**
-   * تصفير نقاط مستخدم محدد (مخصص للمشرفين من لوحة التحكم)
-   */
-  public resetUserPoints(userId: string, email?: string): void {
-    try {
-      const map = this.getUsersPointsMap();
-      if (userId) {
-        map[userId] = 0;
-      }
-      if (email) {
-        const em = email.toLowerCase().trim();
-        map[em] = 0;
-      }
-      localStorage.setItem(STORAGE_USERS_POINTS_MAP, JSON.stringify(map));
-      this.syncPointsToCloud(map);
-
-      // إذا كان المستخدم هو المستخدم المسجل حالياً في المتصفح
-      const currentRaw = localStorage.getItem('tarqa_current_user');
-      if (currentRaw) {
-        const parsed = JSON.parse(currentRaw);
-        if (parsed.id === userId || (email && parsed.email?.toLowerCase().trim() === email.toLowerCase().trim())) {
-          localStorage.setItem(STORAGE_POINTS_KEY, '0');
-          localStorage.setItem(STORAGE_HISTORY_KEY, JSON.stringify([]));
+        };
+        if (isValidUuid(userId)) {
+          await supabase.from('profiles').update(updatePayload).eq('id', userId);
         }
-      }
-
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('tarqa_points_updated', {
-          detail: { points: 0, added: 0, reason: 'تصفير نقاط الطالب' }
-        }));
-        window.dispatchEvent(new Event('tarqa_roles_changed'));
-        window.dispatchEvent(new Event('storage'));
-      }
-    } catch (e) {
-      console.error('Failed to reset user points:', e);
-    }
-  }
-
-  /**
-   * تصفير شامل لجميع نقاط الطلاب في المنصة
-   */
-  public resetAllUsersPoints(): void {
-    try {
-      localStorage.setItem(STORAGE_POINTS_KEY, '0');
-      localStorage.setItem(STORAGE_HISTORY_KEY, JSON.stringify([]));
-      localStorage.setItem(STORAGE_USERS_POINTS_MAP, JSON.stringify({}));
-      this.syncPointsToCloud({});
-
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('tarqa_points_updated', {
-          detail: { points: 0, added: 0, reason: 'تصفير شامل للنقاط' }
-        }));
-        window.dispatchEvent(new Event('tarqa_roles_changed'));
-        window.dispatchEvent(new Event('storage'));
-      }
-    } catch (e) {
-      console.error('Failed to reset all points:', e);
-    }
-  }
-
-  /**
-   * جلب سجل معاملات النقاط
-   */
-  public getPointsHistory(): PointTransaction[] {
-    try {
-      const stored = localStorage.getItem(STORAGE_HISTORY_KEY);
-      if (stored) {
-        return JSON.parse(stored);
-      }
-      return [];
-    } catch {
-      return [];
-    }
-  }
-
-  /**
-   * إضافة نقاط للطالب وتسجيل المعاملة ومزامنتها محلياً وسحابياً
-   */
-  public addPoints(amount: number, reason: string, category: PointTransaction['category'] = 'bonus', currentUser?: TarqaUser | null): number {
-    if (amount <= 0) return this.getUserPoints();
-
-    const current = this.getUserPoints();
-    const newTotal = current + amount;
-    
-    try {
-      localStorage.setItem(STORAGE_POINTS_KEY, String(newTotal));
-      
-      if (currentUser?.id) {
-        this.saveUserPointToMap(currentUser.id, newTotal);
-      }
-      if (currentUser?.email) {
-        this.saveUserPointToMap(currentUser.email.toLowerCase(), newTotal);
-      }
-
-      const history = this.getPointsHistory();
-      const newTx: PointTransaction = {
-        id: 'tx-' + Date.now(),
-        amount,
-        reason,
-        timestamp: new Date().toISOString(),
-        category,
-      };
-      const updatedHistory = [newTx, ...history].slice(0, 50);
-      localStorage.setItem(STORAGE_HISTORY_KEY, JSON.stringify(updatedHistory));
-
-      // محاولة المزامنة مع Supabase إذا توفر حقل النقاط في جدول profiles
-      if (isSupabaseConfigured && currentUser?.id) {
-        Promise.resolve(
-          supabase
+        if (email) {
+          await supabase
             .from('profiles')
-            .update({ target_score: currentUser.targetScore || 100 })
-            .eq('id', currentUser.id)
-        ).catch(() => {});
+            .update(updatePayload)
+            .ilike('email', email.toLowerCase().trim());
+        }
+      } catch (e) {
+        console.warn('[pointsService] resetUserPoints Supabase notice:', e);
       }
-
-      window.dispatchEvent(new CustomEvent('tarqa_points_updated', {
-        detail: { points: newTotal, added: amount, reason, transaction: newTx }
-      }));
-    } catch (e) {
-      console.error('Failed to add points', e);
     }
 
-    return newTotal;
+    // المزامنة مع الباك إند
+    if (typeof window !== 'undefined') {
+      try {
+        await fetch('/api/points', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, userEmail: email, action: 'reset' }),
+        });
+      } catch {
+        try {
+          await fetch('/api/points.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, userEmail: email, action: 'reset' }),
+          });
+        } catch {}
+      }
+    }
+
+    invalidateUsersCache();
+  }
+
+  /**
+   * تصفير شامل لجميع نقاط الطلاب في قاعدة البيانات (للسوبر أدمن فقط)
+   */
+  public async resetAllUsersPoints(): Promise<void> {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('profiles').update({
+          points: 0,
+          points_history: [],
+          updated_at: new Date().toISOString(),
+        } as any).neq('id', '00000000-0000-0000-0000-000000000000');
+      } catch (e) {
+        console.warn('[pointsService] resetAllUsersPoints Supabase notice:', e);
+      }
+    }
+
+    const current = authService.getCurrentUser();
+    if (current) {
+      current.points = 0;
+      authService.setCurrentUser(current);
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('tarqa_points_updated', {
+          detail: { points: 0, added: 0, reason: 'تصفير شامل للنقاط' },
+        })
+      );
+      window.dispatchEvent(new Event('tarqa_roles_changed'));
+    }
+
+    invalidateUsersCache();
   }
 
   /**
@@ -382,14 +579,17 @@ class PointsService {
   /**
    * جلب قائمة المتصدرين الحقيقية والمزامنة مع قاعدة بيانات الأعضاء الحقيقيين (Supabase Profiles)
    */
-  public async fetchLeaderboard(currentUser: TarqaUser | null, period: 'weekly' | 'monthly' | 'all_time' = 'all_time'): Promise<LeaderboardEntry[]> {
-    try {
-      await this.syncPointsFromCloud();
-    } catch {}
+  public async fetchLeaderboard(
+    currentUser: TarqaUser | null,
+    period: 'weekly' | 'monthly' | 'all_time' = 'all_time'
+  ): Promise<LeaderboardEntry[]> {
+    if (currentUser) {
+      await this.fetchUserPoints(currentUser);
+    }
 
     let rawUsers: UserWithRole[] = [];
     try {
-      rawUsers = await rolesService.getUsers();
+      rawUsers = await rolesService.getUsers(true);
     } catch (err) {
       console.warn('Could not fetch users from rolesService:', err);
     }
@@ -398,9 +598,12 @@ class PointsService {
   }
 
   /**
-   * جلب قائمة المتصدرين بشكل متزامن فوري باستخدام الأعضاء المخزنين محلياً
+   * جلب قائمة المتصدرين بشكل متزامن فوري باستخدام الأعضاء المسجلين
    */
-  public getLeaderboard(currentUser: TarqaUser | null, period: 'weekly' | 'monthly' | 'all_time' = 'all_time'): LeaderboardEntry[] {
+  public getLeaderboard(
+    currentUser: TarqaUser | null,
+    period: 'weekly' | 'monthly' | 'all_time' = 'all_time'
+  ): LeaderboardEntry[] {
     let localUsers: UserWithRole[] = [];
     try {
       const stored = localStorage.getItem('tarqa_all_users_roles');
@@ -413,11 +616,14 @@ class PointsService {
   }
 
   /**
-   * بناء وتنسيق قائمة المتصدرين من الأعضاء الحقيقيين فقط مع بدء الجميع من 0 نقاط
+   * بناء وتنسيق قائمة المتصدرين من الأعضاء الحقيقيين بناءً على نقاطهم في قاعدة البيانات
    */
-  private buildLeaderboardFromUsers(usersList: UserWithRole[], currentUser: TarqaUser | null, period: 'weekly' | 'monthly' | 'all_time'): LeaderboardEntry[] {
-    const userPoints = currentUser ? this.getUserPoints() : 0;
-    const pointsMap = this.getUsersPointsMap();
+  private buildLeaderboardFromUsers(
+    usersList: UserWithRole[],
+    currentUser: TarqaUser | null,
+    period: 'weekly' | 'monthly' | 'all_time'
+  ): LeaderboardEntry[] {
+    const userPoints = currentUser ? this.getUserPoints(currentUser) : 0;
     const completedCount = currentUser ? this.getCompletedLessonsCount() : 0;
 
     // قراءة الستريك الحالي للطالب إذا كان مسجل دخول
@@ -434,20 +640,20 @@ class PointsService {
 
     const entriesMap = new Map<string, LeaderboardEntry>();
 
-    // 1. معالجة كافة الأعضاء الحقيقيين المسجلين في قاعدة البيانات أولاً (مع استبعاد المحظورين تماماً)
+    // 1. معالجة كافة الأعضاء المسجلين في قاعدة البيانات أولاً (مع استبعاد المحظورين)
     for (const u of usersList) {
       if (!u || !u.id || u.isBanned) continue;
-      
+
       const isThisCurrentUser = Boolean(
         currentUser &&
-        !currentUser.isBanned &&
-        ((currentUser.id && u.id === currentUser.id) ||
-         (currentUser.email && u.email && u.email.toLowerCase() === currentUser.email.toLowerCase()))
+          !currentUser.isBanned &&
+          ((currentUser.id && u.id === currentUser.id) ||
+            (currentUser.email && u.email && u.email.toLowerCase() === currentUser.email.toLowerCase()))
       );
 
       const memberPts = isThisCurrentUser
         ? userPoints
-        : (pointsMap[u.id] || (u.email ? pointsMap[u.email.toLowerCase()] : 0) || 0);
+        : (typeof u.points === 'number' ? u.points : 0);
 
       const memberLevel = getRankLevel(memberPts);
 
@@ -456,7 +662,8 @@ class PointsService {
         rank: 0,
         name: u.fullName || (u.email ? u.email.split('@')[0] : 'طالب طرقع'),
         email: u.email,
-        avatarIcon: u.role === 'super_admin' ? '👑' : u.role === 'admin' ? '🛡️' : u.role === 'teacher' ? '🎓' : '🌟',
+        avatarIcon:
+          u.role === 'super_admin' ? '👑' : u.role === 'admin' ? '🛡️' : u.role === 'teacher' ? '🎓' : '🌟',
         avatarUrl: u.avatarUrl,
         points: memberPts,
         streak: isThisCurrentUser ? userStreak : 0,
@@ -472,7 +679,7 @@ class PointsService {
       entriesMap.set(u.id, entry);
     }
 
-    // 2. إذا كان المستخدم مسجلاً وغير محظور ولم يكن موجوداً في القائمة المجلوبة بعد، نضيف حسابه الحقيقي فقط
+    // 2. إذا كان المستخدم مسجلاً وغير محظور ولم يكن موجوداً في القائمة المجلوبة بعد
     if (currentUser && currentUser.id && !currentUser.isBanned && !entriesMap.has(currentUser.id)) {
       const currentUserLevel = getRankLevel(userPoints);
       const currentUserEntry: LeaderboardEntry = {
@@ -495,10 +702,7 @@ class PointsService {
       entriesMap.set(currentUser.id, currentUserEntry);
     }
 
-    // استخراج القائمة الفريدة للأعضاء
     const list = Array.from(entriesMap.values());
-
-    // تعديل النقاط بحسب الفترة إن تم تطبيق فلاتر
     const multiplier = period === 'weekly' ? 1.0 : period === 'monthly' ? 1.0 : 1.0;
 
     const formatted = list.map((item) => {
@@ -513,7 +717,7 @@ class PointsService {
       };
     });
 
-    // الترتيب تنازلياً حسب النقاط، ثم حسب الأقدمية/الاسم
+    // الترتيب تنازلياً حسب النقاط
     formatted.sort((a, b) => {
       if (b.points !== a.points) {
         return b.points - a.points;
@@ -521,7 +725,6 @@ class PointsService {
       return a.name.localeCompare(b.name, 'ar');
     });
 
-    // تعيين الرتب والأرقام الترتيبية
     return formatted.map((e, idx) => ({
       ...e,
       rank: idx + 1,

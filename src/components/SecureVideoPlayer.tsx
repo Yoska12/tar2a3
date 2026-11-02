@@ -522,6 +522,22 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
     );
   }
 
+  if (!src || !resolvedSrc) {
+    return (
+      <div className="relative w-full aspect-video rounded-2xl sm:rounded-3xl overflow-hidden bg-slate-950 flex flex-col items-center justify-center p-6 text-center border border-slate-800 shadow-2xl font-cairo select-none">
+        <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center text-3xl mb-3 shadow-inner">
+          🎬
+        </div>
+        <h3 className="font-black text-base text-white mb-1.5">
+          لم يتم رفع فيديو لهذه المحاضرة بعد
+        </h3>
+        <p className="text-xs text-slate-400 max-w-sm leading-relaxed">
+          سيتم توفير الفيديو التعليمي وتحديثه قريباً من قِبل إدارة المنصة والمعلمين.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div
       ref={containerRef}
@@ -610,24 +626,9 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
                   videoRef.current.play().catch(() => {});
                 }
               }}
-              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-lg shadow-amber-500/20 active:scale-95"
+              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-lg shadow-amber-500/20 active:scale-95 cursor-pointer"
             >
               إعادة المحاولة 🔄
-            </button>
-            <button
-              onClick={() => {
-                setHasError(false);
-                setResolvedSrc('https://vjs.zencdn.net/v/oceans.mp4');
-                setTimeout(() => {
-                  if (videoRef.current) {
-                    videoRef.current.load();
-                    videoRef.current.play().catch(() => {});
-                  }
-                }, 100);
-              }}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs transition active:scale-95"
-            >
-              تشغيل فيديو اختباري للتأكد ▶️
             </button>
           </div>
         </div>

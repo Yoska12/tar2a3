@@ -125,20 +125,10 @@ export const InteractiveLoginPage: React.FC<InteractiveLoginPageProps> = ({
     };
   }, [isOpen, tab]);
 
-  // إعادة ضبط كاملة لكافة حالات الأنيميشن والرسائل عند فتح النافذة أو إغلاقها
+  // إعادة ضبط كاملة لكافة حالات الأنيميشن والرسائل فقط عند فتح النافذة لأول مرة (من false إلى true)
+  const prevIsOpenRef = useRef(false);
   useEffect(() => {
-    setIsCelebration(false);
-    setIsShaking(false);
-    setErrorMessage(null);
-    setSuccessMessage(null);
-    setIsPasswordFocused(false);
-    setIsEmailFocused(false);
-    setPassword('');
-  }, [isOpen]);
-
-  // إعادة الضبط الفوري عند تسجيل الخروج أو تغيير حالة المستخدم
-  useEffect(() => {
-    const handleResetAll = () => {
+    if (isOpen && !prevIsOpenRef.current) {
       setIsCelebration(false);
       setIsShaking(false);
       setErrorMessage(null);
@@ -146,15 +136,9 @@ export const InteractiveLoginPage: React.FC<InteractiveLoginPageProps> = ({
       setIsPasswordFocused(false);
       setIsEmailFocused(false);
       setPassword('');
-    };
-
-    window.addEventListener('tarqa_user_changed', handleResetAll);
-    window.addEventListener('tarqa_roles_changed', handleResetAll);
-    return () => {
-      window.removeEventListener('tarqa_user_changed', handleResetAll);
-      window.removeEventListener('tarqa_roles_changed', handleResetAll);
-    };
-  }, []);
+    }
+    prevIsOpenRef.current = Boolean(isOpen);
+  }, [isOpen]);
 
   // متابعة حركة مؤشر الماوس بسلاسة فائقة وبشكل مباشر على CSS Variables بدون أي إعادة رندر لرياكت
   useEffect(() => {
@@ -609,14 +593,20 @@ export const InteractiveLoginPage: React.FC<InteractiveLoginPageProps> = ({
                 {tab === 'signup' && (
                   <>
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      <label 
+                        htmlFor="login-fullname"
+                        className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 cursor-pointer"
+                      >
                         الاسم الكامل للطالب
                       </label>
                       <div className="relative">
-                        <User className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+                        <User className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
                         <input
+                          id="login-fullname"
+                          name="name"
                           type="text"
                           required
+                          autoComplete="name"
                           value={fullName}
                           onChange={(e) => setFullName(e.target.value)}
                           placeholder="مثال: أحمد القحطاني"
@@ -643,27 +633,37 @@ export const InteractiveLoginPage: React.FC<InteractiveLoginPageProps> = ({
                 )}
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  <label 
+                    htmlFor="login-email"
+                    className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 cursor-pointer"
+                  >
                     البريد الإلكتروني
                   </label>
                   <div className="relative">
-                    <Mail className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+                    <Mail className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
                     <input
+                      id="login-email"
+                      name="email"
                       type="email"
                       required
+                      autoComplete="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       onFocus={() => setIsEmailFocused(true)}
                       onBlur={() => setIsEmailFocused(false)}
                       placeholder="student@example.com"
-                      className="w-full pr-10 pl-3.5 py-2.5 rounded-xl bg-sky-50/60 dark:bg-slate-800/90 border border-sky-200/80 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-xs font-medium focus:border-amber-500 focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-amber-500/20 transition outline-none"
+                      dir="ltr"
+                      className="w-full pr-10 pl-3.5 py-2.5 rounded-xl bg-sky-50/60 dark:bg-slate-800/90 border border-sky-200/80 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-xs font-medium focus:border-amber-500 focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-amber-500/20 transition outline-none text-right"
                     />
                   </div>
                 </div>
 
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    <label 
+                      htmlFor="login-password"
+                      className="text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer"
+                    >
                       كلمة المرور
                     </label>
                     <span className="text-[10px] text-amber-500 dark:text-amber-400 font-medium">
@@ -671,16 +671,20 @@ export const InteractiveLoginPage: React.FC<InteractiveLoginPageProps> = ({
                     </span>
                   </div>
                   <div className="relative">
-                    <Lock className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+                    <Lock className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
                     <input
+                      id="login-password"
+                      name="password"
                       type={showPassword ? 'text' : 'password'}
                       required
+                      autoComplete={tab === 'signup' ? 'new-password' : 'current-password'}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       onFocus={() => setIsPasswordFocused(true)}
                       onBlur={() => setIsPasswordFocused(false)}
                       placeholder="••••••••"
-                      className={`w-full pr-10 pl-11 py-2.5 rounded-xl bg-sky-50/60 dark:bg-slate-800/90 border text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-xs font-medium focus:bg-white dark:focus:bg-slate-800 focus:ring-2 transition outline-none ${
+                      dir="ltr"
+                      className={`w-full pr-10 pl-11 py-2.5 rounded-xl bg-sky-50/60 dark:bg-slate-800/90 border text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-xs font-medium focus:bg-white dark:focus:bg-slate-800 focus:ring-2 transition outline-none text-right ${
                         isShaking 
                           ? 'border-rose-500 focus:ring-rose-500/20' 
                           : 'border-sky-200/80 dark:border-slate-700 focus:border-amber-500 focus:ring-amber-500/20'
@@ -689,8 +693,9 @@ export const InteractiveLoginPage: React.FC<InteractiveLoginPageProps> = ({
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-white transition p-1 cursor-pointer"
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-white transition p-1 cursor-pointer z-10"
                       title={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
+                      aria-label={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -699,17 +704,24 @@ export const InteractiveLoginPage: React.FC<InteractiveLoginPageProps> = ({
 
                 {tab === 'signup' && (
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    <label 
+                      htmlFor="login-telegram"
+                      className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 cursor-pointer"
+                    >
                       معرف تليجرام (اختياري للإشعارات الفورية)
                     </label>
                     <div className="relative">
-                      <Send className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+                      <Send className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
                       <input
+                        id="login-telegram"
+                        name="telegram"
                         type="text"
+                        autoComplete="username"
                         value={telegramUsername}
                         onChange={(e) => setTelegramUsername(e.target.value)}
                         placeholder="@username"
-                        className="w-full pr-10 pl-3.5 py-2.5 rounded-xl bg-sky-50/60 dark:bg-slate-800/90 border border-sky-200/80 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-xs font-medium focus:border-amber-500 focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-amber-500/20 transition outline-none"
+                        dir="ltr"
+                        className="w-full pr-10 pl-3.5 py-2.5 rounded-xl bg-sky-50/60 dark:bg-slate-800/90 border border-sky-200/80 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-xs font-medium focus:border-amber-500 focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-amber-500/20 transition outline-none text-right"
                       />
                     </div>
                   </div>

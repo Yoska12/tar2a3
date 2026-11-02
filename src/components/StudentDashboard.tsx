@@ -69,7 +69,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   const [cancelMessage, setCancelMessage] = useState<string | null>(null);
 
   // حالة النقاط والمستوى
-  const [userPoints, setUserPoints] = useState(() => pointsService.getUserPoints());
+  const [userPoints, setUserPoints] = useState(() => pointsService.getUserPoints(currentUser));
   const userRankLevel = getRankLevel(userPoints);
 
   // حالة الستريك والشعلة اليومية
@@ -144,7 +144,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       setStreakData(e.detail || streakService.getStreakData());
     };
     const onPointsUpdate = (e: any) => {
-      setUserPoints(e?.detail?.points !== undefined ? e.detail.points : pointsService.getUserPoints());
+      setUserPoints(e?.detail?.points !== undefined ? e.detail.points : pointsService.getUserPoints(currentUser));
     };
     window.addEventListener('tarqa_streak_updated', onStreakUpdate);
     window.addEventListener('tarqa_points_updated', onPointsUpdate);
@@ -152,7 +152,17 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       window.removeEventListener('tarqa_streak_updated', onStreakUpdate);
       window.removeEventListener('tarqa_points_updated', onPointsUpdate);
     };
-  }, []);
+  }, [currentUser]);
+
+  // مزامنة رصيد النقاط مع قاعدة البيانات عند فتح اللوحة أو تغير المستخدم
+  useEffect(() => {
+    setUserPoints(pointsService.getUserPoints(currentUser));
+    if (currentUser) {
+      pointsService.fetchUserPoints(currentUser).then((pts) => {
+        setUserPoints(pts);
+      });
+    }
+  }, [currentUser]);
 
   // تحديث حالة الاشتراك والمدرسين والملفات
   useEffect(() => {
@@ -246,8 +256,10 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       setIsCancelling(true);
       try {
         const res = await cancelAnnualSubscription(currentUser.id, currentUser.email);
+        currentUser.isSubscribed = false;
+        currentUser.subscriptionExpiresAt = undefined;
         setCancelMessage(res.message);
-        setSubscription(getSubscriptionDetails(currentUser));
+        setSubscription(getSubscriptionDetails({ ...currentUser, isSubscribed: false, subscriptionExpiresAt: undefined }));
         setTimeout(() => setCancelMessage(null), 3000);
       } finally {
         setIsCancelling(false);

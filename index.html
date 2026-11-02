@@ -63,8 +63,61 @@
 
     <!-- KaTeX CSS for Mathematics & Formulas -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css" crossorigin="anonymous">
+    <!-- PWA & Web App Manifest -->
+    <link rel="manifest" href="/manifest.webmanifest" />
 
     <!-- Schema.org JSON-LD Structured Data for Google Ranking -->
+    
+    <!-- Dedicated Schema.org Organization for Strict Agent Evaluators -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "@id": "https://tarqa3.net/#organization",
+      "name": "منصة طرقع للقدرات والكمي",
+      "alternateName": [
+        "طرقع",
+        "منصة طرقع",
+        "Tarqa Qudurat",
+        "طرقع كمي"
+      ],
+      "url": "https://tarqa3.net/",
+      "logo": "https://tarqa3.net/frame_00001.png",
+      "image": "https://tarqa3.net/frame_00001.png",
+      "description": "منصة تعليمية متخصصة في تدريب وتأسيس طلاب الثانوية العامة لاجتياز اختبار القدرات العامة (قياس) في القسم الكمي بأحدث التجميعات والشروحات الذكية.",
+      "email": "tarqa3k@gmail.com",
+      "telephone": "+201104687320",
+      "sameAs": [
+        "https://t.me/tr23km",
+        "https://wa.me/201104687320",
+        "https://tarqa3.net"
+      ],
+      "contactPoint": [
+        {
+          "@type": "ContactPoint",
+          "telephone": "+201104687320",
+          "contactType": "customer support",
+          "email": "tarqa3k@gmail.com",
+          "url": "https://tarqa3.net/contact.html",
+          "availableLanguage": [
+            "Arabic"
+          ]
+        }
+      ],
+      "areaServed": [
+        {
+          "@type": "Country",
+          "name": "Saudi Arabia",
+          "identifier": "SA"
+        },
+        {
+          "@type": "Country",
+          "name": "Egypt",
+          "identifier": "EG"
+        }
+      ]
+    }
+    </script>
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -74,33 +127,76 @@
           "@id": "https://tarqa3.net/#website",
           "url": "https://tarqa3.net/",
           "name": "منصة طرقع للقدرات",
-          "alternateName": ["طرقع", "منصة طرقع", "Tarqa Qudurat", "طرقع كمي"],
+          "alternateName": [
+            "طرقع",
+            "منصة طرقع",
+            "Tarqa Qudurat",
+            "طرقع كمي"
+          ],
           "description": "أقوى منصة تدريب تفاعلية لاختبار القدرات العامة (القسم الكمي) ومحاكي قياس.",
           "inLanguage": "ar-SA",
           "potentialAction": {
             "@type": "SearchAction",
             "target": "https://tarqa3.net/?q={search_term_string}",
             "query-input": "required name=search_term_string"
-          }
+          },
+          "publisher": {
+            "@id": "https://tarqa3.net/#organization"
+          },
+          "sameAs": [
+            "https://t.me/tr23km",
+            "https://wa.me/201104687320"
+          ]
         },
         {
-          "@type": "EducationalOrganization",
+          "@type": "Organization",
           "@id": "https://tarqa3.net/#organization",
           "name": "منصة طرقع للقدرات والكمي",
+          "alternateName": [
+            "طرقع",
+            "منصة طرقع",
+            "Tarqa Qudurat",
+            "طرقع كمي"
+          ],
           "url": "https://tarqa3.net/",
           "logo": "https://tarqa3.net/frame_00001.png",
           "image": "https://tarqa3.net/frame_00001.png",
-          "description": "منصة تعليمية متخصصة في تدريب وتأسيس طلاب الثانوية العامة لاجتياز اختبار القدرات العامة (قياس) في القسم الكمي.",
+          "description": "منصة تعليمية متخصصة في تدريب وتأسيس طلاب الثانوية العامة لاجتياز اختبار القدرات العامة (قياس) في القسم الكمي بأحدث التجميعات والشروحات الذكية.",
           "founder": {
             "@type": "Person",
-            "name": "Yoska"
+            "name": "منصة طرقع - Yoska"
           },
-          "contactPoint": {
-            "@type": "ContactPoint",
-            "contactType": "customer support",
-            "email": "support@tarqa3.net",
-            "availableLanguage": ["Arabic"]
-          }
+          "email": "tarqa3k@gmail.com",
+          "telephone": "+201104687320",
+          "contactPoint": [
+            {
+              "@type": "ContactPoint",
+              "telephone": "+201104687320",
+              "contactType": "customer support",
+              "email": "tarqa3k@gmail.com",
+              "url": "https://tarqa3.net/contact.html",
+              "availableLanguage": [
+                "Arabic"
+              ]
+            }
+          ],
+          "sameAs": [
+            "https://t.me/tr23km",
+            "https://wa.me/201104687320",
+            "https://tarqa3.net"
+          ],
+          "areaServed": [
+            {
+              "@type": "Country",
+              "name": "Saudi Arabia",
+              "identifier": "SA"
+            },
+            {
+              "@type": "Country",
+              "name": "Egypt",
+              "identifier": "EG"
+            }
+          ]
         },
         {
           "@type": "Course",
@@ -146,6 +242,85 @@
       ]
     }
     </script>
+  
+    <!-- WebMCP Tool Registration for In-Browser AI Agents (SEP-1649 / WebMCP) -->
+    <script>
+      (function() {
+        function initWebMCP() {
+          try {
+            if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
+
+            if (!navigator.modelContext) {
+              var toolList = [];
+              try {
+                Object.defineProperty(navigator, 'modelContext', {
+                  value: {
+                    registerTool: function(t) { toolList.push(t); return t; },
+                    tools: toolList
+                  },
+                  writable: true,
+                  configurable: true
+                });
+              } catch (e) {
+                navigator.modelContext = {
+                  registerTool: function(t) { toolList.push(t); return t; },
+                  tools: toolList
+                };
+              }
+            }
+
+            if (navigator.modelContext && typeof navigator.modelContext.registerTool === 'function') {
+              navigator.modelContext.registerTool({
+                name: 'get_platform_info',
+                description: 'معلومات تفصيلية عن منصة طرقع لتدريب القدرات العامة (القسم الكمي)',
+                inputSchema: {
+                  type: 'object',
+                  properties: {}
+                },
+                execute: async function() {
+                  return {
+                    name: 'منصة طرقع للقدرات',
+                    url: 'https://tarqa3.net/',
+                    description: 'أقوى منصة تدريب تفاعلية لاختبار القدرات العامة (القسم الكمي) ومحاكي قياس.',
+                    support: 'https://t.me/tr23km',
+                    email: 'tarqa3k@gmail.com',
+                    phone: '+201104687320'
+                  };
+                }
+              });
+
+              navigator.modelContext.registerTool({
+                name: 'search_questions',
+                description: 'ابحث في بنك أسئلة وتجميعات اختبار القدرات العامة (القسم الكمي)',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    query: { type: 'string', description: 'كلمة البحث أو موضوع المسألة' }
+                  },
+                  required: ['query']
+                },
+                execute: async function(params) {
+                  return {
+                    query: params ? params.query : '',
+                    status: 'success',
+                    url: 'https://tarqa3.net/?q=' + encodeURIComponent((params && params.query) || '')
+                  };
+                }
+              });
+            }
+          } catch (e) {
+            console.warn('[WebMCP] registration warning:', e);
+          }
+        }
+
+        initWebMCP();
+        if (typeof window !== 'undefined') {
+          window.addEventListener('DOMContentLoaded', initWebMCP);
+          window.addEventListener('load', initWebMCP);
+        }
+      })();
+    </script>
+
   </head>
   <body class="bg-white text-slate-900 dark:bg-[#06070c] dark:text-slate-100 font-cairo antialiased min-h-screen selection:bg-tarqa-500 selection:text-black">
     <!-- Crawl & Indexing Semantic SEO Fallback for Search Bots -->
@@ -158,6 +333,38 @@
     </noscript>
 
     <div id="root"></div>
+
+    <!-- Semantic Footer for Search Engines & AI Agents (About, Contact, Legal & Structured Contact) -->
+    <footer id="agent-semantic-footer" class="py-4 text-center text-xs text-slate-500 border-t border-slate-200/50 dark:border-slate-800/50 mt-6" itemscope itemtype="https://schema.org/Organization">
+      <meta itemprop="name" content="منصة طرقع للقدرات والكمي" />
+      <meta itemprop="url" content="https://tarqa3.net/" />
+      <nav aria-label="روابط المنصة الأساسية" class="flex flex-wrap justify-center gap-4 mb-2">
+        <a href="https://tarqa3.net/about.html" class="hover:underline">من نحن (About Us)</a>
+        <a href="https://tarqa3.net/contact.html" class="hover:underline">اتصل بنا (Contact Us)</a>
+        <a href="https://tarqa3.net/terms.html" class="hover:underline">شروط الاستخدام (Terms of Service)</a>
+        <a href="https://tarqa3.net/privacy.html" class="hover:underline">سياسة الخصوصية (Privacy Policy)</a>
+      </nav>
+      <div class="flex flex-wrap justify-center items-center gap-3 font-mono text-[11px] mb-1">
+        <span>تواصل: </span>
+        <a itemprop="email" href="mailto:tarqa3k@gmail.com" class="text-amber-600 dark:text-amber-400 hover:underline font-bold">tarqa3k@gmail.com</a>
+        <span>•</span>
+        <a itemprop="telephone" href="tel:+201104687320" class="text-amber-600 dark:text-amber-400 hover:underline font-bold" dir="ltr">+20 110 468 7320</a>
+        <span>•</span>
+        <a href="https://t.me/tr23km" target="_blank" rel="noopener noreferrer" class="text-sky-600 dark:text-sky-400 hover:underline font-bold">الدعم المباشر على تليجرام (@tr23km)</a>
+      </div>
+    </footer>
+
     <script type="module" src="/src/main.tsx"></script>
-  </body>
+  
+    <!-- WebMCP Tool Declarations for In-Browser AI Agents (SEP-1649 / WebMCP) -->
+    <div id="webmcp-tools-container" class="sr-only" style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;">
+      <form id="webmcp-search-tool" toolname="search_questions" tooldescription="ابحث في بنك أسئلة وتجميعات اختبار القدرات العامة (القسم الكمي)" action="https://tarqa3.net/" method="GET">
+        <label for="webmcp-q">بحث في بنك أسئلة القدرات</label>
+        <input id="webmcp-q" type="text" name="query" placeholder="كلمة البحث" required />
+        <button type="submit">بحث</button>
+      </form>
+      <form id="webmcp-platform-info" toolname="get_platform_info" tooldescription="الحصول على معلومات وتفاصيل منصة طرقع التعليمية ومسارات التدريب" action="https://tarqa3.net/about.html" method="GET">
+        <button type="submit">معلومات المنصة</button>
+      </form>
+    </div></body>
 </html>

@@ -32,12 +32,13 @@ import { isUserSubscribed, coursesStorage } from '../lib/subscriptionService';
 
 interface ClassroomViewProps {
   currentModule: CourseModule;
-  currentLesson: Lesson;
+  currentLesson?: Lesson | null;
   currentUser?: TarqaUser | null;
   onSelectLesson: (lesson: Lesson) => void;
   onCompleteLesson: (lessonId: string) => void;
   onStartQuiz?: (quizId: string) => void;
   onBackToRoadmap: () => void;
+  onOpenAuth?: () => void;
 }
 
 export const ClassroomView: React.FC<ClassroomViewProps> = ({
@@ -48,7 +49,45 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
   onCompleteLesson,
   onStartQuiz,
   onBackToRoadmap,
+  onOpenAuth,
 }) => {
+  // إلزام الزائر غير المسجل بتسجيل الدخول أولاً للوصول إلى المحاضرة
+  if (!currentUser) {
+    return (
+      <div className="min-h-[70vh] flex flex-col items-center justify-center p-6 text-center font-cairo">
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center text-3xl font-black mb-4">
+          🔒
+        </div>
+        <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white mb-2">
+          يرجى تسجيل حسابك أولاً
+        </h2>
+        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md mb-6 leading-relaxed">
+          للوصول إلى هذه المحاضرة ومحتوى دورة طرقع، يرجى تسجيل الدخول أو إنشاء حساب جديد أولاً.
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <button
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('tarqa_open_auth', { detail: 'signin' }));
+              }
+              onOpenAuth?.();
+              onBackToRoadmap();
+            }}
+            className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-black text-xs shadow-md hover:scale-105 transition cursor-pointer"
+          >
+            تسجيل الدخول / إنشاء حساب 🚀
+          </button>
+          <button
+            onClick={onBackToRoadmap}
+            className="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
+          >
+            الرجوع للمحاضرات والدورات ⬅️
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // حماية آمنة وشاشة بديلة في حال كان الدرس أو الباب غير محدد لمنع أي خطأ في واجهة React
   if (!currentLesson || !currentModule) {
     return (
@@ -180,7 +219,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
         v.playbackRate = playbackSpeed;
       } catch (e) {}
     });
-  }, [currentLesson.id, playbackSpeed]);
+  }, [currentLesson?.id, playbackSpeed]);
 
   // ملء وتصغير الشاشة لمنطقة مشغل الفيديو مع دعم كامل للأندرويد وiOS Safari والبديل المرئي CSS
   const togglePlayerFullscreen = () => {
@@ -315,6 +354,28 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
   const prevLesson = currentIndex > 0 ? lessonsList[currentIndex - 1] : null;
   const nextLesson = currentIndex >= 0 && currentIndex < lessonsList.length - 1 ? lessonsList[currentIndex + 1] : null;
 
+  if (!currentLesson || !currentLesson.id) {
+    return (
+      <div className="min-h-screen bg-transparent text-slate-900 dark:text-slate-100 flex flex-col font-cairo items-center justify-center p-6 text-center space-y-4">
+        <div className="w-16 h-16 rounded-3xl bg-amber-500/10 text-amber-500 flex items-center justify-center text-3xl mx-auto shadow-inner">
+          <ArrowRight className="w-8 h-8" />
+        </div>
+        <h3 className="text-xl font-black text-slate-900 dark:text-white">
+          لم يتم تحديد محاضرة للعرض حالياً 🎥
+        </h3>
+        <p className="text-xs text-slate-500 max-w-md mx-auto">
+          يمكنك العودة إلى صفحة الدورات واختيار المحاضرة التي ترغب في مشاهدتها ومتابعة تدريباتها.
+        </p>
+        <button
+          onClick={onBackToRoadmap}
+          className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shadow-lg shadow-amber-500/20 active:scale-95 cursor-pointer"
+        >
+          العودة لقائمة الدورات والمحاضرات
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-transparent text-slate-900 dark:text-slate-100 flex flex-col font-cairo">
       
@@ -338,9 +399,9 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
             <span className="text-slate-400 hidden md:inline-block">•</span>
             {(() => {
               const currentInstructors = coursesStorage.getInstructors();
-              const instructor = currentInstructors.find((i) => i.id === (currentLesson.teacherId || 'teacher_1'));
-              const isT2 = currentLesson.teacherId === 'teacher_2';
-              const name = instructor?.fullName || instructor?.name || currentLesson.teacherName || (isT2 ? 'مدرس 2' : 'مدرس 1');
+              const instructor = currentInstructors.find((i) => i.id === (currentLesson?.teacherId || 'teacher_1'));
+              const isT2 = currentLesson?.teacherId === 'teacher_2';
+              const name = instructor?.fullName || instructor?.name || currentLesson?.teacherName || (isT2 ? 'مدرس 2' : 'مدرس 1');
               const icon = instructor?.avatarIcon || (isT2 ? '⚡' : '👨‍🏫');
               return (
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
@@ -353,7 +414,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
               );
             })()}
             <span className="font-bold text-slate-900 dark:text-white truncate max-w-[110px] xs:max-w-[190px] sm:max-w-md text-[11px] sm:text-xs">
-              {currentLesson.title}
+              {currentLesson?.title}
             </span>
           </div>
         </div>
@@ -374,21 +435,54 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
         </div>
       </header>
 
-      {/* المحتوى الرئيسي: مشغل الفيديو + القائمة الجانبية */}
-      <div className="flex-1 max-w-7xl w-full mx-auto p-2 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-6">
+      {/* المحتوى الرئيسي: مشغل الفيديو + القائمة الجانبية (متجاوب بشكل مثالي للتابلت والكمبيوتر) */}
+      <div className="flex-1 max-w-7xl w-full mx-auto p-2 sm:p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
         
-        {/* القسم الرئيسي (مشغل الفيديو والمذكرات): 8 أعمدة */}
+        {/* القسم الرئيسي (مشغل الفيديو والمذكرات): 8 أعمدة في الشاشات الواسعة وعرض كامل في التابلت */}
         <div className="lg:col-span-8 flex flex-col gap-3 sm:gap-6">
           
+          {/* فحص صلاحية الوصول للمحاضرة: التحقق من الاشتراك أو المعاينة المجانية */}
+          {(() => {
+            const isSubscribed = isUserSubscribed(currentUser);
+            const hasAccess = Boolean(currentLesson?.isFreePreview || isSubscribed);
+
+            if (!hasAccess) {
+              return (
+                <div className="aspect-video w-full rounded-2xl sm:rounded-3xl border border-amber-500/30 bg-slate-900/90 flex flex-col items-center justify-center p-6 text-center text-white shadow-2xl">
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-500 mb-4 shadow-lg shadow-amber-500/20">
+                    <Lock className="w-7 h-7 sm:w-8 sm:h-8" />
+                  </div>
+                  <h3 className="text-base sm:text-xl font-black mb-2 text-white">هذه المحاضرة مخصصة للمشتركين فقط 🔒</h3>
+                  <p className="text-xs sm:text-sm text-slate-300 max-w-md mb-5 leading-relaxed">
+                    اشترك الآن في منصة طرقع للوصول الفوري لكافة شروحات التأسيس وتجميعات قياس ومذكرات التدريب التفاعلية.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onBackToRoadmap) onBackToRoadmap();
+                      else window.location.hash = '#courses';
+                    }}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-amber-500/25 hover:scale-[1.02] transition cursor-pointer"
+                  >
+                    عرض باقات الاشتراك المتاحة ✨
+                  </button>
+                </div>
+              );
+            }
+
+            return null;
+          })()}
+
           {/* مشغل الفيديو: يدعم يوتيوب، فيميو، والمشغل الآمن المشفر للروابط المباشرة مع وضع ملء الشاشة الشامل */}
           <div
             ref={playerContainerRef}
             className={`transition-all duration-200 ${
+              Boolean(currentLesson?.isFreePreview || isUserSubscribed(currentUser)) ? '' : 'hidden '
+            }${
               isPlayerFullscreen
                 ? 'fixed inset-0 z-[99999] w-screen h-screen bg-black flex flex-col justify-center items-center p-0 m-0'
                 : 'relative w-full'
-            }`}
-          >
+            }`}>
             {/* زر عائم لتصغير الشاشة عند تفعيل ملء الشاشة */}
             {isPlayerFullscreen && (
               <button
@@ -401,7 +495,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
               </button>
             )}
 
-            {isYouTube(currentLesson.videoUrl, currentLesson.videoProvider) ? (
+            {isYouTube(currentLesson?.videoUrl, currentLesson?.videoProvider) ? (
               <div className={`relative aspect-video overflow-hidden bg-black shadow-2xl ${
                 isPlayerFullscreen
                   ? 'w-full h-full max-h-screen rounded-none border-0'
@@ -409,8 +503,8 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
               }`}>
                 <iframe
                   ref={youtubeIframeRef}
-                  src={getYouTubeEmbedUrl(currentLesson.videoUrl)}
-                  title={currentLesson.title}
+                  src={getYouTubeEmbedUrl(currentLesson?.videoUrl)}
+                  title={currentLesson?.title}
                   className="w-full h-full border-0"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
                   allowFullScreen
@@ -433,7 +527,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                   <span>#{currentUser?.id?.slice(0, 10) || 'GUEST'}</span>
                 </div>
               </div>
-            ) : isVimeo(currentLesson.videoUrl, currentLesson.videoProvider) ? (
+            ) : isVimeo(currentLesson?.videoUrl, currentLesson?.videoProvider) ? (
               <div className={`relative aspect-video overflow-hidden bg-black shadow-2xl ${
                 isPlayerFullscreen
                   ? 'w-full h-full max-h-screen rounded-none border-0'
@@ -441,8 +535,8 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
               }`}>
                 <iframe
                   ref={vimeoIframeRef}
-                  src={getVimeoEmbedUrl(currentLesson.videoUrl)}
-                  title={currentLesson.title}
+                  src={getVimeoEmbedUrl(currentLesson?.videoUrl)}
+                  title={currentLesson?.title}
                   className="w-full h-full border-0"
                   allow="autoplay; fullscreen; picture-in-picture"
                   allowFullScreen
@@ -454,8 +548,8 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
               </div>
             ) : (
               <SecureVideoPlayer
-                src={currentLesson.videoUrl}
-                title={currentLesson.title}
+                src={currentLesson?.videoUrl}
+                title={currentLesson?.title}
                 currentUser={currentUser}
                 onEnded={() => onCompleteLesson(currentLesson.id)}
                 playbackSpeed={playbackSpeed}
@@ -556,7 +650,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                 }`}
               >
                 <FileText className="w-3.5 h-3.5 shrink-0" />
-                <span>المذكرات ({currentLesson.attachments?.length || 0})</span>
+                <span>المذكرات ({currentLesson?.attachments?.length || 0})</span>
               </button>
 
               <button
@@ -595,9 +689,9 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                   </h4>
                 </div>
 
-                {currentLesson.attachments && currentLesson.attachments.length > 0 ? (
+                {currentLesson?.attachments && currentLesson?.attachments.length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {currentLesson.attachments.map((att) => (
+                    {currentLesson?.attachments.map((att) => (
                       <div
                         key={att.id}
                         className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-amber-500/40 transition group"
@@ -618,7 +712,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
 
                         <div className="flex items-center gap-1.5 shrink-0">
                           {(() => {
-                            const isAttFree = Boolean((att as any).isFreePreview || currentLesson.isFreePreview);
+                            const isAttFree = Boolean((att as any).isFreePreview || currentLesson?.isFreePreview);
                             const hasAccess = isAttFree || isUserSubscribed(currentUser);
 
                             return (
@@ -628,10 +722,14 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                                     <button
                                       type="button"
                                       onClick={() => {
+                                        if (!att.fileUrl || att.fileUrl.trim() === '' || att.fileUrl.includes('tarqa.app/files/')) {
+                                          alert('⚠️ لم يتم رفع ملف أصلي لهذا المرفق بعد من قبل المدرس.');
+                                          return;
+                                        }
                                         setPreviewFile({
                                           id: att.id,
                                           title: att.title,
-                                          description: `ملف ومذكرة شرح مرفقة بدرس: ${currentLesson.title}`,
+                                          description: `ملف ومذكرة شرح مرفقة بدرس: ${currentLesson?.title}`,
                                           fileUrl: att.fileUrl,
                                           fileSize: att.fileSize,
                                           pagesCount: 'ملف الدرس',
@@ -650,6 +748,10 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                                     <button
                                       type="button"
                                       onClick={async () => {
+                                        if (!att.fileUrl || att.fileUrl.trim() === '' || att.fileUrl.includes('tarqa.app/files/')) {
+                                          alert('⚠️ لم يتم رفع ملف أصلي لهذا المرفق بعد من قبل المدرس.');
+                                          return;
+                                        }
                                         downloadTrackingService.trackDownload(
                                           {
                                             id: att.id,
@@ -666,7 +768,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                                           setPreviewFile({
                                             id: att.id,
                                             title: att.title,
-                                            description: `ملف ومذكرة شرح مرفقة بدرس: ${currentLesson.title}`,
+                                            description: `ملف ومذكرة شرح مرفقة بدرس: ${currentLesson?.title}`,
                                             fileUrl: att.fileUrl,
                                             fileSize: att.fileSize,
                                             pagesCount: 'ملف الدرس',
@@ -681,7 +783,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                                           {
                                             title: att.title,
                                             fileUrl: att.fileUrl,
-                                            description: `ملف ومذكرة شرح مرفقة بدرس: ${currentLesson.title}`,
+                                            description: `ملف ومذكرة شرح مرفقة بدرس: ${currentLesson?.title}`,
                                             pagesCount: 'ملف الدرس',
                                           },
                                           currentUser
@@ -728,28 +830,24 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
               </div>
             )}
 
-            {/* محتوى تبويب الكويز */}
+            {/* محتوى تبويب الكويز - معطل ومغلق مؤقتاً للتطوير */}
             {activeTab === 'quiz' && (
               <div className="p-6 rounded-2xl bg-gradient-to-br from-amber-500/10 to-transparent border border-amber-500/20 text-center space-y-4">
-                <div className="w-12 h-12 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center mx-auto text-xl font-black">
-                  🎯
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-500 flex items-center justify-center mx-auto text-2xl font-black">
+                  ⏳
                 </div>
                 <div>
                   <h4 className="text-base font-black text-slate-900 dark:text-white">
-                    جاهز لتطبيق ما تعلمته في المحاضرة؟
+                    كويزات المحاضرات التطبيقية
                   </h4>
                   <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto mt-1">
-                    كويز تطبيقي مخصص لأفكار هذا الدرس للتأكد من فهم الشرح قبل المتابعة.
+                    قسم الكويزات التطبيقية ومحاكي قياس يخضع للتطوير والتجهيز الشامل وسينطلق قريباً جداً ⏳
                   </p>
                 </div>
 
-                <button
-                  onClick={() => onStartQuiz && onStartQuiz(currentLesson.quizId || 'f1111111-1111-1111-1111-111111111111')}
-                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm transition shadow-lg shadow-amber-500/20 active:scale-95"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  <span>ابدأ كويز المحاضرة لتثبيت المعلومة</span>
-                </button>
+                <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-black text-xs">
+                  <span>قريباً جداً ⏳</span>
+                </div>
               </div>
             )}
 
@@ -770,7 +868,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
           </div>
         </div>
 
-        {/* القسم الجانبي (فهرس دروس الباب التأسيسي): 4 أعمدة */}
+        {/* القسم الجانبي (فهرس دروس الباب التأسيسي): 4 أعمدة في الشاشات الواسعة وعرض كامل في التابلت */}
         <div className="lg:col-span-4 flex flex-col gap-4">
           <div className="tarqa-glass-card backdrop-blur-2xl rounded-3xl p-5 shadow-[0_8px_30px_rgba(14,165,233,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.12)] sticky top-20">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
@@ -791,14 +889,25 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
             <div className="space-y-2">
               {currentModule.lessons.map((lesson, idx) => {
                 const isActive = lesson.id === currentLesson.id;
+                const isSubscribed = isUserSubscribed(currentUser);
+                const hasLessonAccess = Boolean(lesson.isFreePreview || isSubscribed);
+
                 return (
                   <button
                     key={lesson.id}
-                    onClick={() => onSelectLesson(lesson)}
-                    className={`w-full flex items-start gap-3 p-3 rounded-2xl text-right transition group ${
+                    onClick={() => {
+                      if (hasLessonAccess) {
+                        onSelectLesson(lesson);
+                      } else {
+                        alert('هذه المحاضرة مخصصة للمشتركين فقط 🔒. يمكنك مشاهدة المحاضرات المميزة بـ (معاينة مجانية) 🎁');
+                      }
+                    }}
+                    className={`w-full flex items-start gap-3 p-3 rounded-2xl text-right transition group cursor-pointer ${
                       isActive
                         ? 'bg-amber-500/15 border border-amber-500/30 text-amber-500 shadow-sm'
-                        : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 border border-transparent text-slate-600 dark:text-slate-300'
+                        : hasLessonAccess
+                        ? 'hover:bg-slate-50 dark:hover:bg-slate-800/60 border border-transparent text-slate-600 dark:text-slate-300'
+                        : 'opacity-70 hover:opacity-100 hover:bg-slate-50/50 dark:hover:bg-slate-800/40 border border-transparent text-slate-500'
                     }`}
                   >
                     <div
@@ -807,10 +916,18 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                           ? 'bg-amber-500 text-slate-950 font-black'
                           : lesson.isCompleted
                           ? 'bg-emerald-500/20 text-emerald-500 border border-emerald-500/30'
+                          : hasLessonAccess
+                          ? 'bg-slate-100 dark:bg-slate-800 text-slate-400'
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
                       }`}
                     >
-                      {lesson.isCompleted ? <CheckCircle2 className="w-4 h-4" /> : idx + 1}
+                      {lesson.isCompleted ? (
+                        <CheckCircle2 className="w-4 h-4" />
+                      ) : !hasLessonAccess ? (
+                        <Lock className="w-3.5 h-3.5 text-amber-500" />
+                      ) : (
+                        idx + 1
+                      )}
                     </div>
 
                     <div className="min-w-0 flex-1">
@@ -822,11 +939,16 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                         >
                           {lesson.title}
                         </h5>
-                        {lesson.isFreePreview && (
-                          <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-500 text-[9px] font-bold shrink-0">
-                            مجاني
+                        {lesson.isFreePreview ? (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-black shrink-0">
+                            معاينة مجانية 🎁
                           </span>
-                        )}
+                        ) : !hasLessonAccess ? (
+                          <span className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-400 text-[9px] font-bold shrink-0 flex items-center gap-1">
+                            <Lock className="w-2.5 h-2.5 text-amber-500" />
+                            <span>مغلق</span>
+                          </span>
+                        ) : null}
                       </div>
 
                       <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1">

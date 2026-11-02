@@ -66,7 +66,7 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
     currentUser?.phone_number ||
     (currentUser?.id ? `ID-${currentUser.id.slice(0, 8)}` : 'حساب مسجل');
 
-  const hasAccess = Boolean(file?.isFreePreview || isSubscribed);
+  const hasAccess = Boolean(currentUser && (file?.isFreePreview || isSubscribed));
 
   // توليد وعرض الـ PDF المشفر باسم وبيانات الطالب عند فتح النافذة فقط لمن يملك حق الوصول
   useEffect(() => {
@@ -83,6 +83,13 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
       if (!hasAccess) {
         setIsLoadingPdf(false);
         setPdfLoadError(null);
+        return;
+      }
+
+      // التحقق الصارم: إذا لم يقم المدرس برفع ملف أصلي بعد، لا نولد أي ملف وهمي ونعرض تنبيهاً صريحاً
+      if (!file.fileUrl || file.fileUrl.trim() === '' || file.fileUrl.includes('tarqa.app/files/')) {
+        setIsLoadingPdf(false);
+        setPdfLoadError('لم يتم رفع ملف أصلي لهذه المذكرة بعد من قبل المدرس أو الإدارة.');
         return;
       }
 
@@ -151,7 +158,18 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
       return;
     }
 
-    if (!pdfBlobUrl) return;
+    if (!pdfBlobUrl) {
+      if (!file.fileUrl || file.fileUrl.includes('tarqa.app/files/')) {
+        setDownloadMessage({ text: '⚠️ لم يتم رفع هذا الملف بعد من قبل المدرس أو الإدارة.', isComplete: false });
+        setTimeout(() => setDownloadMessage(null), 4000);
+        return;
+      }
+      if (file.fileUrl.startsWith('http://') || file.fileUrl.startsWith('https://') || file.fileUrl.startsWith('/')) {
+        window.open(file.fileUrl, '_blank');
+        return;
+      }
+      return;
+    }
     setIsDownloading(true);
     setDownloadMessage(null);
     setShowFallbackBanner(false);
@@ -467,14 +485,26 @@ export const PdfPreviewModal: React.FC<PdfPreviewModalProps> = ({
                 </div>
               ) : pdfLoadError ? (
                 <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-3 bg-slate-900 text-white">
-                  <AlertTriangle className="w-10 h-10 text-amber-500" />
-                  <p className="text-sm font-bold text-slate-200">{pdfLoadError}</p>
-                  <button
-                    onClick={handleDownload}
-                    className="px-4 py-2 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs"
-                  >
-                    تحميل الملف المشفر مباشرة 📥
-                  </button>
+                  <div className="w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                    <FileText className="w-7 h-7" />
+                  </div>
+                  <h4 className="text-base font-black text-white">الملف غير متوفر حالياً</h4>
+                  <p className="text-xs sm:text-sm text-slate-300 max-w-md">{pdfLoadError}</p>
+                  {file.fileUrl && !file.fileUrl.includes('tarqa.app/files/') ? (
+                    <a
+                      href={file.fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs inline-flex items-center gap-2 transition cursor-pointer"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      <span>فتح الرابط المرفوع مباشرة ↗</span>
+                    </a>
+                  ) : (
+                    <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 max-w-sm">
+                      سيظهر هذا الملف للطلاب هنا تلقائياً فور قيام المدرس برفعه على المنصة.
+                    </div>
+                  )}
                 </div>
               ) : pdfBlobUrl ? (
                 <div className="w-full h-full relative flex flex-col">

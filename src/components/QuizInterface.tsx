@@ -46,6 +46,38 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
   onFinish,
   onExit,
 }) => {
+  // محاكي قياس الفعلي مغلق وموقوف مؤقتاً للتطوير بكل الطرق
+  // محاكي الاختبارات والتدريب مغلق وموقوف مؤقتاً للتطوير بكل الطرق (قريباً ⏳)
+  return (
+    <main className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center select-none font-cairo" dir="rtl">
+      <div className="max-w-md w-full p-8 rounded-3xl bg-slate-900/90 border border-amber-500/30 shadow-[0_0_50px_rgba(245,158,11,0.2)] backdrop-blur-xl space-y-6 animate-in zoom-in-95 duration-200">
+        <div className="w-20 h-20 mx-auto rounded-3xl bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 flex items-center justify-center text-4xl shadow-xl shadow-amber-500/25">
+          ⏳
+        </div>
+        
+        <div className="space-y-2">
+          <span className="text-xs font-black px-3 py-1 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 inline-block">
+            قريباً جداً ⏳
+          </span>
+          <h2 className="text-2xl sm:text-3xl font-black text-white">
+            محاكي الاختبارات والتدريب
+          </h2>
+        </div>
+
+        <p className="text-sm text-slate-300 leading-relaxed">
+          محاكي الاختبارات والتدريب مغلق وموقوف مؤقتاً للتحديث والتطوير الشامل ليكون مطابقاً تماماً لنظام مركز قياس (Qiyas) الرسمي الجديد بتقسيم الأقسام والمؤقت الدقيق. ترقبوا الإطلاق قريباً بإذن الله!
+        </p>
+
+        <button
+          onClick={onExit}
+          className="w-full py-3.5 px-6 rounded-2xl font-black text-sm bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 shadow-lg shadow-amber-500/25 hover:shadow-glow transition-all transform hover:-translate-y-0.5 active:scale-98 cursor-pointer"
+        >
+          الرجوع إلى الصفحة الرئيسية 🏠
+        </button>
+      </div>
+    </main>
+  );
+
   const total = questions.length;
   const [currentIndex, setCurrentIndex] = useState(0);
   const [userAnswers, setUserAnswers] = useState<Record<string, OptionId>>({});
@@ -88,7 +120,7 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
       if (currentQuestion) {
         setQuestionTimeSpent((prev) => ({
           ...prev,
-          [currentQuestion.id]: (prev[currentQuestion.id] || 0) + 1,
+          [currentQuestion?.id]: (prev[currentQuestion?.id] || 0) + 1,
         }));
       }
     }, 1000);
@@ -178,7 +210,7 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
   const handleSelectOption = (optionId: OptionId) => {
     setUserAnswers((prev) => ({
       ...prev,
-      [currentQuestion.id]: optionId,
+      [currentQuestion?.id]: optionId,
     }));
   };
 
@@ -186,7 +218,7 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
   const handleClearAnswer = () => {
     setUserAnswers((prev) => {
       const next = { ...prev };
-      delete next[currentQuestion.id];
+      delete next[currentQuestion?.id];
       return next;
     });
   };
@@ -195,7 +227,7 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
   const handleToggleFlag = () => {
     setFlaggedQuestions((prev) => ({
       ...prev,
-      [currentQuestion.id]: !prev[currentQuestion.id],
+      [currentQuestion?.id]: !prev[currentQuestion?.id],
     }));
   };
 
@@ -354,6 +386,30 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
   const isCurrentFlagged = flaggedQuestions[currentQuestion?.id];
   const currentAnswer = userAnswers[currentQuestion?.id];
 
+  if (!currentQuestion) {
+    return (
+      <div className="min-h-screen bg-transparent text-slate-900 dark:text-slate-100 flex flex-col items-center justify-center p-4">
+        <div className="tarqa-glass-card backdrop-blur-2xl rounded-3xl p-8 max-w-md w-full text-center space-y-4 border border-amber-500/20 shadow-2xl">
+          <div className="w-16 h-16 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto text-3xl font-bold">
+            ⏳
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white">لا توجد أسئلة متاحة حالياً</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            لم يتم العثور على أسئلة في هذا القسم، أو يجري تحميل بنك الأسئلة المعتمد.
+          </p>
+          <div className="pt-2">
+            <button
+              onClick={onExit}
+              className="w-full py-3 px-6 rounded-2xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold transition shadow-lg shadow-amber-500/25 cursor-pointer"
+            >
+              العودة للرئيسية
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`min-h-screen bg-transparent text-slate-900 dark:text-slate-100 flex flex-col transition-colors duration-300 ${
       isFullscreen ? 'fixed inset-0 z-[99999] overflow-y-auto w-screen h-screen' : ''
@@ -480,14 +536,14 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
                   <span className="bg-amber-500 text-slate-950 text-xs font-black px-2.5 py-1 rounded-lg shadow-sm">
                     سؤال {currentIndex + 1}
                   </span>
-                  {currentQuestion.categoryTitle && (
+                  {currentQuestion?.categoryTitle && (
                     <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-sky-50 dark:bg-slate-800/80 text-sky-800 dark:text-slate-300 border border-sky-200/60 dark:border-slate-700/60">
-                      {currentQuestion.categoryTitle}
+                      {currentQuestion?.categoryTitle}
                     </span>
                   )}
-                  {currentQuestion.topicTitle && (
+                  {currentQuestion?.topicTitle && (
                     <span className="text-xs text-slate-400 dark:text-slate-500 hidden sm:inline">
-                      • {currentQuestion.topicTitle}
+                      • {currentQuestion?.topicTitle}
                     </span>
                   )}
                 </div>
@@ -509,20 +565,20 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
 
               {/* نص السؤال ومعادلات KaTeX */}
               <div className="text-lg sm:text-xl font-medium text-slate-900 dark:text-slate-100 leading-relaxed min-h-[70px]">
-                <MathRenderer content={currentQuestion.questionText} />
+                <MathRenderer content={currentQuestion?.questionText} />
               </div>
 
               {/* رسم توضيحي هندسي SVG إن وجد */}
-              {currentQuestion.svgDiagram && (
+              {currentQuestion?.svgDiagram && (
                 <div 
                   className="my-4 p-4 rounded-2xl bg-white/70 dark:bg-slate-900/60 border border-sky-100 dark:border-slate-800 flex items-center justify-center"
-                  dangerouslySetInnerHTML={{ __html: sanitizeSvg(currentQuestion.svgDiagram) }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeSvg(currentQuestion?.svgDiagram) }}
                 />
               )}
 
               {/* خيارات الإجابة الأربعة */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6">
-                {currentQuestion.options.map((option, optIdx) => {
+                {currentQuestion?.options.map((option, optIdx) => {
                   const isSelected = currentAnswer === option.id;
                   const arabicLetter = ARABIC_OPTION_LABELS[option.id];
 
@@ -580,7 +636,7 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
                         (الإجابة الصحيحة هي: {ARABIC_OPTION_LABELS[currentQuestion.correctOption]})
                       </span>
                     </div>
-                    <MathRenderer content={currentQuestion.explanation} />
+                    <MathRenderer content={currentQuestion?.explanation} />
                   </div>
                 )}
               </div>
@@ -635,7 +691,7 @@ export const QuizInterface: React.FC<QuizInterfaceProps> = ({
           {/* نصائح واختصارات سريعة */}
           <div className="hidden sm:flex items-center justify-between text-xs text-slate-400 dark:text-slate-500 px-2">
             <span>💡 اختصارات لوحة المفاتيح: الأرقام (1-4) للاختيارات • السهمين (← →) للتنقل • (F) للمراجعة</span>
-            <span>المصدر: {currentQuestion.source || 'تجميعات قدرات'}</span>
+            <span>المصدر: {currentQuestion?.source || 'تجميعات قدرات'}</span>
           </div>
 
         </div>

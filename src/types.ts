@@ -67,18 +67,18 @@ export interface QuizResult {
 
 export type VideoProvider = 'uploaded_video' | 'direct_url' | 'youtube' | 'vimeo' | 'bunny';
 export type AttachmentType = 'pdf' | 'summary' | 'worksheet';
-export type TeacherId = 'teacher_1' | 'teacher_2';
+export type TeacherId = string;
 
 export interface InstructorInfo {
   id: TeacherId;
-  name: string; // e.g. "مدرس 1"
-  fullName: string; // e.g. "مدرس 1"
+  name: string; // e.g. "مدرس 1" أو "أ. محمد عبد الله"
+  fullName: string;
   title: string;
   tagline: string;
   badge?: string;
   bio?: string;
   avatarIcon?: string;
-  badgeColor: string; // e.g. 'amber' | 'emerald' | 'cyan'
+  badgeColor: string; // e.g. 'amber' | 'emerald' | 'cyan' | 'purple' | 'blue' | 'rose'
 }
 
 export interface LessonAttachment {
@@ -115,6 +115,7 @@ export type CourseEnrollmentStatus = 'active' | 'paused' | 'upcoming';
 
 export interface CourseModule {
   id: string;
+  courseId?: string;               // معرف الدورة التابع لها الباب (الافتراضي: 'course-foundation')
   title: string;
   description: string;
   orderIndex: number;
@@ -167,6 +168,8 @@ export interface UserWithRole {
   bannedAt?: string;
   isSubscribed?: boolean;
   subscriptionExpiresAt?: string;
+  // رصيد النقاط الحقيقي للطالب في قاعدة البيانات
+  points?: number;
   // نظام تتبع تحميل الملفات والمذكرات
   hasDownloadedFiles?: boolean;
   downloadedFilesCount?: number;
@@ -200,6 +203,7 @@ export interface RoleChangeLog {
 
 export interface CourseFileItem {
   id: string;
+  courseId?: string; // معرف الدورة التابع لها الملف
   title: string;
   description: string;
   fileUrl: string;
@@ -210,4 +214,38 @@ export interface CourseFileItem {
   downloadCount?: number;
   uploadedAt?: string;
 }
+
+// ==============================================================================
+// نظام إدارة الدورات المتعددة وبنرات الإعلانات (Multiple Courses & Ad Banners)
+// ==============================================================================
+
+export interface CourseItem {
+  id: string;
+  title: string;
+  description: string;
+  coverImage?: string;
+  badge?: string;
+  badgeColor?: string; // 'amber' | 'emerald' | 'cyan' | 'purple' | 'blue' | 'rose'
+  priceSar?: number;
+  priceEg?: number;
+  status?: CourseEnrollmentStatus; // 'active' | 'paused' | 'upcoming'
+  availableDate?: string;
+  customStatusText?: string;
+  orderIndex: number;
+  isDefault?: boolean;
+  createdAt?: string;
+}
+
+export interface AdBannerItem {
+  id: string;
+  imageUrl: string;
+  title?: string;
+  subtitle?: string;
+  linkUrl?: string;
+  targetCourseId?: string;
+  orderIndex: number;
+  isActive: boolean;
+  createdAt?: string;
+}
+
 

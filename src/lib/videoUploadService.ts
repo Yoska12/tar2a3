@@ -128,9 +128,8 @@ export const resolveVideoDetails = async (url: string): Promise<ResolvedVideoInf
       resolvedUrlCache.set(key, objUrl);
       return { url: objUrl, isLocalMissing: false };
     }
-    // احتياطي سريع وموثوق يعمل 100% على كافة الهواتف
     return {
-      url: 'https://vjs.zencdn.net/v/oceans.mp4',
+      url: '',
       isLocalMissing: true,
     };
   }

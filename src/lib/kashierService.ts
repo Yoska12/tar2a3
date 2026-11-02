@@ -43,15 +43,17 @@ const TRANSACTIONS_STORAGE_KEY = 'tarqa_kashier_transactions';
 
 export const defaultKashierSettings: KashierSettings = {
   enabled: true,
-  mode: 'test',
+  mode: 'live',
   merchantId: (import.meta as any).env?.VITE_KASHIER_MERCHANT_ID || 'MID-50598-297',
-  apiKey: (import.meta as any).env?.VITE_KASHIER_API_KEY || '980f3d9b-9782-40a0-ad47-f49ae98fdbb7',
-  secretKey: (import.meta as any).env?.VITE_KASHIER_SECRET_KEY || '6ec661c17fe95a9faae76df553f6ecb6$c02d309b502aa7a0f1eb27dbdb37f61f58e17df14f8a04b43ffa526a9e51b2f9281357acae5ca6412eb4ba540b919776',
+  apiKey: (import.meta as any).env?.VITE_KASHIER_IFRAME_KEY || (import.meta as any).env?.VITE_KASHIER_API_KEY || '91bdc6e4-423d-4bcb-91ef-a27485a465d1',
+  // ⚠️ المفتاح السري يبقى في السيرفر فقط – لا نستخدم VITE_KASHIER_SECRET_KEY هنا أبداً
+  // هذا الـ secretKey في الإعدادات هو للواجهة الإدارية فقط، ويُرسل للسيرفر عند الحاجة
+  secretKey: '',
   currency: 'EGP',
-  amount: 1050.00, // 1050 جنيه مصري أو 75 ريال سعودي
+  amount: 1100, // 1100 جنيه مصري السعر الرسمي للباقة السنوية
   brandColor: '#f59e0b', // اللون البرتقالي المميز لمنصة طرقع
   allowedMethods: 'card,wallet',
-  simulateMode: false, // وضع البوابة المباشرة
+  simulateMode: false, // وضع البوابة الحية المباشرة
 };
 
 /**
@@ -62,13 +64,17 @@ export const getKashierSettings = (): KashierSettings => {
     const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (!raw) return { ...defaultKashierSettings };
     const parsed = JSON.parse(raw);
-    // تصحيح تلقائي إذا كانت العملة EGP والقيمة السابقة 75 أو 1020
-    if (parsed.currency === 'EGP' && (parsed.amount === 75 || parsed.amount === 1020)) {
-      parsed.amount = 1050;
+    const currency = parsed.currency === 'SAR' ? 'SAR' : 'EGP';
+    // تصحيح أي سعر تجريبي قديم (1 جنيه) إلى السعر الرسمي 1100 جنيه أو 75 ريال
+    let amount = Number(parsed.amount);
+    if (!amount || amount <= 10) {
+      amount = currency === 'SAR' ? 75 : 1100;
     }
     return { 
       ...defaultKashierSettings, 
       ...parsed, 
+      currency,
+      amount,
       merchantId: (parsed.merchantId || defaultKashierSettings.merchantId).trim(),
       apiKey: (parsed.apiKey || defaultKashierSettings.apiKey).trim(),
       secretKey: (parsed.secretKey || defaultKashierSettings.secretKey).trim()
@@ -167,21 +173,20 @@ export const createKashierPaymentSession = async (
   const settings = getKashierSettings();
   const currency = options?.currency ?? settings.currency;
   
-  // تحديد السعر الدقيق بناء على العملة: 1050 جنيه مصري أو 75 ريال سعودي
+  // تحديد السعر الدقيق بناء على العملة: 1100 جنيه مصري أو 75 ريال سعودي
   let amount = options?.amount;
   if (amount === undefined) {
     if (currency === 'SAR') {
       amount = settings.currency === 'SAR' ? settings.amount : 75;
     } else {
-      amount = settings.currency === 'EGP' ? settings.amount : 1050;
+      amount = settings.currency === 'EGP' ? settings.amount : 1100;
     }
   }
 
   const description = options?.description ?? 'اشتراك باقة طرقع السنوية الشاملة للقدرات';
 
   // توليد رقم طلب فريد وفق اشتراطات كاشير
-  const cleanId = user?.id ? user.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) : 'guest';
-  const orderId = `tarqa_${cleanId}_${Date.now()}`;
+  const orderId = `TARQA3_${Date.now()}`;
   const originUrl = typeof window !== 'undefined' && window.location.origin.startsWith('https://')
     ? window.location.origin
     : 'https://tarqa3.net';
@@ -218,7 +223,7 @@ export const createKashierPaymentSession = async (
     retrieveSavedCard: true,
     interactionSource: 'ECOMMERCE',
     enable3DS: true,
-    serverWebhook: `${window.location.origin}/api/kashier-webhook`,
+    serverWebhook: `${window.location.origin}/api/webhooks/kashier`,
     notes: 'الاشتراك السنوي - منصة طرقع',
   };
 

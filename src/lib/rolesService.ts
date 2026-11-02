@@ -61,6 +61,9 @@ export const rolesService = {
 
   // جلب كافة المستخدمين والأعضاء المسجلين مع تخزين مؤقت فائق السرعة
   getUsers: async (forceRefresh: boolean = false): Promise<UserWithRole[]> => {
+    if (forceRefresh) {
+      dbCache.invalidate('db_users_with_roles');
+    }
     return dbCache.getOrFetch(
       'db_users_with_roles',
       async () => {
@@ -132,6 +135,7 @@ export const rolesService = {
               bannedAt: d.banned_at || undefined,
               isSubscribed: Boolean(d.is_subscribed),
               subscriptionExpiresAt: d.subscription_expires_at || undefined,
+              points: typeof d.points === 'number' ? d.points : (d.points ? parseInt(d.points, 10) || 0 : 0),
               hasDownloadedFiles: Boolean(d.has_downloaded_files || (d.downloaded_files_count && d.downloaded_files_count > 0)),
               downloadedFilesCount: d.downloaded_files_count || (d.has_downloaded_files ? 1 : 0),
               lastDownloadedAt: d.last_downloaded_at || undefined,
@@ -317,46 +321,196 @@ export const rolesService = {
           (u.telegramId ? localSubs[String(u.telegramId)] : null);
 
         if (sub) {
-          if (sub.active === true || sub.isActive === true) {
-            u.isSubscribed = true;
-            u.subscriptionExpiresAt = sub.expiresAt || sub.expiresDate || u.subscriptionExpiresAt;
-          } else if (sub.active === false || sub.isActive === false) {
+          if (sub.active === true || sub.isActive === true || sub.status === 'active') {
+            const exp = sub.expiresAt || sub.expiresDate;
+            const isNotExpired = !exp || new Date(exp).getTime() > Date.now();
+            if (isNotExpired) {
+              u.isSubscribed = true;
+              u.subscriptionExpiresAt = exp || u.subscriptionExpiresAt;
+            } else {
+              u.isSubscribed = false;
+            }
+          } else if (sub.active === false || sub.isActive === false || sub.status === 'cancelled') {
             // إلغاء صريح للاشتراك يلغي أي حالة سابقة في السيرفر أو المتصفح
             u.isSubscribed = false;
             u.subscriptionExpiresAt = undefined;
           }
         } else {
-          // إذا لم يوجد سجل اشتراك في tarqa_subscriptions، نفحص ما إذا كان هناك تسجيل صريح في localUsers أو في u.is_subscribed
-          const fromRoles = localUsers.find(lu => lu.id === u.id || (lu.email && lu.email.trim().toLowerCase() === em));
-          if (fromRoles?.isSubscribed === false) {
-            u.isSubscribed = false;
-            u.subscriptionExpiresAt = undefined;
-          } else if (fromRoles?.isSubscribed === true) {
+          // فحص الحالة المعتمدة من قاعدة البيانات أولاً لمنع مسح الاشتراكات الحقيقية
+          const dbIsSub = Boolean((u as any).is_subscribed || u.isSubscribed);
+          const dbExp = (u as any).subscription_expires_at || u.subscriptionExpiresAt;
+          const dbNotExp = !dbExp || new Date(dbExp).getTime() > Date.now();
+
+          if (dbIsSub && dbNotExp) {
             u.isSubscribed = true;
-            u.subscriptionExpiresAt = fromRoles.subscriptionExpiresAt || u.subscriptionExpiresAt;
-          } else if ((u as any).is_subscribed === true || u.isSubscribed === true) {
-            u.isSubscribed = true;
-            u.subscriptionExpiresAt = (u as any).subscription_expires_at || u.subscriptionExpiresAt;
+            u.subscriptionExpiresAt = dbExp || u.subscriptionExpiresAt;
+          } else {
+            const fromRoles = localUsers.find(lu => lu.id === u.id || (lu.email && lu.email.trim().toLowerCase() === em));
+            if (fromRoles?.isSubscribed === true) {
+              const exp = fromRoles.subscriptionExpiresAt;
+              const isNotExpired = !exp || new Date(exp).getTime() > Date.now();
+              if (isNotExpired) {
+                u.isSubscribed = true;
+                u.subscriptionExpiresAt = exp || u.subscriptionExpiresAt;
+              } else {
+                u.isSubscribed = false;
+                u.subscriptionExpiresAt = undefined;
+              }
+            } else {
+              u.isSubscribed = false;
+              u.subscriptionExpiresAt = undefined;
+            }
           }
         }
       }
 
-      // دمج بيانات تحميلات الملفات سحابياً ومحلياً
+      // دمج بيانات تحميلات الملفات سحابياً ومحلياً وقاعدة البيانات دون مسح أي تحميل حقيقي
       const dlRecord =
         allDownloads[u.id] ||
         (u.email ? allDownloads[em] : null) ||
         (tg ? allDownloads[tg] : null) ||
         (u.telegramId ? allDownloads[String(u.telegramId)] : null);
 
+      const dbHasDownloaded = Boolean(u.hasDownloadedFiles || (u.downloadedFilesCount && u.downloadedFilesCount > 0));
+      const dbDownloadCount = u.downloadedFilesCount || 0;
+      const dbDownloadedFiles = u.downloadedFiles || [];
+
       if (dlRecord && dlRecord.downloadCount > 0) {
         u.hasDownloadedFiles = true;
-        u.downloadedFilesCount = dlRecord.downloadCount;
-        u.lastDownloadedAt = dlRecord.lastDownloadedAt;
-        u.downloadedFiles = dlRecord.files || [];
+        u.downloadedFilesCount = Math.max(dlRecord.downloadCount, dbDownloadCount);
+        u.lastDownloadedAt = dlRecord.lastDownloadedAt || u.lastDownloadedAt;
+        u.downloadedFiles = (dlRecord.files && dlRecord.files.length > 0) ? dlRecord.files : dbDownloadedFiles;
+      } else if (dbHasDownloaded) {
+        u.hasDownloadedFiles = true;
+        u.downloadedFilesCount = Math.max(1, dbDownloadCount);
+        u.downloadedFiles = dbDownloadedFiles;
       } else {
         u.hasDownloadedFiles = false;
         u.downloadedFilesCount = 0;
         u.downloadedFiles = [];
+      }
+    }
+
+    // إدراج أي مشترك مسجل في اشتراكات المنصة ولم يظهر في قائمة المستخدمين
+    const existingIds = new Set(resultUsers.map(u => (u.id || '').toLowerCase()));
+    const existingEmails = new Set(resultUsers.map(u => (u.email || '').toLowerCase().trim()));
+
+    for (const [key, rawSub] of Object.entries(localSubs)) {
+      const sub = rawSub as any;
+      if (!sub || typeof sub !== 'object') continue;
+      const isActive = sub.active === true || sub.isActive === true || sub.status === 'active';
+      if (!isActive) continue;
+
+      const subId = (sub.user_id || sub.userId || sub.id || key || '').trim();
+      const subEmail = (sub.user_email || sub.userEmail || sub.email || '').trim().toLowerCase();
+      const subTg = (sub.telegramUsername || '').replace(/^@/, '').trim().toLowerCase();
+
+      const alreadyExists =
+        (subId && existingIds.has(subId.toLowerCase())) ||
+        (subEmail && existingEmails.has(subEmail));
+
+      if (!alreadyExists && !isDeletedUser(subId, subEmail, subTg, sub.telegramId)) {
+        const newSubUser: UserWithRole = {
+          id: subId || ('usr_' + Date.now()),
+          email: subEmail || (sub.userName ? `${sub.userName}@student.tarqa` : 'student@tarqa.app'),
+          fullName: sub.user_name || sub.userName || sub.fullName || 'طالب مشترك بالباقة',
+          role: 'student',
+          targetScore: 100,
+          telegramUsername: sub.telegramUsername,
+          telegramId: sub.telegramId,
+          isSubscribed: true,
+          subscriptionExpiresAt: sub.expiresDate || sub.expiresAt || new Date(Date.now() + 365*24*60*60*1000).toISOString(),
+          createdAt: sub.createdAt || sub.created_at || new Date().toISOString(),
+          lastSignInAt: new Date().toISOString(),
+        };
+        resultUsers.push(newSubUser);
+        if (newSubUser.id) existingIds.add(newSubUser.id.toLowerCase());
+        if (newSubUser.email) existingEmails.add(newSubUser.email.toLowerCase().trim());
+      }
+    }
+
+    // فحص سجل معاملات كاشير الناجحة وضمان ظهور أصحابها كمشتركين
+    try {
+      const txRaw = localStorage.getItem('tarqa_kashier_transactions');
+      if (txRaw) {
+        const txList = JSON.parse(txRaw);
+        if (Array.isArray(txList)) {
+          for (const tx of txList) {
+            if (tx.status === 'SUCCESS' && tx.userEmail) {
+              const txEm = tx.userEmail.toLowerCase().trim();
+              const existing = resultUsers.find(
+                u => (u.email && u.email.toLowerCase().trim() === txEm) || (tx.userId && u.id === tx.userId)
+              );
+
+              // التحقق مما إذا كان الطالب قد ألغي اشتراكه صراحة من الإدارة
+              const exSub = existing ? (
+                localSubs[existing.id] ||
+                (existing.email ? localSubs[existing.email.toLowerCase().trim()] : null) ||
+                (existing.telegramUsername ? localSubs[existing.telegramUsername.replace(/^@/, '').toLowerCase().trim()] : null)
+              ) : null;
+              const isExplicitlyCancelled =
+                (existing && existing.isSubscribed === false) ||
+                (exSub && (exSub.isActive === false || exSub.active === false || exSub.status === 'cancelled'));
+
+              if (existing) {
+                if (!isExplicitlyCancelled) {
+                  existing.isSubscribed = true;
+                  if (!existing.subscriptionExpiresAt) {
+                    existing.subscriptionExpiresAt = new Date(Date.now() + 365*24*60*60*1000).toISOString();
+                  }
+                }
+              } else if (!isDeletedUser(tx.userId, txEm) && !isExplicitlyCancelled) {
+                const newTxUser: UserWithRole = {
+                  id: tx.userId || ('usr_' + Date.now()),
+                  email: tx.userEmail,
+                  fullName: tx.userName || 'طالب مشترك (كاشير)',
+                  role: 'student',
+                  targetScore: 100,
+                  isSubscribed: true,
+                  subscriptionExpiresAt: new Date(Date.now() + 365*24*60*60*1000).toISOString(),
+                  createdAt: tx.timestamp || new Date().toISOString(),
+                  lastSignInAt: tx.timestamp || new Date().toISOString(),
+                };
+                resultUsers.push(newTxUser);
+                if (newTxUser.id) existingIds.add(newTxUser.id.toLowerCase());
+                if (newTxUser.email) existingEmails.add(newTxUser.email.toLowerCase().trim());
+              }
+            }
+          }
+        }
+      }
+    } catch {}
+
+    // ضمان إدراج أي طالب قام بتحميل ملفات من السيرفر ولم يظهر في قائمة المستخدمين
+    for (const [key, rawDl] of Object.entries(allDownloads)) {
+      const dl = rawDl as any;
+      if (!dl || typeof dl !== 'object' || !dl.downloadCount || dl.downloadCount <= 0) continue;
+      const dlId = (dl.userId || key || '').trim();
+      const dlEmail = (dl.userEmail || '').trim().toLowerCase();
+      if (!dlId && !dlEmail) continue;
+
+      const alreadyExists =
+        (dlId && existingIds.has(dlId.toLowerCase())) ||
+        (dlEmail && existingEmails.has(dlEmail));
+
+      if (!alreadyExists && !isDeletedUser(dlId, dlEmail, undefined, undefined)) {
+        const newDlUser: UserWithRole = {
+          id: dlId || ('usr_dl_' + Date.now()),
+          email: dlEmail || 'student@tarqa.app',
+          fullName: dl.userName && dl.userName !== 'طالب طرقع' ? dl.userName : 'طالب طرقع',
+          role: 'student',
+          targetScore: 100,
+          isSubscribed: false,
+          hasDownloadedFiles: true,
+          downloadedFilesCount: dl.downloadCount || (dl.files?.length || 1),
+          lastDownloadedAt: dl.lastDownloadedAt || new Date().toISOString(),
+          downloadedFiles: dl.files || [],
+          createdAt: dl.lastDownloadedAt || new Date().toISOString(),
+          lastSignInAt: dl.lastDownloadedAt || new Date().toISOString(),
+        };
+        resultUsers.push(newDlUser);
+        if (newDlUser.id) existingIds.add(newDlUser.id.toLowerCase());
+        if (newDlUser.email) existingEmails.add(newDlUser.email.toLowerCase().trim());
       }
     }
 
@@ -840,10 +994,12 @@ export const rolesService = {
     telegramId?: number
   ) => {
     const res = await cancelAnnualSubscription(userId, userEmail, telegramUsername, telegramId);
+    dbCache.invalidate('db_users_with_roles');
     invalidateUsersCache();
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('tarqa_roles_changed'));
       window.dispatchEvent(new Event('tarqa_subscription_changed'));
+      window.dispatchEvent(new Event('tarqa:subscription_updated'));
       window.dispatchEvent(new Event('tarqa_user_changed'));
       window.dispatchEvent(new Event('storage'));
     }
@@ -856,13 +1012,60 @@ export const rolesService = {
     days: number = 365
   ) => {
     const res = await grantAnnualSubscription(targetUser, days);
+    dbCache.invalidate('db_users_with_roles');
     invalidateUsersCache();
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('tarqa_roles_changed'));
       window.dispatchEvent(new Event('tarqa_subscription_changed'));
+      window.dispatchEvent(new Event('tarqa:subscription_updated'));
       window.dispatchEvent(new Event('tarqa_user_changed'));
       window.dispatchEvent(new Event('storage'));
     }
     return res;
+  },
+
+  // جلب كافة الطلاب المشتركين والمفعلين حالياً
+  getActiveSubscribers: async (forceRefresh: boolean = false): Promise<UserWithRole[]> => {
+    const allUsers = await rolesService.getUsers(forceRefresh);
+    return allUsers.filter(u => u.isSubscribed && u.role !== 'super_admin' && !isOwnerEmail(u.email));
+  },
+
+  // مزامنة وتحديث شامل وفوري لكافة بيانات الطلاب والاشتراكات والتحميلات
+  deepSyncAllStudentsData: async (): Promise<{ total: number; subscribed: number; downloaded: number }> => {
+    // 1. تفريغ كاش المستخدمين لضمان عدم عودة أي بيانات قديمة
+    dbCache.invalidate('db_users_with_roles');
+    invalidateUsersCache();
+
+    // 2. سحب أحدث بيانات الاشتراكات وتحميلات الملفات من السحابة المركزية و Supabase
+    try {
+      await Promise.allSettled([
+        syncSubscriptionsFromCloud(),
+        downloadTrackingService.syncDownloadsFromCloud(),
+      ]);
+    } catch (err) {
+      console.warn('[rolesService.deepSyncAllStudentsData] Notice during cloud sync:', err);
+    }
+
+    // 3. إعادة بناء وتوحيد قائمة الطلاب بالكامل بناء على البيانات الطازجة
+    const freshUsers = await rolesService.getUsers(true);
+
+    // 4. إطلاق كافة أحداث التحديث للنظام والمتصفح
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('tarqa_roles_changed'));
+      window.dispatchEvent(new Event('tarqa_subscription_changed'));
+      window.dispatchEvent(new Event('tarqa:subscription_updated'));
+      window.dispatchEvent(new Event('tarqa_download_tracked'));
+      window.dispatchEvent(new Event('tarqa_user_changed'));
+      window.dispatchEvent(new Event('storage'));
+    }
+
+    const subscribedCount = freshUsers.filter(u => u.isSubscribed && u.role !== 'super_admin' && !isOwnerEmail(u.email)).length;
+    const downloadedCount = freshUsers.filter(u => Boolean(u.hasDownloadedFiles)).length;
+
+    return {
+      total: freshUsers.length,
+      subscribed: subscribedCount,
+      downloaded: downloadedCount,
+    };
   },
 };

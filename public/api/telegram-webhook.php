@@ -18,7 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 // توكن ومعلومات البوت - يتم جلبه من متغيرات البيئة في السيرفر أو القيمة الافتراضية
-$botToken = getenv('TELEGRAM_BOT_TOKEN') ?: ($_SERVER['TELEGRAM_BOT_TOKEN'] ?? '8848350461:AAGYEx9UQCgEhE-ppEpx5Pz7s-ZERK9iSPM');
+$botToken = getenv('TELEGRAM_BOT_TOKEN') ?: ($_SERVER['TELEGRAM_BOT_TOKEN'] ?? '8848350461:AAEcKW2rMOYlv3HD7YKpKgf1BVaCtRX-O4k');
 $botUsername = getenv('TELEGRAM_BOT_USERNAME') ?: ($_SERVER['TELEGRAM_BOT_USERNAME'] ?? 'Tarqa3bot');
 $telegramApi = !empty($botToken) ? "https://api.telegram.org/bot{$botToken}" : "";
 

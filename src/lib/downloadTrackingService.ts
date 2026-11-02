@@ -1,6 +1,7 @@
 import { authService, supabase, isSupabaseConfigured, isValidUuid, TarqaUser } from './supabase';
 import { StudentDownloadedFile, UserWithRole } from '../types';
 import { CLOUD_LECTURES_STORE_ID, CLOUD_LECTURES_STORE_EMAIL } from './subscriptionService';
+import { dbCache, invalidateUsersCache } from './dbCache';
 
 export interface UserDownloadRecord {
   userId: string;
@@ -89,11 +90,110 @@ class DownloadTrackingService {
   }
 
   /**
-   * جلب ومزامنة كافة التحميلات من السحابة (تستدعيها لوحة التحكم تلقائياً)
+   * جلب ومزامنة كافة التحميلات من السحابة والباك إند (تستدعيها لوحة التحكم تلقائياً)
    */
   async syncDownloadsFromCloud(): Promise<Record<string, UserDownloadRecord>> {
-    if (!isSupabaseConfigured || !supabase) return this.getAllDownloads();
+    const local = this.getAllDownloads();
+
+    // 0. مزامنة فورية ومؤكدة مع الباك إند (Hostinger PHP Backend & Vercel API)
     try {
+      let backendData: any = null;
+      try {
+        const phpRes = await fetch('/api/track-download.php');
+        if (phpRes.ok) {
+          backendData = await phpRes.json();
+        }
+      } catch {}
+
+      if (!backendData || !backendData.users) {
+        try {
+          const vercelRes = await fetch('/api/track-download');
+          if (vercelRes.ok) {
+            backendData = await vercelRes.json();
+          }
+        } catch {}
+      }
+
+      if (backendData?.users && typeof backendData.users === 'object') {
+        for (const [k, bRec] of Object.entries(backendData.users as Record<string, any>)) {
+          if (!bRec) continue;
+          const existing = local[k];
+          const count = Math.max(
+            Number(bRec.downloadCount) || (bRec.files?.length || 1),
+            Number(existing?.downloadCount) || 0
+          );
+          const files = (bRec.files && Array.isArray(bRec.files) && bRec.files.length > (existing?.files?.length || 0))
+            ? bRec.files
+            : (existing?.files || []);
+
+          const rec: UserDownloadRecord = {
+            userId: bRec.userId || existing?.userId || k,
+            userEmail: bRec.userEmail || existing?.userEmail,
+            userName: (bRec.userName && bRec.userName !== 'طالب طرقع') ? bRec.userName : (existing?.userName || bRec.userName || 'طالب طرقع'),
+            downloadCount: count > 0 ? count : 1,
+            lastDownloadedAt: bRec.lastDownloadedAt || existing?.lastDownloadedAt || new Date().toISOString(),
+            files,
+          };
+
+          local[k] = rec;
+          if (bRec.userId) local[bRec.userId] = rec;
+          if (bRec.userEmail) local[bRec.userEmail.toLowerCase().trim()] = rec;
+          if (bRec.telegramUsername) local[bRec.telegramUsername.replace(/^@/, '').toLowerCase().trim()] = rec;
+        }
+      }
+    } catch (bErr) {
+      console.warn('[downloadTrackingService] Backend sync notice:', bErr);
+    }
+
+    if (!isSupabaseConfigured || !supabase) {
+      this.saveAllDownloads(local);
+      return local;
+    }
+
+    try {
+      // 1. جلب مباشر لكافة الطلاب الذين قاموا بالتحميل من جدول profiles في Supabase
+      try {
+        const { data: profilesWithDownloads, error: pErr } = await supabase
+          .from('profiles')
+          .select('id, email, full_name, telegram_username, telegram_id, has_downloaded_files, downloaded_files_count, last_downloaded_at, downloaded_files')
+          .or('has_downloaded_files.eq.true,downloaded_files_count.gt.0');
+
+        if (!pErr && profilesWithDownloads && profilesWithDownloads.length > 0) {
+          for (const p of profilesWithDownloads) {
+            const key = p.id || (p.email ? p.email.toLowerCase().trim() : null);
+            if (!key) continue;
+
+            const existing = local[key] || {};
+            const count = Math.max(
+              Number(p.downloaded_files_count) || (p.has_downloaded_files ? 1 : 0),
+              Number(existing.downloadCount) || 0
+            );
+
+            let files = existing.files || [];
+            if (p.downloaded_files && Array.isArray(p.downloaded_files) && p.downloaded_files.length > 0) {
+              files = p.downloaded_files;
+            }
+
+            const rec: UserDownloadRecord = {
+              userId: p.id,
+              userEmail: p.email || existing.userEmail,
+              userName: (p.full_name && p.full_name !== 'طالب طرقع') ? p.full_name : (existing.userName || p.full_name || 'طالب طرقع'),
+              downloadCount: count > 0 ? count : 1,
+              lastDownloadedAt: p.last_downloaded_at || existing.lastDownloadedAt || new Date().toISOString(),
+              files,
+            };
+
+            local[p.id] = rec;
+            if (p.email) local[p.email.toLowerCase().trim()] = rec;
+            if (p.telegram_username) local[p.telegram_username.replace(/^@/, '').toLowerCase().trim()] = rec;
+            if (p.telegram_id) local[String(p.telegram_id)] = rec;
+          }
+        }
+      } catch (profErr) {
+        console.warn('[downloadTrackingService] Fetch profiles downloads notice:', profErr);
+      }
+
+      // 2. دمج التحميلات المسجلة في السحابة المركزية (CLOUD_LECTURES_STORE_ID)
       const { data, error } = await supabase
         .from('profiles')
         .select('ban_reason')
@@ -115,17 +215,30 @@ class DownloadTrackingService {
           const parsed = JSON.parse(targetData.ban_reason);
           if (parsed && typeof parsed === 'object' && parsed.downloads) {
             const cloudDownloads = parsed.downloads as Record<string, UserDownloadRecord>;
-            const local = this.getAllDownloads();
-            const merged = { ...local, ...cloudDownloads };
-            this.saveAllDownloads(merged);
-            return merged;
+            for (const [k, cRec] of Object.entries(cloudDownloads)) {
+              if (!cRec) continue;
+              const existing = local[k];
+              if (!existing) {
+                local[k] = cRec;
+              } else {
+                local[k] = {
+                  ...existing,
+                  downloadCount: Math.max(existing.downloadCount || 0, cRec.downloadCount || 0),
+                  files: (cRec.files && cRec.files.length > (existing.files?.length || 0)) ? cRec.files : existing.files,
+                  lastDownloadedAt: cRec.lastDownloadedAt || existing.lastDownloadedAt,
+                };
+              }
+            }
           }
         } catch {}
       }
+
+      this.saveAllDownloads(local);
+      return local;
     } catch (e) {
       console.warn('[downloadTrackingService] syncDownloadsFromCloud notice:', e);
+      return local;
     }
-    return this.getAllDownloads();
   }
 
   /**
@@ -237,31 +350,77 @@ class DownloadTrackingService {
       }
       this.saveAllDownloads(records);
 
+      // 0. تسجيل مباشر ومؤكد في الباك إند (Hostinger PHP & Vercel API) لضمان ظهور التحميل في لوحة الأدمن دائماً
+      const backendPayload = {
+        userId,
+        userEmail,
+        userName,
+        telegramUsername: (user as any)?.telegram_username || (user as any)?.telegramUsername || '',
+        fileId: newFileEntry.id,
+        fileTitle: newFileEntry.title,
+        fileUrl: newFileEntry.fileUrl,
+        fileType: newFileEntry.fileType,
+        fileSize: newFileEntry.fileSize,
+      };
+
+      try {
+        fetch('/api/track-download.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(backendPayload),
+          keepalive: true,
+        }).catch(() => {
+          return fetch('/api/track-download', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(backendPayload),
+            keepalive: true,
+          });
+        }).catch(() => {});
+      } catch (postErr) {
+        console.debug('[downloadTrackingService] Backend post notice:', postErr);
+      }
+
       // 1. مزامنة مباشرة مع صف جدول profiles للمستخدم في Supabase
       if (isSupabaseConfigured && supabase) {
         try {
+          const updatePayload: any = {
+            has_downloaded_files: true,
+            downloaded_files_count: updatedRecord.downloadCount,
+            last_downloaded_at: now,
+            downloaded_files: updatedRecord.files.slice(-25),
+            updated_at: now,
+          };
+
           if (isValidUuid(userId)) {
             await supabase
               .from('profiles')
-              .update({
-                has_downloaded_files: true,
-                downloaded_files_count: updatedRecord.downloadCount,
-                last_downloaded_at: now,
-                downloaded_files: updatedRecord.files.slice(-25),
-              })
+              .update(updatePayload)
               .eq('id', userId);
           }
           if (userEmail) {
             await supabase
               .from('profiles')
-              .update({
-                has_downloaded_files: true,
-                downloaded_files_count: updatedRecord.downloadCount,
-                last_downloaded_at: now,
-                downloaded_files: updatedRecord.files.slice(-25),
-              })
+              .update(updatePayload)
               .ilike('email', userEmail.trim());
           }
+          if ((user as any)?.telegramId) {
+            await supabase
+              .from('profiles')
+              .update(updatePayload)
+              .eq('telegram_id', (user as any).telegramId);
+          }
+
+          // محاولة استدعاء الدالة المباشرة RPC (Security Definer) إن وُجدت
+          try {
+            await supabase.rpc('track_file_download', {
+              p_file_title: fileInfo.title || 'مذكرة دراسية',
+              p_file_id: fileInfo.id || null,
+              p_file_url: fileInfo.fileUrl || null,
+              p_user_id: userId,
+              p_user_email: userEmail || null,
+            });
+          } catch {}
         } catch (supErr) {
           console.debug('[downloadTrackingService] Supabase profile update notice:', supErr);
         }
@@ -269,6 +428,10 @@ class DownloadTrackingService {
         // 2. مزامنة فورية في السحابة المركزية لضمان وصول التنبيه لكافة لوحات الأدمن
         this.syncDownloadsToCloud(updatedRecord).catch(() => {});
       }
+
+      // تفريغ كاش بيانات الأعضاء لضمان ظهور التحديث فوراً في لوحة الأدمن
+      dbCache.invalidate('db_users_with_roles');
+      invalidateUsersCache();
 
       // 3. إطلاق حدث عام للمتصفح لتحديث واجهات الإدارة والرتب فوراً في الزمن الحقيقي
       if (typeof window !== 'undefined') {

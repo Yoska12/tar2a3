@@ -55,12 +55,17 @@ $$ LANGUAGE plpgsql;
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    email TEXT,
     full_name TEXT NOT NULL DEFAULT 'طالب طرقع',
     avatar_url TEXT,
     target_score INT DEFAULT 100 CHECK (target_score BETWEEN 50 AND 100),
     role public.user_role NOT NULL DEFAULT 'student',
+    is_subscribed BOOLEAN NOT NULL DEFAULT FALSE,
+    subscription_expires_at TIMESTAMPTZ DEFAULT NULL,
     phone_number TEXT,
     streak_days INT DEFAULT 0,
+    points INT DEFAULT 0 CHECK (points >= 0),
+    points_history JSONB DEFAULT '[]'::jsonb,
     telegram_id BIGINT UNIQUE,
     telegram_username TEXT,
     telegram_chat_id BIGINT,
@@ -303,9 +308,14 @@ CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
     v_initial_role public.user_role := 'student';
+    v_is_sub boolean := FALSE;
+    v_email text;
 BEGIN
-    IF NEW.email = 'yassooooo27m@gmail.com' THEN
+    v_email := LOWER(COALESCE(NEW.email, ''));
+
+    IF v_email IN ('yassooooo27m@gmail.com', 'iyoskalg@gmail.com') THEN
         v_initial_role := 'super_admin';
+        v_is_sub := TRUE;
     ELSIF NEW.raw_app_meta_data->>'role' IS NOT NULL THEN
         BEGIN
             v_initial_role := (NEW.raw_app_meta_data->>'role')::public.user_role;
@@ -316,31 +326,48 @@ BEGIN
 
     INSERT INTO public.profiles (
         id, 
+        email,
         full_name, 
         avatar_url, 
         target_score,
         role,
+        is_subscribed,
+        subscription_expires_at,
         telegram_id,
         telegram_username,
         telegram_chat_id,
-        telegram_linked_at
+        telegram_linked_at,
+        created_at,
+        updated_at
     )
     VALUES (
         NEW.id,
+        NEW.email,
         COALESCE(NEW.raw_user_meta_data->>'full_name', 'طالب طرقع'),
         COALESCE(NEW.raw_user_meta_data->>'avatar_url', ''),
         COALESCE((NEW.raw_user_meta_data->>'target_score')::int, 100),
         v_initial_role,
+        v_is_sub,
+        NULL,
         (NEW.raw_user_meta_data->>'telegram_id')::bigint,
         NEW.raw_user_meta_data->>'telegram_username',
         (NEW.raw_user_meta_data->>'telegram_chat_id')::bigint,
-        CASE WHEN (NEW.raw_user_meta_data->>'telegram_id') IS NOT NULL THEN NOW() ELSE NULL END
+        CASE WHEN (NEW.raw_user_meta_data->>'telegram_id') IS NOT NULL THEN NOW() ELSE NULL END,
+        NOW(),
+        NOW()
     )
     ON CONFLICT (id) DO UPDATE SET
+        email = COALESCE(EXCLUDED.email, profiles.email),
+        full_name = CASE 
+            WHEN profiles.full_name IS NULL OR profiles.full_name = 'طالب طرقع' 
+            THEN COALESCE(EXCLUDED.full_name, profiles.full_name) 
+            ELSE profiles.full_name 
+        END,
         telegram_id = COALESCE(EXCLUDED.telegram_id, profiles.telegram_id),
         telegram_username = COALESCE(EXCLUDED.telegram_username, profiles.telegram_username),
         telegram_chat_id = COALESCE(EXCLUDED.telegram_chat_id, profiles.telegram_chat_id),
-        telegram_linked_at = COALESCE(EXCLUDED.telegram_linked_at, profiles.telegram_linked_at);
+        telegram_linked_at = COALESCE(EXCLUDED.telegram_linked_at, profiles.telegram_linked_at),
+        updated_at = NOW();
         
     RETURN NEW;
 END;
@@ -624,3 +651,115 @@ INSERT INTO public.quiz_questions (quiz_id, question_id, order_index) VALUES
 ('f1111111-1111-1111-1111-111111111111', 'e2222222-2222-2222-2222-222222222222', 2),
 ('f1111111-1111-1111-1111-111111111111', 'e3333333-3333-3333-3333-333333333333', 3)
 ON CONFLICT (quiz_id, question_id) DO NOTHING;
+
+-- ==============================================================================
+-- 5. دوال إدارة الاشتراكات السنوية (Security Definer RPC)
+-- ==============================================================================
+
+-- تفعيل ومنح الاشتراك للطالب
+CREATE OR REPLACE FUNCTION public.admin_grant_subscription(
+    target_user_id text,
+    days_count integer DEFAULT 365,
+    target_email text DEFAULT NULL
+)
+RETURNS jsonb AS $$
+DECLARE
+    v_expires_at timestamptz;
+    v_target_uuid uuid;
+    v_rows_updated integer := 0;
+BEGIN
+    IF NOT public.is_admin() THEN
+        RAISE EXCEPTION 'عملية مرفوضة أمنياً: صلاحية تفعيل الاشتراكات محصورة بإدارة المنصة!'
+            USING ERRCODE = '42501';
+    END IF;
+
+    v_expires_at := now() + (days_count || ' days')::interval;
+
+    IF target_user_id IS NOT NULL AND target_user_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+        v_target_uuid := target_user_id::uuid;
+        UPDATE public.profiles
+        SET 
+            is_subscribed = true,
+            subscription_expires_at = v_expires_at,
+            updated_at = now()
+        WHERE id = v_target_uuid;
+        GET DIAGNOSTICS v_rows_updated = ROW_COUNT;
+    END IF;
+
+    IF v_rows_updated = 0 AND target_email IS NOT NULL AND target_email <> '' THEN
+        UPDATE public.profiles
+        SET 
+            is_subscribed = true,
+            subscription_expires_at = v_expires_at,
+            updated_at = now()
+        WHERE LOWER(email) = LOWER(TRIM(target_email));
+        GET DIAGNOSTICS v_rows_updated = ROW_COUNT;
+    END IF;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'user_id', target_user_id,
+        'email', target_email,
+        'rows_updated', v_rows_updated,
+        'expires_at', v_expires_at
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
+
+CREATE OR REPLACE FUNCTION public.admin_grant_subscription(
+    target_user_id uuid,
+    days_count integer DEFAULT 365
+)
+RETURNS jsonb AS $$
+BEGIN
+    RETURN public.admin_grant_subscription(target_user_id::text, days_count, NULL);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
+
+-- إلغاء الاشتراك للطالب
+CREATE OR REPLACE FUNCTION public.admin_cancel_subscription(
+    target_user_id text,
+    target_email text DEFAULT NULL
+)
+RETURNS jsonb AS $$
+DECLARE
+    v_rows_updated integer := 0;
+BEGIN
+    IF NOT public.is_admin() THEN
+        RAISE EXCEPTION 'عملية مرفوضة أمنياً: صلاحية إلغاء الاشتراكات محصورة بإدارة المنصة!'
+            USING ERRCODE = '42501';
+    END IF;
+
+    IF target_user_id IS NOT NULL AND target_user_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+        UPDATE public.profiles
+        SET 
+            is_subscribed = false,
+            subscription_expires_at = NULL,
+            updated_at = now()
+        WHERE id = target_user_id::uuid;
+        GET DIAGNOSTICS v_rows_updated = ROW_COUNT;
+    END IF;
+
+    IF v_rows_updated = 0 AND target_email IS NOT NULL AND target_email <> '' THEN
+        UPDATE public.profiles
+        SET 
+            is_subscribed = false,
+            subscription_expires_at = NULL,
+            updated_at = now()
+        WHERE LOWER(email) = LOWER(TRIM(target_email));
+        GET DIAGNOSTICS v_rows_updated = ROW_COUNT;
+    END IF;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'user_id', target_user_id,
+        'email', target_email,
+        'rows_updated', v_rows_updated
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
+
+GRANT EXECUTE ON FUNCTION public.admin_grant_subscription(text, integer, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_grant_subscription(uuid, integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_cancel_subscription(text, text) TO authenticated;
+

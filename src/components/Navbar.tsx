@@ -23,6 +23,7 @@ import {
   CreditCard
 } from 'lucide-react';
 import { TarqaUser, authService } from '../lib/supabase';
+import { pointsService } from '../lib/pointsService';
 import { isOwnerEmail, canAccessAdmin as checkCanAccessAdmin, isSuperAdminRole } from '../lib/securityUtils';
 import { UserRole } from '../types';
 import { TELEGRAM_BOT_USERNAME, TELEGRAM_BOT_URL } from '../lib/telegram';
@@ -84,23 +85,25 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const [adminDropdownOpen, setAdminDropdownOpen] = useState(false);
   const adminDropdownRef = useRef<HTMLDivElement>(null);
-  const [userPoints, setUserPoints] = useState(() => {
-    try {
-      const stored = localStorage.getItem('tarqa_student_points_v1');
-      return stored ? parseInt(stored, 10) || 0 : 0;
-    } catch {
-      return 0;
+  const [userPoints, setUserPoints] = useState(() => pointsService.getUserPoints(currentUser));
+
+  useEffect(() => {
+    setUserPoints(pointsService.getUserPoints(currentUser));
+    if (currentUser) {
+      pointsService.fetchUserPoints(currentUser).then((pts) => {
+        setUserPoints(pts);
+      });
     }
-  });
+  }, [currentUser]);
 
   useEffect(() => {
     const handlePointsUpdate = (e: any) => {
-      const newPts = e?.detail?.points !== undefined ? e.detail.points : 0;
+      const newPts = e?.detail?.points !== undefined ? e.detail.points : pointsService.getUserPoints(currentUser);
       setUserPoints(newPts);
     };
     window.addEventListener('tarqa_points_updated', handlePointsUpdate);
     return () => window.removeEventListener('tarqa_points_updated', handlePointsUpdate);
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -136,18 +139,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                   طرقع
                 </span>
               </div>
-              <p className="text-[10px] text-slate-400 font-medium hidden sm:block">
+              <p className="text-[10px] text-slate-400 font-medium hidden xl:block">
                 التأسيس الذهني من الصفر حتى 100
               </p>
             </div>
           </div>
 
-          {/* روابط التنقل للشاشات الكبيرة والتابلت الواسع (Desktop & Tablet Links) */}
-          {/* روابط التنقل للشاشات الكبيرة واللابتوب بشكل رايق ونظيف بدون أي تكدس */}
-          <div className="hidden lg:flex items-center gap-1.5 bg-white/80 dark:bg-[#060913]/70 p-1.5 rounded-2xl border border-slate-200/80 dark:border-amber-500/25 text-xs shadow-sm flex-nowrap shrink-0 backdrop-blur-xl dark:shadow-[inset_0_0_15px_rgba(245,158,11,0.08)]">
+          {/* روابط التنقل للشاشات الكبيرة واللابتوب والتابلت العريض (Desktop & Landscape Tablet Links) */}
+          <div className="hidden lg:flex items-center gap-1 lg:gap-1.5 bg-white/80 dark:bg-[#060913]/70 p-1 lg:p-1.5 rounded-2xl border border-slate-200/80 dark:border-amber-500/25 text-[11px] lg:text-xs shadow-sm flex-nowrap shrink-0 backdrop-blur-xl dark:shadow-[inset_0_0_15px_rgba(245,158,11,0.08)]">
             <button
               onClick={() => onSelectTab('home')}
-              className={`px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+              className={`px-2.5 lg:px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 shrink-0 ${
                 activeTab === 'home' || activeTab === 'roadmap'
                   ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-black shadow-[0_0_15px_rgba(245,158,11,0.4)]'
                   : 'text-slate-600 dark:text-slate-300 hover:text-amber-500 dark:hover:text-amber-300 dark:hover:bg-amber-500/10'
@@ -159,7 +161,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <button
               onClick={() => onSelectTab('courses')}
-              className={`px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+              className={`px-2.5 lg:px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 shrink-0 ${
                 activeTab === 'courses'
                   ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/25 font-black'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -171,7 +173,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <button
               onClick={() => onSelectTab('speed')}
-              className={`px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+              className={`px-2.5 lg:px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 shrink-0 ${
                 activeTab === 'speed'
                   ? 'bg-amber-500 text-slate-950 shadow-sm font-black'
                   : 'text-slate-600 dark:text-slate-400 hover:text-amber-500'
@@ -183,7 +185,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <button
               onClick={() => onSelectTab('leaderboard')}
-              className={`px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+              className={`px-2.5 lg:px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 shrink-0 ${
                 activeTab === 'leaderboard'
                   ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/25 font-black'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -195,7 +197,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <button
               onClick={() => onSelectTab('dashboard')}
-              className={`px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+              className={`px-2.5 lg:px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 shrink-0 ${
                 activeTab === 'dashboard'
                   ? 'bg-white dark:bg-slate-800 text-amber-500 shadow-sm font-black'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -386,10 +388,10 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             )}
 
-            {/* زر القائمة للشاشات الصغيرة والمتوسطة (Hamburger Icon) */}
+            {/* زر القائمة للشاشات الصغيرة والمتوسطة والتابلت (Hamburger Icon) */}
             <button
               onClick={toggleMenu}
-              className="lg:hidden p-2 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 transition focus:outline-none"
+              className="lg:hidden p-2 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 transition focus:outline-none cursor-pointer"
               aria-label="القائمة الرئيسية"
             >
               {isMenuOpen ? <X className="w-5 h-5 text-amber-500" /> : <Menu className="w-5 h-5" />}
@@ -401,7 +403,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       </nav>
 
       {/* ======================================================================= */}
-      {/* القائمة المنزلقة للشاشات الصغيرة والتابلت (Responsive Mobile Drawer) */}
+      {/* القائمة المنزلقة للشاشات الصغيرة والتابلت (Responsive Mobile & Tablet Drawer) */}
       {/* ======================================================================= */}
       {isMenuOpen && (
         <div className="fixed inset-0 z-50 lg:hidden flex font-cairo">

@@ -13,8 +13,9 @@ function kashierDevApiPlugin(): Plugin {
           const { settingsMode, customApiKey, customSecretKey, customMerchantId, ...kashierPayload } = body;
           const mode = settingsMode || process.env.KASHIER_MODE || 'test';
           const merchantId = customMerchantId || process.env.KASHIER_MERCHANT_ID || 'MID-50598-297';
-          const apiKey = customApiKey || process.env.KASHIER_API_KEY || '980f3d9b-9782-40a0-ad47-f49ae98fdbb7';
-          const secretKey = customSecretKey || process.env.KASHIER_SECRET_KEY || '6ec661c17fe95a9faae76df553f6ecb6$c02d309b502aa7a0f1eb27dbdb37f61f58e17df14f8a04b43ffa526a9e51b2f9281357acae5ca6412eb4ba540b919776';
+          const apiKey = customApiKey || process.env.KASHIER_API_KEY || '';
+          // ⚠️ المفتاح السري من السيرفر فقط – لا نضع fallback hardcoded هنا
+          const secretKey = customSecretKey || process.env.KASHIER_SECRET_KEY || '';
 
           const endpoint = mode === 'live'
             ? 'https://api.kashier.io/v3/payment/sessions'
@@ -70,6 +71,27 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
       '@/utils': path.resolve(__dirname, './src/utils'),
       '@/lib': path.resolve(__dirname, './src/lib'),
+    },
+  },
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // مكتبات React الأساسية
+          'vendor-react': ['react', 'react-dom'],
+          // Supabase
+          'vendor-supabase': ['@supabase/supabase-js'],
+          // Lucide Icons
+          'vendor-icons': ['lucide-react'],
+          // KaTeX للمعادلات
+          'vendor-katex': ['katex'],
+          // مكتبات النماذج والتحقق
+          'vendor-forms': ['react-hook-form', '@hookform/resolvers', 'zod'],
+          // Google Genai
+          'vendor-genai': ['@google/genai'],
+        },
+      },
     },
   },
   server: {

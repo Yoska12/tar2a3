@@ -41,6 +41,70 @@ $customName = !empty($_GET['name']) ? basename($_GET['name']) : $requestedFile;
 $cleanName = preg_replace('/[/\\?%*:|"<>#]/', '-', $customName);
 $encodedName = rawurlencode($cleanName);
 
+// تسجيل عملية التحميل تلقائياً في السيرفر لضمان معرفة من قام بالتحميل
+$userId = !empty($_GET['user_id']) ? trim($_GET['user_id']) : (!empty($_GET['userId']) ? trim($_GET['userId']) : 'guest-student');
+$userEmail = !empty($_GET['user_email']) ? strtolower(trim($_GET['user_email'])) : (!empty($_GET['email']) ? strtolower(trim($_GET['email'])) : '');
+$userName = !empty($_GET['user_name']) ? trim($_GET['user_name']) : (!empty($_GET['name_user']) ? trim($_GET['name_user']) : 'طالب طرقع');
+
+$logFile = __DIR__ . DIRECTORY_SEPARATOR . 'downloads_log.json';
+if ($userId !== 'guest-student' || !empty($userEmail)) {
+    try {
+        $rawLog = @file_get_contents($logFile);
+        $logData = $rawLog ? @json_decode($rawLog, true) : ['users' => [], 'events' => []];
+        if (!is_array($logData)) $logData = ['users' => [], 'events' => []];
+        if (!isset($logData['users'])) $logData['users'] = [];
+        if (!isset($logData['events'])) $logData['events'] = [];
+
+        $now = date('c');
+        $fileEntry = [
+            'id' => 'file-' . md5($requestedFile),
+            'title' => $customName,
+            'fileUrl' => '/api/download.php?file=' . urlencode($requestedFile),
+            'fileType' => strtolower(pathinfo($filePath, PATHINFO_EXTENSION)),
+            'fileSize' => filesize($filePath),
+            'downloadedAt' => $now,
+        ];
+
+        $pk = ($userId !== 'guest-student') ? $userId : $userEmail;
+        $existing = isset($logData['users'][$pk]) ? $logData['users'][$pk] : null;
+        if ($existing) {
+            $files = isset($existing['files']) && is_array($existing['files']) ? $existing['files'] : [];
+            $files[] = $fileEntry;
+            $existing['downloadCount'] = ($existing['downloadCount'] ?? count($files) - 1) + 1;
+            $existing['lastDownloadedAt'] = $now;
+            $existing['files'] = array_slice($files, -50);
+            $logData['users'][$pk] = $existing;
+        } else {
+            $logData['users'][$pk] = [
+                'userId' => $userId,
+                'userEmail' => $userEmail,
+                'userName' => $userName,
+                'downloadCount' => 1,
+                'lastDownloadedAt' => $now,
+                'files' => [$fileEntry],
+            ];
+        }
+        if (!empty($userEmail)) {
+            $logData['users'][$userEmail] = $logData['users'][$pk];
+        }
+
+        $logData['events'][] = [
+            'eventId' => 'evt-' . microtime(true),
+            'fileTitle' => $customName,
+            'userId' => $userId,
+            'userEmail' => $userEmail,
+            'userName' => $userName,
+            'downloadedAt' => $now,
+            'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+        ];
+        if (count($logData['events']) > 500) {
+            $logData['events'] = array_slice($logData['events'], -500);
+        }
+
+        @file_put_contents($logFile, json_encode($logData, JSON_UNESCAPED_UNICODE));
+    } catch (\Throwable $e) {}
+}
+
 // تحديد نوع MIME
 $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
 $mimeTypes = [

@@ -87,6 +87,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
 
   // مؤشر تحميل العمليات
   const [isProcessingAction, setIsProcessingAction] = useState<boolean>(false);
+  const [isDeepSyncing, setIsDeepSyncing] = useState<boolean>(false);
 
   // إشعار نجاح أو خطأ
   const [toastMessage, setToastMessage] = useState<{
@@ -94,13 +95,30 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
     type: 'success' | 'error' | 'warning';
   } | null>(null);
 
+  // تحديث ومزامنة شاملة وحية لبيانات واشتراكات الطلاب والتحميلات
+  const handleDeepSync = async () => {
+    setIsDeepSyncing(true);
+    try {
+      const result = await rolesService.deepSyncAllStudentsData();
+      await loadData(true);
+      showToast(
+        `تمت المزامنة والتحديث الشامل لجميع الطلاب بنجاح! 🚀 (${result.total} عضو، ${result.subscribed} مشترك، ${result.downloaded} قاموا بالتحميل)`,
+        'success'
+      );
+    } catch (err: any) {
+      showToast('تعذر استكمال المزامنة الشاملة، تحقق من الاتصال بالإنترنت', 'error');
+    } finally {
+      setIsDeepSyncing(false);
+    }
+  };
+
   // استدعاء البيانات (يدعم التحديث الصامت في الخلفية دون وميض مؤشر التحميل)
   const loadData = async (isBackground: boolean | any = false) => {
     const bg = isBackground === true;
     if (!bg) setIsLoading(true);
     try {
       const [allUsers, logs] = await Promise.all([
-        rolesService.getUsers(),
+        rolesService.getUsers(true),
         rolesService.getAuditLogs(),
       ]);
       setUsers(allUsers);
@@ -123,6 +141,8 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
     window.addEventListener('tarqa_user_changed', handleDataChanged);
     window.addEventListener('tarqa_download_tracked', handleDataChanged);
     window.addEventListener('tarqa_subscription_changed', handleDataChanged);
+    window.addEventListener('tarqa:subscription_updated', handleDataChanged);
+    window.addEventListener('tarqa_kashier_tx_logged', handleDataChanged);
     window.addEventListener('storage', handleDataChanged);
 
     // تحديث دوري تلقائي خفيف كل 3.5 ثوانٍ في الخلفية لضمان ظهور أي عضو يسجل جديداً فوراً
@@ -155,6 +175,8 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
       window.removeEventListener('tarqa_user_changed', handleDataChanged);
       window.removeEventListener('tarqa_download_tracked', handleDataChanged);
       window.removeEventListener('tarqa_subscription_changed', handleDataChanged);
+      window.removeEventListener('tarqa:subscription_updated', handleDataChanged);
+      window.removeEventListener('tarqa_kashier_tx_logged', handleDataChanged);
       window.removeEventListener('storage', handleDataChanged);
       if (channel && supabase) {
         supabase.removeChannel(channel);
@@ -573,7 +595,7 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
     if (window.confirm(`هل أنت متأكد من رغبتك في تصفير نقاط الطالب "${user.fullName}" إلى 0 XP؟`)) {
       setIsProcessingAction(true);
       try {
-        pointsService.resetUserPoints(user.id, user.email);
+        await pointsService.resetUserPoints(user.id, user.email);
         showToast(`تم تصفير نقاط ${user.fullName} بنجاح إلى 0 XP 🎯`, 'success');
         await loadData(true);
       } catch (e: any) {
@@ -675,6 +697,16 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
 
           {/* أزرار الإجراءات العلوية */}
           <div className="flex items-center gap-2.5 flex-wrap">
+            <button
+              onClick={handleDeepSync}
+              disabled={isDeepSyncing || isLoading}
+              className="group px-4 py-2.5 rounded-2xl text-xs font-black bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-white transition-all duration-300 flex items-center gap-2 shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 cursor-pointer"
+              title="مزامنة فورية شاملة: تحديث حالة جميع المشتركين وغير المشتركين وتحميلات الملفات من السيرفر مباشرة"
+            >
+              <RotateCcw className={`w-4 h-4 ${isDeepSyncing ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
+              <span>{isDeepSyncing ? 'جارِ المزامنة والتحديث...' : 'تحديث شامل لبيانات واشتراكات الطلاب 🔄'}</span>
+            </button>
+
             <button
               onClick={() => setShowSqlModal(true)}
               className="group px-4 py-2.5 rounded-2xl text-xs font-black bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 hover:from-amber-400 hover:to-amber-500 text-slate-950 transition-all duration-300 flex items-center gap-2 shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 hover:-translate-y-0.5 active:translate-y-0"
@@ -1083,9 +1115,12 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                                 </span>
                               )}
                             </div>
-                            <div className="text-[11px] text-slate-400 font-mono mt-0.5 flex items-center gap-1">
+                            <div className="text-[11px] text-slate-400 font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
                               <span>ID:</span>
-                              <span className="truncate max-w-[150px]">{user.id}</span>
+                              <span className="truncate max-w-[120px]">{user.id}</span>
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold border border-amber-500/30">
+                                ⚡ {user.points || 0} XP
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -2209,6 +2244,9 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS banned_at TIMESTAMPTZ DEFAU
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
 
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS points INT DEFAULT 0;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS points_history JSONB DEFAULT '[]'::jsonb;
+
 -- أعمدة تتبع تحميل الملفات والمذكرات
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS has_downloaded_files BOOLEAN DEFAULT false;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS downloaded_files_count INTEGER DEFAULT 0;
@@ -2369,6 +2407,9 @@ CREATE POLICY "Allow update profiles"
   ON public.profiles FOR UPDATE
   USING (true);
 
+GRANT ALL ON public.profiles TO anon, authenticated, service_role;
+GRANT ALL ON public.subscriptions TO anon, authenticated, service_role;
+
 -- 7. إنشاء دوال إدارة الرتب والحظر والحذف (RPCs)
 CREATE OR REPLACE FUNCTION public.is_super_admin()
 RETURNS boolean AS $$
@@ -2493,6 +2534,170 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
 
 GRANT EXECUTE ON FUNCTION public.admin_update_user_role_by_identifier(TEXT, public.user_role, TEXT) TO authenticated, anon;
+
+-- دوال تفعيل وإلغاء الاشتراكات بواسطة الإدارة
+CREATE OR REPLACE FUNCTION public.admin_grant_subscription(
+    target_user_id text,
+    days_count integer DEFAULT 365,
+    target_email text DEFAULT NULL
+)
+RETURNS jsonb AS $$
+DECLARE
+    v_expires_at timestamptz;
+    v_target_uuid uuid;
+    v_rows_updated integer := 0;
+BEGIN
+    v_expires_at := now() + (days_count || ' days')::interval;
+
+    IF target_user_id IS NOT NULL AND target_user_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+        v_target_uuid := target_user_id::uuid;
+        UPDATE public.profiles
+        SET is_subscribed = true, subscription_expires_at = v_expires_at, updated_at = now()
+        WHERE id = v_target_uuid;
+        GET DIAGNOSTICS v_rows_updated = ROW_COUNT;
+    END IF;
+
+    IF v_rows_updated = 0 AND target_email IS NOT NULL AND target_email <> '' THEN
+        UPDATE public.profiles
+        SET is_subscribed = true, subscription_expires_at = v_expires_at, updated_at = now()
+        WHERE LOWER(email) = LOWER(TRIM(target_email));
+        GET DIAGNOSTICS v_rows_updated = ROW_COUNT;
+    END IF;
+
+    RETURN jsonb_build_object('success', true, 'rows_updated', v_rows_updated, 'expires_at', v_expires_at);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
+
+CREATE OR REPLACE FUNCTION public.admin_cancel_subscription(
+    target_user_id text,
+    target_email text DEFAULT NULL
+)
+RETURNS jsonb AS $$
+DECLARE
+    v_rows_updated integer := 0;
+BEGIN
+    IF target_user_id IS NOT NULL AND target_user_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+        UPDATE public.profiles
+        SET is_subscribed = false, subscription_expires_at = NULL, updated_at = now()
+        WHERE id = target_user_id::uuid;
+        GET DIAGNOSTICS v_rows_updated = ROW_COUNT;
+    END IF;
+
+    IF v_rows_updated = 0 AND target_email IS NOT NULL AND target_email <> '' THEN
+        UPDATE public.profiles
+        SET is_subscribed = false, subscription_expires_at = NULL, updated_at = now()
+        WHERE LOWER(email) = LOWER(TRIM(target_email));
+        GET DIAGNOSTICS v_rows_updated = ROW_COUNT;
+    END IF;
+
+    RETURN jsonb_build_object('success', true, 'rows_updated', v_rows_updated);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
+
+GRANT EXECUTE ON FUNCTION public.admin_grant_subscription(text, integer, text) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.admin_cancel_subscription(text, text) TO authenticated, anon;
+
+-- دالة تسجيل تحميل الملفات في قاعدة البيانات
+CREATE OR REPLACE FUNCTION public.track_file_download(
+    p_user_id text,
+    p_user_email text,
+    p_file_title text,
+    p_file_url text DEFAULT NULL,
+    p_file_type text DEFAULT 'pdf',
+    p_file_size text DEFAULT ''
+)
+RETURNS jsonb AS $$
+DECLARE
+    v_target_uuid uuid := NULL;
+    v_file_entry jsonb;
+    v_updated_rows integer := 0;
+BEGIN
+    v_file_entry := jsonb_build_object(
+        'id', 'file_' || floor(extract(epoch from clock_timestamp()) * 1000)::text,
+        'title', p_file_title,
+        'fileUrl', p_file_url,
+        'fileType', p_file_type,
+        'fileSize', p_file_size,
+        'downloadedAt', now()::text
+    );
+
+    IF p_user_id IS NOT NULL AND p_user_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+        v_target_uuid := p_user_id::uuid;
+    ELSIF auth.uid() IS NOT NULL THEN
+        v_target_uuid := auth.uid();
+    END IF;
+
+    IF v_target_uuid IS NOT NULL THEN
+        UPDATE public.profiles
+        SET 
+            has_downloaded_files = true,
+            downloaded_files_count = COALESCE(downloaded_files_count, 0) + 1,
+            last_downloaded_at = now(),
+            downloaded_files = COALESCE(downloaded_files, '[]'::jsonb) || jsonb_build_array(v_file_entry),
+            updated_at = now()
+        WHERE id = v_target_uuid;
+        GET DIAGNOSTICS v_updated_rows = ROW_COUNT;
+    END IF;
+
+    IF v_updated_rows = 0 AND p_user_email IS NOT NULL AND p_user_email <> '' THEN
+        UPDATE public.profiles
+        SET 
+            has_downloaded_files = true,
+            downloaded_files_count = COALESCE(downloaded_files_count, 0) + 1,
+            last_downloaded_at = now(),
+            downloaded_files = COALESCE(downloaded_files, '[]'::jsonb) || jsonb_build_array(v_file_entry),
+            updated_at = now()
+        WHERE LOWER(email) = LOWER(TRIM(p_user_email));
+        GET DIAGNOSTICS v_updated_rows = ROW_COUNT;
+    END IF;
+
+    RETURN jsonb_build_object('success', true, 'updated_rows', v_updated_rows);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
+
+CREATE OR REPLACE FUNCTION public.activate_kashier_subscription(
+    p_order_id text DEFAULT NULL,
+    p_user_id text DEFAULT NULL,
+    p_user_email text DEFAULT NULL
+)
+RETURNS jsonb AS $$
+DECLARE
+    v_target_uuid uuid := NULL;
+    v_updated_rows integer := 0;
+    v_expires_at timestamptz := now() + interval '365 days';
+BEGIN
+    IF p_user_id IS NOT NULL AND p_user_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+        v_target_uuid := p_user_id::uuid;
+    ELSIF auth.uid() IS NOT NULL THEN
+        v_target_uuid := auth.uid();
+    END IF;
+
+    IF v_target_uuid IS NOT NULL THEN
+        UPDATE public.profiles
+        SET 
+            is_subscribed = true,
+            subscription_expires_at = v_expires_at,
+            updated_at = now()
+        WHERE id = v_target_uuid;
+        GET DIAGNOSTICS v_updated_rows = ROW_COUNT;
+    END IF;
+
+    IF v_updated_rows = 0 AND p_user_email IS NOT NULL AND p_user_email <> '' THEN
+        UPDATE public.profiles
+        SET 
+            is_subscribed = true,
+            subscription_expires_at = v_expires_at,
+            updated_at = now()
+        WHERE LOWER(email) = LOWER(TRIM(p_user_email));
+        GET DIAGNOSTICS v_updated_rows = ROW_COUNT;
+    END IF;
+
+    RETURN jsonb_build_object('success', true, 'expires_at', v_expires_at, 'updated_rows', v_updated_rows);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
+
+GRANT EXECUTE ON FUNCTION public.track_file_download(text, text, text, text, text, text) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.activate_kashier_subscription(text, text, text) TO authenticated, anon;
 
 -- 8. تفعيل البث اللحظي (Realtime) لجدول profiles
 DO $$ BEGIN

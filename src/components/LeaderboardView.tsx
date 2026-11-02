@@ -43,7 +43,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>(() =>
     pointsService.getLeaderboard(currentUser, 'weekly')
   );
-  const [userPoints, setUserPoints] = useState(() => (currentUser ? pointsService.getUserPoints() : 0));
+  const [userPoints, setUserPoints] = useState(() => pointsService.getUserPoints(currentUser));
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [showResetConfirm, setShowResetConfirm] = useState<boolean>(false);
 
@@ -53,7 +53,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
     try {
       const realData = await pointsService.fetchLeaderboard(currentUser, period);
       setLeaderboard(realData);
-      setUserPoints(currentUser ? pointsService.getUserPoints() : 0);
+      setUserPoints(pointsService.getUserPoints(currentUser));
     } catch (err) {
       console.warn('Failed to load leaderboard from DB:', err);
     } finally {
@@ -113,7 +113,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
   const showUserOutOfTop13Row = Boolean(currentUser && currentUserEntry && !isCurrentUserInTop13);
 
   const handleResetPoints = async () => {
-    pointsService.resetPointsToZero(currentUser);
+    await pointsService.resetPointsToZero(currentUser);
     setShowResetConfirm(false);
     setUserPoints(0);
     const fresh = pointsService.getLeaderboard(currentUser, period);

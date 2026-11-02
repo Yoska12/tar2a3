@@ -61,6 +61,7 @@ export interface TarqaUser {
   banReason?: string;
   isSubscribed?: boolean;
   subscriptionExpiresAt?: string;
+  points?: number;
 }
 
 // دالة مركزية لمزامنة وإدراج أي مستخدم يسجل أو يدخل في لوحة الأعضاء فوراً
@@ -82,6 +83,9 @@ export const syncUserToMembersDashboard = async (user: TarqaUser) => {
     telegramUsername: user.telegramUsername,
     telegramId: user.telegramId,
     avatarUrl: user.avatarUrl,
+    isSubscribed: user.isSubscribed,
+    subscriptionExpiresAt: user.subscriptionExpiresAt,
+    points: typeof user.points === 'number' ? user.points : 0,
     createdAt: new Date().toISOString(),
     lastSignInAt: new Date().toISOString(),
   };
@@ -218,6 +222,8 @@ export const syncUserToMembersDashboard = async (user: TarqaUser) => {
         ...list[idx], 
         ...record, 
         role: record.role,
+        isSubscribed: user.isSubscribed !== undefined ? user.isSubscribed : list[idx].isSubscribed,
+        subscriptionExpiresAt: user.isSubscribed === false ? undefined : (user.subscriptionExpiresAt || list[idx].subscriptionExpiresAt),
         createdAt: list[idx].createdAt || record.createdAt 
       };
     } else {
@@ -294,15 +300,24 @@ export const authService = {
         } catch {}
 
         // فحص سجل الاشتراكات المحلي إذا لم يكن الحساب مشتركاً
-        if (!parsed.isSubscribed) {
+        if (parsed.isSubscribed !== false) {
           try {
             const subsRaw = localStorage.getItem('tarqa_subscriptions');
             if (subsRaw) {
               const subs = JSON.parse(subsRaw);
-              const sub = subs[parsed.id] || subs[emailLower];
-              if (sub && (sub.active === true || sub.isActive === true)) {
-                parsed.isSubscribed = true;
-                parsed.subscriptionExpiresAt = sub.expiresAt || sub.expiresDate || parsed.subscriptionExpiresAt;
+              const sub = (parsed.id ? subs[parsed.id] : null) || (emailLower ? subs[emailLower] : null);
+              if (sub && (sub.active === true || sub.isActive === true || sub.status === 'active')) {
+                const exp = sub.expiresAt || sub.expiresDate;
+                if (!exp || new Date(exp).getTime() > Date.now()) {
+                  parsed.isSubscribed = true;
+                  parsed.subscriptionExpiresAt = exp || parsed.subscriptionExpiresAt;
+                } else {
+                  parsed.isSubscribed = false;
+                  parsed.subscriptionExpiresAt = undefined;
+                }
+              } else if (sub && (sub.active === false || sub.isActive === false || sub.status === 'cancelled')) {
+                parsed.isSubscribed = false;
+                parsed.subscriptionExpiresAt = undefined;
               }
             }
           } catch {}
@@ -369,6 +384,8 @@ export const authService = {
           const isSubscribed = isOwner ? true : (Boolean(profile.is_subscribed) || Boolean(current.isSubscribed));
           const subscriptionExpiresAt = isOwner ? undefined : (profile.subscription_expires_at || current.subscriptionExpiresAt);
 
+          const dbPoints = typeof profile.points === 'number' ? profile.points : (profile.points ? parseInt(profile.points, 10) || 0 : (current.points || 0));
+
           const updated: TarqaUser = {
             ...current,
             id: profile.id || current.id,
@@ -376,18 +393,23 @@ export const authService = {
             fullName: isOwner ? 'Yoska' : (profile.full_name || current.fullName),
             isSubscribed,
             subscriptionExpiresAt,
+            points: dbPoints,
           };
 
           const changed =
             current.role !== updated.role ||
             current.isSubscribed !== updated.isSubscribed ||
-            current.subscriptionExpiresAt !== updated.subscriptionExpiresAt;
+            current.subscriptionExpiresAt !== updated.subscriptionExpiresAt ||
+            current.points !== updated.points;
 
           if (changed) {
             authService.setCurrentUser(updated);
             if (typeof window !== 'undefined') {
               window.dispatchEvent(new CustomEvent('tarqa_subscription_changed', { detail: { isSubscribed: updated.isSubscribed } }));
               window.dispatchEvent(new Event('tarqa_roles_changed'));
+              if (current.points !== updated.points) {
+                window.dispatchEvent(new CustomEvent('tarqa_points_updated', { detail: { points: updated.points, added: 0 } }));
+              }
             }
           }
           return updated;
@@ -540,6 +562,7 @@ export const authService = {
 
         const isSubscribedFromProfile = isOwner ? true : Boolean(profile?.is_subscribed);
         const subscriptionExpiresAt = isOwner ? undefined : (profile?.subscription_expires_at || undefined);
+        const dbPoints = typeof profile?.points === 'number' ? profile.points : (profile?.points ? parseInt(profile.points, 10) || 0 : 0);
 
         const user: TarqaUser = {
           id: data.user.id,
@@ -552,6 +575,7 @@ export const authService = {
           isBanned: false,
           isSubscribed: isSubscribedFromProfile,
           subscriptionExpiresAt,
+          points: dbPoints,
         };
 
         localStorage.setItem('tarqa_current_user', JSON.stringify(user));
@@ -646,6 +670,7 @@ export const authService = {
         isBanned: false,
         isSubscribed: demoSubscribed,
         subscriptionExpiresAt: demoExpires,
+        points: typeof foundUser.points === 'number' ? foundUser.points : 0,
       };
       localStorage.setItem('tarqa_current_user', JSON.stringify(user));
       saveCurrentUserToIDB(user).catch(() => {});
@@ -654,22 +679,21 @@ export const authService = {
       return { user, isDemo: true };
     }
 
-    // تعيين الدور تلقائياً في وضع المعاينة إذا احتوى البريد على admin أو teacher أو كان حساب Yoska
+    // تعيين الدور تلقائياً في وضع المعاينة فقط لحساب المالك، وأي حساب جديد يكون طالباً غير مشترك
     let detectedRole: UserRole = 'student';
     if (isOwner) {
       detectedRole = 'super_admin';
-    } else if (emailLower.includes('admin')) {
-      detectedRole = 'admin';
-    } else if (emailLower.includes('teacher')) {
-      detectedRole = 'teacher';
     }
 
     const newUser: TarqaUser = {
       id: isOwner ? 'usr-yoska-admin' : 'usr-' + Date.now(),
       email: params.email,
-      fullName: isOwner ? 'Yoska' : (params.email.split('@')[0] || (detectedRole === 'super_admin' ? 'Yoska (سوبر أدمن)' : detectedRole === 'admin' ? 'مدير المنصة' : 'طالب طرقع')),
+      fullName: isOwner ? 'Yoska' : (params.email.split('@')[0] || 'طالب طرقع'),
       targetScore: 100,
       role: detectedRole,
+      isSubscribed: isOwner ? true : false,
+      subscriptionExpiresAt: undefined,
+      points: 0,
     };
 
     users.push({ ...newUser, password: params.password });
@@ -751,7 +775,22 @@ export const authService = {
           targetScore: params.targetScore || 100,
           role: 'student',
           telegramUsername: params.telegramUsername,
+          isSubscribed: false,
+          subscriptionExpiresAt: undefined,
+          points: 0,
         };
+
+        // تنظيف أي سجل اشتراك محلي قديم لهذا البريد
+        try {
+          const subsRaw = localStorage.getItem('tarqa_subscriptions');
+          if (subsRaw) {
+            const subs = JSON.parse(subsRaw);
+            const emClean = params.email.toLowerCase().trim();
+            delete subs[emClean];
+            delete subs[data.user.id];
+            localStorage.setItem('tarqa_subscriptions', JSON.stringify(subs));
+          }
+        } catch {}
 
         const needsConfirmation = !data.session;
         if (!needsConfirmation) {
@@ -780,9 +819,23 @@ export const authService = {
       email: params.email,
       fullName: params.fullName,
       targetScore: params.targetScore || 100,
-      role,
+      role: 'student',
       telegramUsername: params.telegramUsername,
+      isSubscribed: false,
+      subscriptionExpiresAt: undefined,
     };
+
+    // تنظيف أي اشتراك محلي قديم لنفس البريد
+    try {
+      const subsRaw = localStorage.getItem('tarqa_subscriptions');
+      if (subsRaw) {
+        const subs = JSON.parse(subsRaw);
+        const emClean = params.email.toLowerCase().trim();
+        delete subs[emClean];
+        delete subs[newUser.id];
+        localStorage.setItem('tarqa_subscriptions', JSON.stringify(subs));
+      }
+    } catch {}
 
     users.push({ ...newUser, password: params.password });
     localStorage.setItem('tarqa_registered_users', JSON.stringify(users));
@@ -988,6 +1041,7 @@ export const authService = {
     try {
       localStorage.removeItem('tarqa_current_user');
       localStorage.removeItem('tarqa_session');
+      localStorage.removeItem('tarqa_student_points_v1');
       clearCurrentUserFromIDB().catch(() => {});
       // مسح كافة الكوكيز الممكنة في المتصفح
       if (typeof document !== 'undefined') {
@@ -1001,6 +1055,7 @@ export const authService = {
     } catch {}
 
     window.dispatchEvent(new Event('tarqa_user_changed'));
+    window.dispatchEvent(new CustomEvent('tarqa_points_updated', { detail: { points: 0, added: 0 } }));
 
     if (isSupabaseConfigured) {
       try {

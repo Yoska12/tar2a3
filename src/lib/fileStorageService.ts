@@ -155,6 +155,7 @@ const readFileAsDataUrl = (file: File): Promise<string> => {
 };
 
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { downloadTrackingService } from './downloadTrackingService';
 
 /**
  * ذاكرة مؤقتة للعلامات المائية لتسريع التوليد والتحميل الفوري
@@ -242,211 +243,13 @@ const toAsciiSafe = (val?: string, fallback: string = ''): string => {
 };
 
 /**
- * توليد مذكرة طرقع متكاملة الصفحات بتنسيق PDF قياسي عند عدم توفر ملف أصلي
+ * تم إلغاء خاصية التوليد التلقائي لملفات PDF نهائياً بناءً على رغبة إدارة المنصة:
+ * لا يتم توليد أي مستندات أو مذكرات برمجياً، ويتم حصراً وتحديداً عرض وتنزيل الملف الأصلي الذي رفعه المدرس.
  */
-export const createMultiPageTarqaPdf = async (
-  title?: string,
-  description?: string,
-  pagesCount?: string,
-  studentInfo?: { name: string; id: string; code: string }
-): Promise<Uint8Array> => {
-  const doc = await PDFDocument.create();
-  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
-  const fontRegular = await doc.embedFont(StandardFonts.Helvetica);
-
-  // استخراج أرقام الصفحات فقط لمنع وجود أي حروف عربية مثل "صفحة" تسبب خطأ WinAnsi
-  const pagesNums = (pagesCount || '').replace(/[^\d]/g, '');
-  const pagesTotal = pagesNums ? `${pagesNums} Pages` : toAsciiSafe(pagesCount, '185 Pages');
-
-  const cleanTitle = toAsciiSafe(title, 'TARQA QUDURAT STUDY GUIDE 2025/2026');
-  const cleanDesc = toAsciiSafe(description, 'Comprehensive Foundation Guide, Gold Rules & Speed Strategies');
-
-  // غلاف أمان لمنع أي استثناء في الكتابة النصية
-  const safeDrawText = (page: any, text: string, options: any) => {
-    try {
-      const asciiOnly = toAsciiSafe(text, 'Tarqa Platform Document');
-      page.drawText(asciiOnly, options);
-    } catch (e) {
-      console.warn('drawText prevented an encoding error:', e);
-    }
-  };
-
-  // --- PAGE 1: الغلاف الرسمي المعتمد والمقدمة ---
-  const page1 = doc.addPage([595.28, 841.89]);
-  
-  page1.drawRectangle({
-    x: 40,
-    y: 700,
-    width: 515.28,
-    height: 100,
-    color: rgb(0.96, 0.97, 0.99),
-  });
-
-  // رسم لافتة عربية فاخرة عبر Canvas لدعم الحروف العربية بالكامل
-  try {
-    if (typeof document !== 'undefined') {
-      const bannerCanvas = document.createElement('canvas');
-      bannerCanvas.width = 1000;
-      bannerCanvas.height = 260;
-      const bCtx = bannerCanvas.getContext('2d');
-      if (bCtx) {
-        bCtx.fillStyle = '#0f172a';
-        bCtx.fillRect(0, 0, 1000, 260);
-
-        bCtx.fillStyle = '#f59e0b';
-        bCtx.font = 'bold 28px "Cairo", "Tajawal", "Segoe UI", sans-serif';
-        bCtx.textAlign = 'right';
-        bCtx.fillText('منصة طرقع التعليمية 🛡️ • الحقيبة التأسيسية الشاملة للقدرات', 960, 55);
-
-        bCtx.fillStyle = '#ffffff';
-        bCtx.font = '900 36px "Cairo", "Tajawal", "Segoe UI", sans-serif';
-        bCtx.fillText((title || 'مذكرة طرقع الشاملة لاختبار القدرات').slice(0, 50), 960, 125);
-
-        bCtx.fillStyle = '#94a3b8';
-        bCtx.font = 'bold 22px "Cairo", "Tajawal", "Segoe UI", sans-serif';
-        bCtx.fillText((description || 'تأسيس من الصفر، قوانين ذهبية، واستراتيجيات الحل الخاطف في 30 ثانية').slice(0, 60), 960, 190);
-
-        const bannerData = bannerCanvas.toDataURL('image/png');
-        const b64 = bannerData.split(',')[1];
-        if (b64) {
-          const bin = atob(b64);
-          const bBytes = new Uint8Array(bin.length);
-          for (let i = 0; i < bin.length; i++) bBytes[i] = bin.charCodeAt(i);
-          const bannerImg = await doc.embedPng(bBytes);
-          page1.drawImage(bannerImg, {
-            x: 40,
-            y: 690,
-            width: 515.28,
-            height: 133.9,
-          });
-        }
-      }
-    }
-  } catch (canvasErr) {
-    console.warn('Canvas banner rendering fallback:', canvasErr);
-  }
-
-  safeDrawText(page1, 'TARQA ACADEMY - OFFICIAL QUDURAT FOUNDATION', {
-    x: 60,
-    y: 660,
-    size: 14,
-    font: fontBold,
-    color: rgb(0.9, 0.5, 0.1),
-  });
-
-  safeDrawText(page1, cleanTitle, {
-    x: 60,
-    y: 635,
-    size: 12,
-    font: fontBold,
-    color: rgb(0.1, 0.15, 0.25),
-  });
-
-  safeDrawText(page1, cleanDesc, {
-    x: 60,
-    y: 610,
-    size: 10,
-    font: fontRegular,
-    color: rgb(0.35, 0.4, 0.45),
-  });
-
-  safeDrawText(page1, `Document Pages: ${pagesTotal} | Edition: 1446-1447H / 2025-2026 | Format: PDF Secure`, {
-    x: 60,
-    y: 585,
-    size: 9.5,
-    font: fontRegular,
-    color: rgb(0.2, 0.5, 0.3),
-  });
-
-  safeDrawText(page1, 'TABLE OF CONTENTS & CHAPTER OVERVIEW:', {
-    x: 60,
-    y: 550,
-    size: 11,
-    font: fontBold,
-    color: rgb(0.1, 0.15, 0.25),
-  });
-
-  const chapters = [
-    'Chapter 1: Arithmetic, Mental Calculation & Proportional Scaling',
-    'Chapter 2: Fast Algebra, Quadratic Identities & Exponent Shortcuts',
-    'Chapter 3: Geometry, Right Triangle Ratios & Shaded Area Subtraction',
-    'Chapter 4: Comparison Strategies, Statistics & Probability In Seconds',
-    'Chapter 5: High-Frequency Qudurat Computerized Questions Bank 2025',
-  ];
-
-  chapters.forEach((chap, idx) => {
-    safeDrawText(page1, `[Part ${idx + 1}] ${chap}`, {
-      x: 70,
-      y: 515 - idx * 28,
-      size: 9.5,
-      font: fontRegular,
-      color: rgb(0.2, 0.25, 0.3),
-    });
-  });
-
-  safeDrawText(page1, 'TARQA PLATFORM VERIFIED - OFFICIAL ENCRYPTED STUDENT COPY', {
-    x: 60,
-    y: 120,
-    size: 9,
-    font: fontBold,
-    color: rgb(0.5, 0.5, 0.5),
-  });
-
-  // --- PAGE 2: صفحة إرشادات المذاكرة والترخيص ---
-  const page2 = doc.addPage([595.28, 841.89]);
-  safeDrawText(page2, 'DOCUMENT METADATA & STUDENT ACCESS POLICY', {
-    x: 60,
-    y: 770,
-    size: 14,
-    font: fontBold,
-    color: rgb(0.1, 0.15, 0.25),
-  });
-
-  const infoLines = [
-    '1. Official Student Copy: Licensed exclusively for the registered platform member.',
-    '2. Watermark Security: Each document contains digital student identifiers.',
-    '3. Live Cloud Updates: Materials and files are synced live with the management dashboard.',
-    '4. Support & Guidance: Reach out to the Tarqa team via the official support channels.',
-  ];
-
-  infoLines.forEach((info, idx) => {
-    safeDrawText(page2, info, {
-      x: 60,
-      y: 730 - idx * 45,
-      size: 10,
-      font: fontRegular,
-      color: rgb(0.2, 0.25, 0.3),
-    });
-  });
-
-  if (studentInfo && typeof document !== 'undefined') {
-    try {
-      const watermarkBytes = createStudentWatermarkPng(studentInfo.name, studentInfo.id, studentInfo.code);
-      if (watermarkBytes.length > 0) {
-        const watermarkImg = await doc.embedPng(watermarkBytes);
-        const pages = doc.getPages();
-        for (const p of pages) {
-          const { width, height } = p.getSize();
-          p.drawImage(watermarkImg, {
-            x: 0,
-            y: 0,
-            width,
-            height,
-            opacity: 0.95,
-          });
-        }
-      }
-    } catch (wmErr) {
-      console.warn('Failed to embed watermark directly:', wmErr);
-    }
-  }
-
-  return await doc.save();
+export const createMultiPageTarqaPdf = async (): Promise<Uint8Array> => {
+  throw new Error('تم إلغاء التوليد التلقائي لملفات PDF. يتم حصراً استخدام الملفات الأصلية المرفوعة.');
 };
 
-/**
- * ختم صفحات أي ملف PDF بالعلامة المائية المشفرة ببيانات الطالب
- */
 export const stampPdfWithWatermark = async (
   pdfBytes: Uint8Array,
   studentName: string,
@@ -494,6 +297,10 @@ export const getWatermarkedPdfBlob = async (
   fileInfo: { title: string; description?: string; pagesCount?: string },
   currentUser?: any
 ): Promise<Blob> => {
+  if (!url || url.trim() === '' || url.includes('tarqa.app/files/')) {
+    throw new Error('لم يتم رفع ملف أصلي لهذه المذكرة بعد من قبل المدرس أو الإدارة.');
+  }
+
   const studentName =
     currentUser?.full_name?.trim() ||
     currentUser?.email?.split('@')[0] ||
@@ -537,32 +344,13 @@ export const getWatermarkedPdfBlob = async (
     } catch (e) {}
   }
 
-  // 2. إذا كان الملف الأصلي متوفراً يتم ختمه ببيانات الطالب
+  // 2. إرجاع الملف الأصلي الحقيقي المرفوع تماماً كما هو دون أي اصطناع أو تلاعب
   if (rawBytes && rawBytes.length > 0) {
-    try {
-      const stamped = await stampPdfWithWatermark(rawBytes, studentName, studentId, trackingCode);
-      return new Blob([stamped as any], { type: 'application/pdf' });
-    } catch (e) {
-      return new Blob([rawBytes as any], { type: 'application/pdf' });
-    }
+    return new Blob([rawBytes as any], { type: 'application/pdf' });
   }
 
-  // 3. إذا لم يتوفر ملف خام يتم توليد المذكرة التأسيسية الشاملة في خطوة واحدة فائقة السرعة
-  try {
-    const generatedBytes = await createMultiPageTarqaPdf(
-      fileInfo.title,
-      fileInfo.description,
-      fileInfo.pagesCount,
-      { name: studentName, id: studentId, code: trackingCode }
-    );
-    return new Blob([generatedBytes as any], { type: 'application/pdf' });
-  } catch (genErr) {
-    console.warn('PDF generation fallback triggered:', genErr);
-    const emergencyDoc = await PDFDocument.create();
-    emergencyDoc.addPage([595.28, 841.89]);
-    const emergencyBytes = await emergencyDoc.save();
-    return new Blob([emergencyBytes as any], { type: 'application/pdf' });
-  }
+  // 3. منع تام لتوليد أي ملف من تلقاء نفسه: إلقاء خطأ واضح إذا لم يكن الملف مرفوعاً
+  throw new Error('لم يتم العثور على ملف أصلي مرفوع لهذه المذكرة. يرجى رفع الملف من قبل المدرس أو الإدارة.');
 };
 
 export interface BrowserDownloadResult {
@@ -588,6 +376,37 @@ const activeBlobUrls: string[] = [];
 /**
  * مشغل التنزيل الحقيقي على ذاكرة جهاز الطالب متوافق مع كافة المتصفحات (كمبيوتر وهاتف)
  */
+/**
+ * تنزيل الرابط المباشر الأصلي للملف عبر المتصفح
+ */
+export const triggerDirectUrlDownload = (fileUrl: string, rawFileName: string): BrowserDownloadResult => {
+  const cleanBase = (rawFileName || 'مذكرة_طرقع_التعليمية')
+    .replace(/[/\\?%*:|"<>#]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const safeName = cleanBase.toLowerCase().endsWith('.pdf') ? cleanBase : `${cleanBase}.pdf`;
+
+  const a = document.createElement('a');
+  a.style.display = 'none';
+  a.href = fileUrl;
+  a.download = safeName;
+  a.setAttribute('download', safeName);
+  document.body.appendChild(a);
+  try {
+    a.click();
+  } catch (e) {
+    const evt = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+    a.dispatchEvent(evt);
+  }
+  setTimeout(() => {
+    try {
+      if (document.body.contains(a)) document.body.removeChild(a);
+    } catch (e) {}
+  }, 1000);
+
+  return { url: fileUrl, fileName: safeName, success: true };
+};
+
 export const triggerBrowserDownload = (blob: Blob, rawFileName: string): BrowserDownloadResult => {
   // 1. تنظيف اسم الملف من أي رموز غير مسموحة في أنظمة التشغيل (ويندوز / ماك / أندرويد / آيفون)
   const cleanBase = (rawFileName || 'مذكرة_طرقع_التعليمية')
@@ -599,6 +418,17 @@ export const triggerBrowserDownload = (blob: Blob, rawFileName: string): Browser
   // ضمان نوع MIME بصيغة application/pdf ليتعرف عليها المتصفح فوراً كملف مستند
   const pdfBlob = blob.type === 'application/pdf' ? blob : new Blob([blob], { type: 'application/pdf' });
   const objectUrl = URL.createObjectURL(pdfBlob);
+
+  // تسجيل فوري لعملية التحميل بالباك إند وقاعدة البيانات
+  try {
+    downloadTrackingService.trackDownload({
+      title: safeName,
+      fileType: 'pdf',
+      fileSize: formatFileSize(blob.size || 0),
+    });
+  } catch (trackErr) {
+    console.debug('Download tracking notice:', trackErr);
+  }
 
   const isMobile = isMobileDevice();
   const isIOS = isIOSDevice();
@@ -670,19 +500,18 @@ export const downloadWatermarkedFile = async (
   file: { title: string; fileUrl: string; description?: string; pagesCount?: string },
   currentUser?: any
 ): Promise<BrowserDownloadResult> => {
+  if (!file.fileUrl || file.fileUrl.trim() === '' || file.fileUrl.includes('tarqa.app/files/')) {
+    return { url: '', fileName: file.title, success: false };
+  }
   try {
     const blob = await getWatermarkedPdfBlob(file.fileUrl, file, currentUser);
     return triggerBrowserDownload(blob, file.title);
   } catch (err) {
-    console.error('Watermark stamping failed during download, activating direct fallback:', err);
-    try {
-      const fallbackBytes = await createMultiPageTarqaPdf(file.title, file.description, file.pagesCount);
-      const fallbackBlob = new Blob([fallbackBytes as any], { type: 'application/pdf' });
-      return triggerBrowserDownload(fallbackBlob, file.title);
-    } catch (fallbackErr) {
-      console.error('Fatal download fallback error:', fallbackErr);
-      return { url: '', fileName: file.title, success: false };
+    console.warn('Blob extraction failed during download, checking direct URL fallback:', err);
+    if (file.fileUrl && (file.fileUrl.startsWith('http://') || file.fileUrl.startsWith('https://') || file.fileUrl.startsWith('/'))) {
+      return triggerDirectUrlDownload(file.fileUrl, file.title);
     }
+    return { url: '', fileName: file.title, success: false };
   }
 };
 
@@ -693,14 +522,18 @@ export const getWatermarkedPdfBlobUrl = async (
   file: { title: string; fileUrl: string; description?: string; pagesCount?: string },
   currentUser?: any
 ): Promise<string> => {
+  if (!file.fileUrl || file.fileUrl.trim() === '' || file.fileUrl.includes('tarqa.app/files/')) {
+    throw new Error('لم يتم رفع ملف أصلي لهذه المذكرة بعد.');
+  }
   try {
     const blob = await getWatermarkedPdfBlob(file.fileUrl, file, currentUser);
     return URL.createObjectURL(blob);
   } catch (err) {
-    console.error('Failed to get watermarked preview, falling back to base PDF:', err);
-    const fallbackBytes = await createMultiPageTarqaPdf(file.title, file.description, file.pagesCount);
-    const fallbackBlob = new Blob([fallbackBytes as any], { type: 'application/pdf' });
-    return URL.createObjectURL(fallbackBlob);
+    console.warn('Failed to get watermarked preview, checking direct URL:', err);
+    if (file.fileUrl && (file.fileUrl.startsWith('http://') || file.fileUrl.startsWith('https://') || file.fileUrl.startsWith('/')) && !file.fileUrl.startsWith('vault://')) {
+      return file.fileUrl;
+    }
+    throw err;
   }
 };
 
@@ -755,6 +588,7 @@ export const fileStorageService = {
   downloadOrPreviewFile,
   downloadWatermarkedFile,
   triggerBrowserDownload,
+  triggerDirectUrlDownload,
   getWatermarkedPdfBlobUrl,
   getWatermarkedPdfBlob,
   createStudentWatermarkPng,

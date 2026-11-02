@@ -445,7 +445,13 @@ export const invalidateCoursesCache = () => {
   dbCache.invalidateTag('courses');
   dbCache.invalidateTag('lectures');
 };
-export const invalidateUsersCache = () => dbCache.invalidateTag('users');
-export const invalidateSubscriptionsCache = () => dbCache.invalidateTag('subscriptions');
+export const invalidateUsersCache = () => {
+  dbCache.invalidateTag('users');
+  dbCache.invalidate('db_users_with_roles');
+};
+export const invalidateSubscriptionsCache = () => {
+  dbCache.invalidateTag('subscriptions');
+  dbCache.invalidate('db_users_with_roles');
+};
 export const invalidateCacheByTag = (tag: CacheTag) => dbCache.invalidateTag(tag);
 export const clearAllDatabaseCache = () => dbCache.clear();

@@ -29,15 +29,19 @@ import {
   Loader2,
   Shield,
   CreditCard,
-  RotateCcw
+  RotateCcw,
+  ChevronRight,
+  ChevronLeft,
+  Upload
 } from 'lucide-react';
-import { CourseModule, Lesson, LessonAttachment, VideoProvider, CourseFileItem, CourseEnrollmentStatus, TeacherId, InstructorInfo } from '../types';
+import { CourseModule, Lesson, LessonAttachment, VideoProvider, CourseFileItem, CourseEnrollmentStatus, TeacherId, InstructorInfo, CourseItem } from '../types';
 import { AVAILABLE_INSTRUCTORS } from '../data/foundationModules';
 import { TarqaUser } from '../lib/supabase';
 import { uploadLessonVideo, formatVideoSize } from '../lib/videoUploadService';
 import {
   ANNUAL_SUBSCRIPTION_PRICE_SAR,
   ANNUAL_SUBSCRIPTION_PRICE_EGP,
+  DEFAULT_FOUNDATION_COURSE,
   canEditCourses,
   isUserSubscribed,
   getSubscriptionDetails,
@@ -54,12 +58,14 @@ import { sanitizeUrl } from '../lib/securityUtils';
 import { fileStorageService, isMobileDevice } from '../lib/fileStorageService';
 import { PdfPreviewModal } from './PdfPreviewModal';
 import { CourseEnrollButton } from './CourseEnrollButton';
+import { AdBannerSlider } from './AdBannerSlider';
 
 interface CoursesViewProps {
   currentUser?: TarqaUser | null;
   onOpenClassroom: (module: CourseModule, lesson: Lesson) => void;
   onBackToHome: () => void;
   onOpenAuth?: () => void;
+  initialCourseId?: string | null;
 }
 
 export const CoursesView: React.FC<CoursesViewProps> = ({
@@ -67,32 +73,83 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
   onOpenClassroom,
   onBackToHome,
   onOpenAuth,
+  initialCourseId = null,
 }) => {
+  const [courses, setCourses] = useState<CourseItem[]>(() => coursesStorage.getCourses());
+  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(initialCourseId);
+
+  // نافذة إضافة وتعديل الدورات التدريبية
+  const [courseModalOpen, setCourseModalOpen] = useState(false);
+  const [editingCourse, setEditingCourse] = useState<CourseItem | null>(null);
+  const [courseFormData, setCourseFormData] = useState<CourseItem>({
+    id: '',
+    title: '',
+    description: '',
+    coverImage: '',
+    badge: 'الدورة المعتمدة 1446',
+    badgeColor: 'amber',
+    priceSar: 75,
+    priceEg: ANNUAL_SUBSCRIPTION_PRICE_EGP,
+    status: 'active',
+    availableDate: '',
+    customStatusText: '',
+    orderIndex: 1,
+  });
+  const courseCoverInputRef = React.useRef<HTMLInputElement>(null);
+
   const [modules, setModules] = useState<CourseModule[]>(() => coursesStorage.getModules());
   const [files, setFiles] = useState<CourseFileItem[]>(() => coursesStorage.getFiles());
   const [instructors, setInstructors] = useState<InstructorInfo[]>(() => coursesStorage.getInstructors());
   const [activeTab, setActiveTab] = useState<'all' | 'lectures' | 'files'>('all');
-  // تحديد المعلم المختار (مدرس 1 أو مدرس 2)
-  const [selectedTeacher, setSelectedTeacher] = useState<TeacherId>('teacher_1');
 
-  // نافذة تعديل اسم وبيانات المدرس
+  // الدورة الحالية المختارة (أو الافتراضية)
+  const currentCourse = courses.find((c) => c.id === selectedCourseId) || courses[0] || DEFAULT_FOUNDATION_COURSE;
+
+  // الأبواب والملفات الخاصة بالدورة المختارة فقط
+  const currentCourseModules = modules.filter(
+    (m) => (m.courseId || 'course-foundation') === currentCourse.id
+  );
+  const currentCourseFiles = files.filter(
+    (f) => (f.courseId || 'course-foundation') === currentCourse.id
+  );
+
+  // حالة الباب / الفصل المختار
+  const [selectedModuleId, setSelectedModuleId] = useState<string>(
+    () => currentCourseModules[0]?.id || 'mod-lectures'
+  );
+
+  // تحديث الباب المختار تلقائياً عند تغيير الدورة
+  useEffect(() => {
+    if (selectedCourseId) {
+      const cMods = modules.filter((m) => (m.courseId || 'course-foundation') === selectedCourseId);
+      if (cMods.length > 0) {
+        setSelectedModuleId(cMods[0].id);
+      }
+    }
+  }, [selectedCourseId, modules]);
+
+  // تحديد المعلم المختار من قائمة المدرسين
+  const [selectedTeacher, setSelectedTeacher] = useState<TeacherId | 'all'>('all');
+
+  // نافذة إضافة / تعديل المدرسين
   const [teacherModalOpen, setTeacherModalOpen] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<InstructorInfo | null>(null);
   const [teacherFormData, setTeacherFormData] = useState<InstructorInfo>({
-    id: 'teacher_1',
-    name: 'مدرس 1',
-    fullName: 'مدرس 1',
-    title: 'خبير التأسيس الذهني والخرائط المعرفية',
-    tagline: 'شرح تأصيلي مبسط من الصفر يربط المفاهيم بالخرائط الذهنية وقوانين قياس الأساسية.',
+    id: '',
+    name: '',
+    fullName: '',
+    title: '',
+    tagline: '',
     avatarIcon: '👨‍🏫',
     badgeColor: 'amber',
   });
   
-  // الباب الوحيد للمحاضرات
-  const currentModule = modules[0] || {
+  // الباب الحالي المختار أو الافتراضي
+  const currentModule = currentCourseModules.find((m) => m.id === selectedModuleId) || currentCourseModules[0] || {
     id: 'mod-lectures',
+    courseId: currentCourse.id,
     title: 'المحاضرات',
-    description: 'محاضرات التأسيس الشاملة للقدرات من الصفر حتى الاحتراف.',
+    description: 'محاضرات الدورة التدريبية من الصفر حتى الاحتراف.',
     orderIndex: 1,
     isPublished: true,
     status: 'active' as CourseEnrollmentStatus,
@@ -104,6 +161,23 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
   const moduleEnrollmentInfo = getCourseEnrollmentInfo(currentModule);
 
   const [subscriptionInfo, setSubscriptionInfo] = useState(() => getSubscriptionDetails(currentUser));
+
+  useEffect(() => {
+    setSubscriptionInfo(getSubscriptionDetails(currentUser));
+  }, [currentUser]);
+
+  useEffect(() => {
+    const handleSubUpdated = () => {
+      setSubscriptionInfo(getSubscriptionDetails(currentUser));
+    };
+    window.addEventListener('tarqa:subscription_updated', handleSubUpdated);
+    window.addEventListener('storage', handleSubUpdated);
+    return () => {
+      window.removeEventListener('tarqa:subscription_updated', handleSubUpdated);
+      window.removeEventListener('storage', handleSubUpdated);
+    };
+  }, [currentUser]);
+
   const isEditor = canEditCourses(currentUser?.role, currentUser?.email);
 
   // وضع التعديل للمعلمين والمشرفين
@@ -181,14 +255,16 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
     }
   };
 
-  // نافذة تعديل اسم وتفاصيل وحالة باب المحاضرات
+  // نافذة إضافة / تعديل الأبواب والفصول
   const [moduleModalOpen, setModuleModalOpen] = useState(false);
+  const [isSavingModule, setIsSavingModule] = useState(false);
+  const [editingModule, setEditingModule] = useState<CourseModule | null>(null);
   const [moduleFormData, setModuleFormData] = useState({
-    title: currentModule.title || 'المحاضرات',
-    description: currentModule.description || '',
-    status: (currentModule.status || 'active') as CourseEnrollmentStatus,
-    availableDate: currentModule.availableDate || '',
-    customStatusText: currentModule.customStatusText || '',
+    title: '',
+    description: '',
+    status: 'active' as CourseEnrollmentStatus,
+    availableDate: '',
+    customStatusText: '',
   });
 
   // نافذة إضافة / تعديل ملف
@@ -264,35 +340,202 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
     }
   };
 
-  // وظيفة استعادة المحاضرات والملفات الافتراضية المعتمدة للمنصة
-  const handleRestoreDefaults = () => {
-    if (window.confirm('هل تريد استعادة كافة المحاضرات والملفات المعتمدة للمنصة (8 محاضرات تأسيسية و 3 مذكرات وملخصات)؟')) {
-      const defaultMods = coursesStorage.resetToDefault();
-      const defaultFiles = coursesStorage.resetFilesToDefault();
-      setModules([...defaultMods]);
-      setFiles([...defaultFiles]);
-      coursesStorage.syncToCloud(defaultMods, defaultFiles);
-      setDownloadToast('تمت استعادة كافة المحاضرات والملفات بنجاح ومزامنتها سحابياً! ✅');
-      setTimeout(() => setDownloadToast(null), 4000);
-    }
+
+  // فتح نافذة إضافة مدرس جديد
+  const handleOpenAddTeacher = () => {
+    setEditingTeacher(null);
+    setTeacherFormData({
+      id: 'teacher_' + Date.now(),
+      name: '',
+      fullName: '',
+      title: '',
+      tagline: '',
+      avatarIcon: '👨‍🏫',
+      badgeColor: 'amber',
+    });
+    setTeacherModalOpen(true);
   };
 
-  // حفظ تعديل اسم وبيانات المدرس
+  // فتح نافذة تعديل بيانات مدرس
+  const handleOpenEditTeacher = (teacher: InstructorInfo) => {
+    setEditingTeacher(teacher);
+    setTeacherFormData({ ...teacher });
+    setTeacherModalOpen(true);
+  };
+
+  // حفظ إضافة أو تعديل المدرس
   const handleSaveTeacher = (e: React.FormEvent) => {
     e.preventDefault();
     if (!teacherFormData.name.trim()) return;
-    const updated = coursesStorage.updateInstructor(teacherFormData);
-    setInstructors([...updated]);
-    setModules([...coursesStorage.getModules()]);
+
+    const finalFullName = teacherFormData.fullName.trim() || teacherFormData.name.trim();
+
+    if (editingTeacher) {
+      const updated: InstructorInfo = {
+        ...teacherFormData,
+        name: teacherFormData.name.trim(),
+        fullName: finalFullName,
+        title: teacherFormData.title.trim() || 'معلم خبير في تأسيس القدرات',
+        tagline: teacherFormData.tagline.trim(),
+      };
+      const updatedList = coursesStorage.updateInstructor(updated);
+      setInstructors([...updatedList]);
+      setModules([...coursesStorage.getModules()]);
+      setDownloadToast(`تم تحديث بيانات المعلم (${updated.name}) بنجاح! 👨‍🏫✅`);
+    } else {
+      const newInst: InstructorInfo = {
+        ...teacherFormData,
+        id: teacherFormData.id || 'teacher_' + Date.now(),
+        name: teacherFormData.name.trim(),
+        fullName: finalFullName,
+        title: teacherFormData.title.trim() || 'معلم خبير في تأسيس القدرات',
+        tagline: teacherFormData.tagline.trim(),
+      };
+      const updatedList = coursesStorage.addInstructor(newInst);
+      setInstructors([...updatedList]);
+      setSelectedTeacher(newInst.id);
+      setDownloadToast(`تمت إضافة المعلم الجديد (${newInst.name}) بنجاح! 👨‍🏫🎉`);
+    }
     setTeacherModalOpen(false);
-    setDownloadToast(`تم تحديث اسم وبيانات (${teacherFormData.name}) بنجاح! 👨‍🏫✅`);
     setTimeout(() => setDownloadToast(null), 3500);
+  };
+
+  // حذف مدرس
+  const handleDeleteTeacher = (instId: string, name: string) => {
+    if (instructors.length <= 1) {
+      alert('يجب الإبقاء على مدرس واحد على الأقل في المنصة.');
+      return;
+    }
+    if (window.confirm(`هل أنت متأكد من حذف المدرس "${name}"؟ سيتم تحويل كافة محاضراته إلى المعلم الأول تلقائياً.`)) {
+      const updatedList = coursesStorage.deleteInstructor(instId);
+      setInstructors([...updatedList]);
+      setModules([...coursesStorage.getModules()]);
+      if (selectedTeacher === instId) {
+        setSelectedTeacher(updatedList[0]?.id || 'teacher_1');
+      }
+      setDownloadToast(`تم حذف المدرس "${name}" بنجاح! 🗑️`);
+      setTimeout(() => setDownloadToast(null), 3500);
+    }
+  };
+
+  // معالجات إدارة الدورات التدريبية
+  const handleCourseCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) {
+      alert('حجم الصورة كبير، يرجى اختيار صورة أقل من 8 ميجابايت.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        setCourseFormData((prev) => ({ ...prev, coverImage: dataUrl }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const openAddCourseModal = () => {
+    setEditingCourse(null);
+    setCourseFormData({
+      id: '',
+      title: '',
+      description: '',
+      coverImage: '',
+      badge: 'دورة جديدة 1446',
+      badgeColor: 'amber',
+      priceSar: 75,
+      priceEg: ANNUAL_SUBSCRIPTION_PRICE_EGP,
+      status: 'active',
+      availableDate: '',
+      customStatusText: '',
+      orderIndex: courses.length + 1,
+    });
+    setCourseModalOpen(true);
+  };
+
+  const openEditCourseModal = (course: CourseItem, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setEditingCourse(course);
+    setCourseFormData({ ...course });
+    setCourseModalOpen(true);
+  };
+
+  const handleSaveCourse = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!courseFormData.title.trim()) {
+      alert('يرجى كتابة اسم الدورة التدريبية.');
+      return;
+    }
+
+    if (editingCourse) {
+      const updated: CourseItem = {
+        ...editingCourse,
+        title: courseFormData.title.trim(),
+        description: courseFormData.description.trim(),
+        coverImage: courseFormData.coverImage?.trim() || '',
+        badge: courseFormData.badge?.trim() || '',
+        badgeColor: courseFormData.badgeColor || 'amber',
+        priceSar: Number(courseFormData.priceSar) || 75,
+        priceEg: Number(courseFormData.priceEg) || ANNUAL_SUBSCRIPTION_PRICE_EGP,
+        status: courseFormData.status || 'active',
+        availableDate: courseFormData.availableDate?.trim() || '',
+        customStatusText: courseFormData.customStatusText?.trim() || '',
+      };
+      const updatedList = coursesStorage.updateCourse(updated);
+      setCourses([...updatedList]);
+      setDownloadToast(`تم تحديث الدورة [${updated.title}] بنجاح! 🎯✅`);
+    } else {
+      const newCourse: CourseItem = {
+        id: 'course_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+        title: courseFormData.title.trim(),
+        description: courseFormData.description.trim(),
+        coverImage: courseFormData.coverImage?.trim() || '',
+        badge: courseFormData.badge?.trim() || 'دورة جديدة',
+        badgeColor: courseFormData.badgeColor || 'amber',
+        priceSar: Number(courseFormData.priceSar) || 75,
+        priceEg: Number(courseFormData.priceEg) || ANNUAL_SUBSCRIPTION_PRICE_EGP,
+        status: courseFormData.status || 'active',
+        availableDate: courseFormData.availableDate?.trim() || '',
+        customStatusText: courseFormData.customStatusText?.trim() || '',
+        orderIndex: courses.length + 1,
+        createdAt: new Date().toISOString(),
+      };
+      const updatedList = coursesStorage.addCourse(newCourse);
+      setCourses([...updatedList]);
+      setDownloadToast(`تم إنشاء الدورة الجديدة [${newCourse.title}] بنجاح! 🎯🎉`);
+    }
+
+    setCourseModalOpen(false);
+    setTimeout(() => setDownloadToast(null), 3500);
+  };
+
+  const handleDeleteCourse = (courseId: string, title: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (courseId === 'course-foundation') {
+      alert('دورة التأسيس الشاملة هي الدورة الأساسية المعتمدة ولا يمكن حذفها.');
+      return;
+    }
+    if (window.confirm(`هل أنت متأكد من حذف دورة "${title}" نهائياً؟`)) {
+      const updatedList = coursesStorage.deleteCourse(courseId);
+      setCourses([...updatedList]);
+      if (selectedCourseId === courseId) {
+        setSelectedCourseId(null);
+      }
+      setDownloadToast(`تم حذف الدورة "${title}" بنجاح 🗑️`);
+      setTimeout(() => setDownloadToast(null), 3500);
+    }
   };
 
   // الاستماع لتغييرات الدورات والملفات والاشتراكات والمدرسين
   useEffect(() => {
     const handleSubChanged = () => {
       setSubscriptionInfo(getSubscriptionDetails(currentUser));
+    };
+    const handleCoursesChanged = (e: any) => {
+      const incoming = e.detail || coursesStorage.getCourses();
+      setCourses([...incoming]);
     };
     const handleModulesChanged = (e: any) => {
       const incoming = e.detail || coursesStorage.getModules();
@@ -309,6 +552,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
 
     window.addEventListener('tarqa_subscription_changed', handleSubChanged);
     window.addEventListener('tarqa_user_changed', handleSubChanged);
+    window.addEventListener('tarqa_courses_list_changed', handleCoursesChanged);
     window.addEventListener('tarqa_courses_modules_changed', handleModulesChanged);
     window.addEventListener('tarqa_courses_files_changed', handleFilesChanged);
     window.addEventListener('tarqa_instructors_changed', handleInstructorsChanged);
@@ -316,6 +560,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
     return () => {
       window.removeEventListener('tarqa_subscription_changed', handleSubChanged);
       window.removeEventListener('tarqa_user_changed', handleSubChanged);
+      window.removeEventListener('tarqa_courses_list_changed', handleCoursesChanged);
       window.removeEventListener('tarqa_courses_modules_changed', handleModulesChanged);
       window.removeEventListener('tarqa_courses_files_changed', handleFilesChanged);
       window.removeEventListener('tarqa_instructors_changed', handleInstructorsChanged);
@@ -327,47 +572,38 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
     setSubscriptionInfo(getSubscriptionDetails(currentUser));
   }, [currentUser]);
 
-  // تنفيذ الاشتراك السنوي عبر بوابة كاشير أو التفعيل المباشر
-  const handleConfirmSubscription = async () => {
+  // تنفيذ الاشتراك السنوي عبر فتح بوابة الدفع المعتمدة (كاشير / إنستاباي)
+  const handleConfirmSubscription = () => {
     if (!currentUser) {
       setShowSubscribeModal(false);
       onOpenAuth?.();
       return;
     }
 
-    const kashierSettings = getKashierSettings();
-    if (kashierSettings.enabled) {
-      setShowSubscribeModal(false);
-      setIsKashierCheckoutOpen(true);
-      return;
-    }
-
-    setIsSubscribing(true);
-    try {
-      const res = await activateAnnualSubscription(currentUser);
-      setSubscriptionInfo(getSubscriptionDetails(currentUser));
-      setSubscribeSuccessMessage(res.message);
-      setTimeout(() => {
-        setSubscribeSuccessMessage(null);
-        setShowSubscribeModal(false);
-      }, 2000);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsSubscribing(false);
-    }
+    setShowSubscribeModal(false);
+    setIsKashierCheckoutOpen(true);
   };
 
-  // معالجة اكتمال الدفع بنجاح من بوابة كاشير
+  // معالجة اكتمال الدفع بنجاح من بوابة كاشير أو إنستاباي
   const handleKashierPaymentSuccess = async (tx: KashierTransaction) => {
-    if (!currentUser) return;
+    const userToAct = currentUser || {
+      id: tx.userId || 'student_' + Date.now(),
+      email: tx.userEmail || '',
+      fullName: tx.userName || 'طالب طرقع',
+      role: 'student',
+    } as TarqaUser;
+
     setIsSubscribing(true);
     try {
-      const res = await activateAnnualSubscription(currentUser);
-      setSubscriptionInfo(getSubscriptionDetails(currentUser));
-      setSubscribeSuccessMessage(res.message);
+      const res = await activateAnnualSubscription(userToAct);
+      setSubscriptionInfo(getSubscriptionDetails(userToAct));
+      setSubscribeSuccessMessage('تم تأكيد الدفع وتفعيل اشتراكك السنوي بنجاح! 🎉 استمتع بجميع المحاضرات والملفات.');
       setIsKashierCheckoutOpen(false);
       setShowSubscribeModal(false);
+      window.dispatchEvent(new CustomEvent('tarqa:subscription_updated'));
+      setTimeout(() => {
+        setSubscribeSuccessMessage(null);
+      }, 4000);
     } catch (e) {
       console.error('Error activating subscription after Kashier payment:', e);
     } finally {
@@ -375,8 +611,26 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
     }
   };
 
-  // فتح المحاضرة أو نافذة الاشتراك
+  // فتح المحاضرة أو نافذة الاشتراك أو توجيه الزائر للتسجيل
   const handleLessonClick = (lesson: Lesson) => {
+    if (!currentUser) {
+      if (lesson.isFreePreview) {
+        setDownloadToast('هذه المحاضرة تجريبية مجانية 🎁 سجل حسابك المجاني في ثوانٍ لمشاهدتها فوراً!');
+        setTimeout(() => setDownloadToast(null), 5000);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('tarqa_open_auth', { detail: 'signup' }));
+        }
+        onOpenAuth?.();
+        return;
+      }
+      setDownloadToast('هذه المحاضرة مخصصة للمشتركين 🔒 يرجى تسجيل حسابك والاشتراك للوصول الكامل');
+      setTimeout(() => setDownloadToast(null), 5000);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('tarqa_open_auth', { detail: 'signin' }));
+      }
+      onOpenAuth?.();
+      return;
+    }
     const hasAccess = canAccessLesson(lesson, currentUser);
     if (hasAccess) {
       onOpenClassroom({ ...currentModule, lessons: displayedLessons }, lesson);
@@ -387,12 +641,35 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
 
   // تحميل أو فتح ملف
   const handleFileAction = async (file: CourseFileItem, previewMode = false) => {
+    if (!currentUser) {
+      if (file.isFreePreview) {
+        setDownloadToast('هذا الملف متاح مجاناً 🎁 يرجى إنشاء حساب مجاني أولاً للوصول إليه');
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('tarqa_open_auth', { detail: 'signup' }));
+        }
+      } else {
+        setDownloadToast('هذا الملف مخصص للمشتركين 🔒 يرجى تسجيل حسابك والاشتراك للوصول إليه');
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('tarqa_open_auth', { detail: 'signin' }));
+        }
+      }
+      setTimeout(() => setDownloadToast(null), 4500);
+      onOpenAuth?.();
+      return;
+    }
     const hasAccess = Boolean(file.isFreePreview || subscriptionInfo.isSubscribed);
 
     if (!hasAccess) {
       setShowSubscribeModal(true);
       setDownloadToast('عفواً، معاينة وتنزيل هذا الملف متاحة للمشتركين فقط 🔒');
       setTimeout(() => setDownloadToast(null), 4000);
+      return;
+    }
+
+    // التحقق من أن الملف تم رفعه فعلياً بواسطة المدرس
+    if (!file.fileUrl || file.fileUrl.trim() === '' || file.fileUrl.includes('tarqa.app/files/')) {
+      setDownloadToast('⚠️ لم يتم رفع ملف أصلي لهذه المذكرة بعد من قبل المدرس أو الإدارة.');
+      setTimeout(() => setDownloadToast(null), 4500);
       return;
     }
 
@@ -458,10 +735,11 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
       });
     }
 
-    const defaultVideoUrl = 'https://vjs.zencdn.net/v/oceans.mp4';
+    const defaultVideoUrl = '';
 
-    const teacherId = lessonFormData.teacherId || 'teacher_1';
-    const teacherName = teacherId === 'teacher_2' ? 'مدرس 2' : 'مدرس 1';
+    const teacherId = lessonFormData.teacherId || instructors[0]?.id || 'teacher_1';
+    const matchedTeacher = instructors.find((i) => i.id === teacherId);
+    const teacherName = matchedTeacher?.fullName || matchedTeacher?.name || lessonFormData.teacherName || 'مدرس';
 
     if (editingLesson) {
       const updatedLesson: Lesson = {
@@ -478,9 +756,12 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
       };
       const updated = coursesStorage.updateLesson(updatedLesson);
       setModules([...updated]);
+      setSelectedTeacher(teacherId);
+      setDownloadToast(`تم تحديث المحاضرة [${updatedLesson.title}] بنجاح ✅`);
+      setTimeout(() => setDownloadToast(null), 3500);
     } else {
       const newLesson: Lesson = {
-        id: 'les-' + Date.now(),
+        id: 'lesson_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
         moduleId: currentModule.id,
         moduleTitle: currentModule.title,
         title: lessonFormData.title.trim(),
@@ -497,6 +778,9 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
       };
       const updated = coursesStorage.addLesson(currentModule.id, newLesson);
       setModules([...updated]);
+      setSelectedTeacher('all');
+      setDownloadToast(`تمت إضافة المحاضرة [${newLesson.title}] بنجاح 🎥✅`);
+      setTimeout(() => setDownloadToast(null), 3500);
     }
 
     setLessonModalOpen(false);
@@ -504,9 +788,11 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
 
   // حذف محاضرة
   const handleDeleteLesson = (lessonId: string) => {
-    if (window.confirm('هل أنت متأكد من رغبتك في حذف هذه المحاضرة؟')) {
+    if (window.confirm('هل أنت متأكد من رغبتك في حذف هذه المحاضرة نهائياً من الموقع؟')) {
       const updated = coursesStorage.deleteLesson(currentModule.id, lessonId);
       setModules([...updated]);
+      setDownloadToast('تم حذف المحاضرة نهائياً بنجاح 🗑️');
+      setTimeout(() => setDownloadToast(null), 3500);
     }
   };
 
@@ -516,22 +802,107 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
     setModules([...updated]);
   };
 
-  // حفظ تفاصيل وحالة باب المحاضرات
+  // فتح نافذة إضافة باب جديد
+  const handleOpenAddModule = () => {
+    setEditingModule(null);
+    setModuleFormData({
+      title: '',
+      description: '',
+      status: 'active',
+      availableDate: '',
+      customStatusText: '',
+    });
+    setModuleModalOpen(true);
+  };
+
+  // فتح نافذة تعديل باب
+  const handleOpenEditModule = (mod?: CourseModule) => {
+    const target = mod || currentModule;
+    setEditingModule(target);
+    setModuleFormData({
+      title: target.title || '',
+      description: target.description || '',
+      status: (target.status || 'active') as CourseEnrollmentStatus,
+      availableDate: target.availableDate || '',
+      customStatusText: target.customStatusText || '',
+    });
+    setModuleModalOpen(true);
+  };
+
+  // حفظ إضافة أو تعديل الباب
   const handleSaveModule = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!moduleFormData.title.trim()) return;
+    if (isSavingModule) return;
+    const cleanTitle = moduleFormData.title.trim();
+    if (!cleanTitle) return;
 
-    const updated = {
-      ...currentModule,
-      title: moduleFormData.title.trim(),
-      description: moduleFormData.description.trim(),
-      status: moduleFormData.status,
-      availableDate: moduleFormData.availableDate.trim(),
-      customStatusText: moduleFormData.customStatusText.trim(),
-    };
-    const updatedList = coursesStorage.updateModule(updated);
+    setIsSavingModule(true);
+    try {
+      if (editingModule) {
+        const updated: CourseModule = {
+          ...editingModule,
+          courseId: editingModule.courseId || currentCourse.id,
+          title: cleanTitle,
+          description: moduleFormData.description.trim(),
+          status: moduleFormData.status,
+          availableDate: moduleFormData.availableDate.trim(),
+          customStatusText: moduleFormData.customStatusText.trim(),
+        };
+        const updatedList = coursesStorage.updateModule(updated);
+        setModules([...updatedList]);
+        setDownloadToast(`تم تحديث باب [${updated.title}] بنجاح 📚✅`);
+      } else {
+        const uniqueId = 'mod_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+        const newMod: CourseModule = {
+          id: uniqueId,
+          courseId: currentCourse.id,
+          title: cleanTitle,
+          description: moduleFormData.description.trim(),
+          orderIndex: currentCourseModules.length + 1,
+          status: moduleFormData.status,
+          customStatusText: moduleFormData.customStatusText.trim(),
+          availableDate: moduleFormData.availableDate.trim(),
+          badgeColor: 'amber',
+          isPublished: true,
+          lessons: [],
+          totalDurationMinutes: 0,
+          completedLessonsCount: 0,
+        };
+        const updatedList = coursesStorage.addModule(newMod);
+        setModules([...updatedList]);
+        setSelectedModuleId(newMod.id);
+        setDownloadToast(`تمت إضافة باب جديد [${newMod.title}] بنجاح 📚🎉`);
+      }
+      setModuleModalOpen(false);
+      setTimeout(() => setDownloadToast(null), 3500);
+    } finally {
+      setTimeout(() => setIsSavingModule(false), 400);
+    }
+  };
+
+  // حذف باب بالكامل
+  const handleDeleteModule = (modId: string, title: string) => {
+    if (modules.length <= 1) {
+      alert('لا يمكن حذف الباب الوحيد في الدورة.');
+      return;
+    }
+    if (window.confirm(`هل أنت متأكد من حذف باب "${title}" فقط وكافة المحاضرات التابعة له؟`)) {
+      const updatedList = coursesStorage.deleteModule(modId);
+      setModules([...updatedList]);
+      if (selectedModuleId === modId) {
+        setSelectedModuleId(updatedList[0]?.id || '');
+      }
+      setDownloadToast(`تم حذف باب [${title}] بنجاح 🗑️`);
+      setTimeout(() => setDownloadToast(null), 3500);
+    }
+  };
+
+  // إعادة ترتيب الأبواب
+  const handleReorderModule = (modId: string, direction: 'up' | 'down') => {
+    const updatedList = coursesStorage.reorderModules(modId, direction);
     setModules([...updatedList]);
-    setModuleModalOpen(false);
+    setDownloadToast('تم تحديث ترتيب الأبواب بنجاح ↕️');
+    setTimeout(() => setDownloadToast(null), 3000);
   };
 
   // حفظ ملف جديد أو معدل
@@ -542,9 +913,10 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
     if (editingFile) {
       const updated: CourseFileItem = {
         ...editingFile,
+        courseId: editingFile.courseId || currentCourse.id,
         title: fileFormData.title.trim(),
         description: fileFormData.description.trim(),
-        fileUrl: fileFormData.fileUrl.trim() || 'https://tarqa.app/files/foundation.pdf',
+        fileUrl: fileFormData.fileUrl.trim(),
         fileSize: fileFormData.fileSize.trim() || '10 MB',
         pagesCount: fileFormData.pagesCount.trim() || '100 صفحة',
         fileType: fileFormData.fileType,
@@ -552,12 +924,15 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
       };
       const updatedFiles = coursesStorage.updateFile(updated);
       setFiles([...updatedFiles]);
+      setDownloadToast(`تم تحديث الملف [${updated.title}] بنجاح 📄✅`);
+      setTimeout(() => setDownloadToast(null), 3500);
     } else {
       const newFile: CourseFileItem = {
-        id: 'file-' + Date.now(),
+        id: 'cfile_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+        courseId: currentCourse.id,
         title: fileFormData.title.trim(),
         description: fileFormData.description.trim(),
-        fileUrl: fileFormData.fileUrl.trim() || 'https://tarqa.app/files/foundation.pdf',
+        fileUrl: fileFormData.fileUrl.trim(),
         fileSize: fileFormData.fileSize.trim() || '10 MB',
         pagesCount: fileFormData.pagesCount.trim() || '100 صفحة',
         fileType: fileFormData.fileType,
@@ -567,6 +942,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
       };
       const updatedFiles = coursesStorage.addFile(newFile);
       setFiles([...updatedFiles]);
+      setDownloadToast(`تمت إضافة الملف [${newFile.title}] بنجاح 📄✅`);
+      setTimeout(() => setDownloadToast(null), 3500);
     }
 
     setFileModalOpen(false);
@@ -587,183 +964,572 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
     setFiles([...updatedFiles]);
   };
 
-  // تصفية المحاضرات حسب المدرس المختار (مدرس 1 أو مدرس 2)
+  // تصفية المحاضرات حسب المدرس المختار
+  const allCourseLessons = currentCourseModules.flatMap((m) => m.lessons || []);
   const allLessons = currentModule.lessons || [];
-  const teacher1Info = instructors.find((i) => i.id === 'teacher_1') || AVAILABLE_INSTRUCTORS[0];
-  const teacher2Info = instructors.find((i) => i.id === 'teacher_2') || AVAILABLE_INSTRUCTORS[1];
-  const teacher1Lessons = allLessons.filter((l) => (l.teacherId || 'teacher_1') === 'teacher_1');
-  const teacher2Lessons = allLessons.filter((l) => l.teacherId === 'teacher_2');
+  const currentTeacherObj = (selectedTeacher !== 'all' ? instructors.find((i) => i.id === selectedTeacher) : null) || instructors[0] || AVAILABLE_INSTRUCTORS[0];
+  const displayedLessons = selectedTeacher === 'all'
+    ? allLessons
+    : allLessons.filter((l) => (l.teacherId || instructors[0]?.id || 'teacher_1') === selectedTeacher);
 
-  const displayedLessons = allLessons.filter((l) => (l.teacherId || 'teacher_1') === selectedTeacher);
-
-  const totalLessons = allLessons.length;
+  const totalLessons = allCourseLessons.length > 0 ? allCourseLessons.length : allLessons.length;
   const activeLecturesCount = displayedLessons.length;
-  const totalDurationMinutes = displayedLessons.reduce((acc, l) => acc + (l.durationMinutes || 0), 0);
-  const freePreviewsCount = displayedLessons.filter((l) => l.isFreePreview).length;
-  const mainFile = files[0];
+  const totalDurationMinutes = allCourseLessons.reduce((acc, l) => acc + (l.durationMinutes || 0), 0);
+  const freePreviewsCount = allCourseLessons.filter((l) => l.isFreePreview).length;
+  const mainFile = currentCourseFiles[0] || files[0];
+
+  // نافذة إضافة / تعديل دورة تدريبية
+  const renderCourseModal = () => {
+    if (!courseModalOpen) return null;
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="relative w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 p-6 shadow-2xl text-right">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+            <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              <span>{editingCourse ? 'تعديل بيانات الدورة التدريبية ✏️' : 'إضافة دورة تدريبية جديدة 🎯'}</span>
+            </h3>
+            <button
+              onClick={() => setCourseModalOpen(false)}
+              className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-white transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <form onSubmit={handleSaveCourse} className="space-y-4 pt-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                اسم الدورة التدريبية: <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={courseFormData.title || ''}
+                onChange={(e) => setCourseFormData({ ...courseFormData, title: e.target.value })}
+                placeholder="مثال: دورة التأسيس الشاملة للقدرات 🎯"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                وصف ومحاور الدورة:
+              </label>
+              <textarea
+                rows={3}
+                value={courseFormData.description || ''}
+                onChange={(e) => setCourseFormData({ ...courseFormData, description: e.target.value })}
+                placeholder="اكتب نبذة مختصرة عن الدورة التدريبية والفئة المستهدفة وما سيتعلمه الطالب..."
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            {/* صورة غلاف الدورة */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                صورة غلاف الدورة (رابط مباشر أو رفع من الجهاز):
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={courseFormData.coverImage || ''}
+                  onChange={(e) => setCourseFormData({ ...courseFormData, coverImage: e.target.value })}
+                  placeholder="https://... أو ارفع صورة"
+                  className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                />
+                <input
+                  type="file"
+                  ref={courseCoverInputRef}
+                  onChange={handleCourseCoverUpload}
+                  accept="image/*"
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => courseCoverInputRef.current?.click()}
+                  className="px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>رفع صورة</span>
+                </button>
+              </div>
+              {courseFormData.coverImage && (
+                <div className="mt-2 relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 h-28 bg-slate-900/50">
+                  <img
+                    src={courseFormData.coverImage}
+                    alt="معاينة الغلاف"
+                    className="w-full h-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setCourseFormData({ ...courseFormData, coverImage: '' })}
+                    className="absolute top-2 left-2 p-1 rounded-lg bg-slate-950/70 text-rose-400 hover:text-rose-300 transition cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* الشارة واللون */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  شارة الدورة (Badge):
+                </label>
+                <input
+                  type="text"
+                  value={courseFormData.badge || ''}
+                  onChange={(e) => setCourseFormData({ ...courseFormData, badge: e.target.value })}
+                  placeholder="مثال: دورة تأسيس معتمدة 1446"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  لون الشارة:
+                </label>
+                <select
+                  value={courseFormData.badgeColor || 'amber'}
+                  onChange={(e) => setCourseFormData({ ...courseFormData, badgeColor: e.target.value as any })}
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 font-bold cursor-pointer"
+                >
+                  <option value="amber">ذهبي (Amber)</option>
+                  <option value="blue">أزرق (Blue)</option>
+                  <option value="emerald">أخضر (Emerald)</option>
+                  <option value="purple">بنفسجي (Purple)</option>
+                  <option value="rose">وردي (Rose)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* الأسعار: ريال سعودي وجنيه مصري */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  السعر السنوي (ريال سعودي 🇸🇦):
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={courseFormData.priceSar ?? 75}
+                  onChange={(e) => setCourseFormData({ ...courseFormData, priceSar: Number(e.target.value) })}
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  السعر بالجنيه المصري (مصر 🇪🇬):
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={courseFormData.priceEg ?? ANNUAL_SUBSCRIPTION_PRICE_EGP}
+                  onChange={(e) => setCourseFormData({ ...courseFormData, priceEg: Number(e.target.value) })}
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 font-bold"
+                />
+              </div>
+            </div>
+
+            {/* حالة التسجيل والتاريخ */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  حالة التسجيل في الدورة:
+                </label>
+                <select
+                  value={courseFormData.status || 'active'}
+                  onChange={(e) => setCourseFormData({ ...courseFormData, status: e.target.value as any })}
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 font-bold cursor-pointer"
+                >
+                  <option value="active">متاحة للتسجيل الفوري 🟢</option>
+                  <option value="upcoming">قريباً / تسجيل مبكر ⏳</option>
+                  <option value="locked">مغلقة / قيد التجهيز 🔒</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  تاريخ الإتاحة أو موعد البدء (اختياري):
+                </label>
+                <input
+                  type="text"
+                  value={courseFormData.availableDate || ''}
+                  onChange={(e) => setCourseFormData({ ...courseFormData, availableDate: e.target.value })}
+                  placeholder="مثال: متاح الآن • تحديث 1446"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="submit"
+                className="flex-1 py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs sm:text-sm shadow-md transition cursor-pointer"
+              >
+                {editingCourse ? 'حفظ تعديلات الدورة 💾' : 'إنشاء وإضافة الدورة الآن 🎯🎉'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setCourseModalOpen(false)}
+                className="px-5 py-3 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold transition cursor-pointer"
+              >
+                إلغاء
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-transparent text-slate-900 dark:text-slate-100 transition-colors pb-24">
-      {/* ======================================================================= */}
-      {/* 1. رأس الصفحة والبانر الترحيبي وبطاقة الاشتراك السنوي (75 ريال / سنة) */}
-      {/* ======================================================================= */}
-      <section className="relative overflow-hidden pt-8 pb-12 px-4 sm:px-6 lg:px-8 border-b border-sky-200/50 dark:border-amber-500/20 bg-gradient-to-b from-sky-400/10 via-amber-400/5 to-transparent dark:from-amber-950/30 dark:via-[#130d1d]/20 dark:to-transparent">
-        <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-          
-          {/* الجانب الأيمن: النص والعنوان */}
-          <div className="lg:col-span-7 space-y-4 text-right">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-b from-amber-400 to-amber-500 p-1 flex items-center justify-center shadow-sm shrink-0">
-                <img src="/frame_00012.png" alt="شعار طرقع" className="w-full h-full object-contain drop-shadow-sm" />
-              </div>
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/80 dark:bg-amber-500/15 border border-sky-200/70 dark:border-amber-500/30 text-sky-900 dark:text-amber-400 text-xs font-bold shadow-sm backdrop-blur-sm">
-                <GraduationCap className="w-4 h-4 text-amber-500" />
-                <span>دورة طرقع للتأسيس الشامل • المحاضرات والملف المعتمد 1446</span>
-              </div>
+      {selectedCourseId === null ? (
+        <>
+          {/* ======================================================================= */}
+          {/* 1. قسم الإعلانات والبوابات (أعلى الصفحة كما في رسم المستخدم) */}
+          {/* ======================================================================= */}
+          <AdBannerSlider
+            isEditor={isEditor}
+            courses={courses}
+            onSelectCourse={(cId) => setSelectedCourseId(cId)}
+          />
+
+          {/* الخط الفاصل بين قسم الإعلانات وقسم الدورات (كما في رسم المستخدم تماماً) */}
+          <div className="relative max-w-7xl mx-auto my-8 sm:my-12 px-4 sm:px-6 lg:px-8">
+            <div className="h-0.5 bg-gradient-to-r from-transparent via-slate-300 dark:via-slate-700 to-transparent" />
+            <div className="absolute left-1/2 -translate-x-1/2 -top-3 px-4 py-0.5 rounded-full bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-[11px] font-black text-slate-500 dark:text-slate-400 flex items-center gap-1.5 shadow-sm">
+              <span>✨</span>
+              <span>منصة الدورات المعتمدة</span>
+              <span>✨</span>
             </div>
-
-            <h1 className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white leading-[1.3]">
-              تأسيس القدرات من الصفر حتى 100 🎯 <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-l from-amber-600 via-amber-500 to-yellow-500">
-                محاضرات مسجلة + مذكرة التأسيس الكاملة PDF
-              </span>
-            </h1>
-
-            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed max-w-xl">
-              اشتراك سنوي موحد يمنحك وصولاً شاملاً لمدة 365 يوماً إلى باب المحاضرات التأسيسية المكثفة ({totalLessons} محاضرة تدريبية)، وقسم الملف الذي يضم مذكرة طرقع الكاملة وأوراق العمل والملخصات القابلة للتحميل.
-            </p>
-
-            <div className="flex flex-wrap items-center gap-4 text-xs font-bold text-slate-500 dark:text-slate-400 pt-2">
-              <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
-                <Video className="w-4 h-4" />
-                <span>{totalLessons} محاضرة مسجلة</span>
-              </span>
-              <span>•</span>
-              <span className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
-                <FileText className="w-4 h-4" />
-                <span>{files.length} ملفات ومذكرات كاملة</span>
-              </span>
-              <span>•</span>
-              <span className="flex items-center gap-1.5">
-                <Clock className="w-4 h-4 text-amber-500" />
-                <span>{Math.round(totalDurationMinutes / 60)} ساعة تدريبية</span>
-              </span>
-              <span>•</span>
-              <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
-                <Sparkles className="w-4 h-4" />
-                <span>{freePreviewsCount} محاضرات مجانية للمعاينة</span>
-              </span>
-            </div>
-
-            {/* أدوات المشرف / المعلم */}
-            {isEditor && (
-              <div className="pt-2 flex flex-wrap items-center gap-2">
-                <button
-                  onClick={() => setIsEditMode(!isEditMode)}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border shadow-sm ${
-                    isEditMode
-                      ? 'bg-purple-600 text-white border-purple-500'
-                      : 'bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 border-purple-500/30'
-                  }`}
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  <span>{isEditMode ? 'إغلاق وضع تعديل المحتوى' : 'تفعيل وضع إدارة وتعديل المحتوى (معلم / مشرف)'}</span>
-                </button>
-
-                <button
-                  onClick={handleRestoreDefaults}
-                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border shadow-sm bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30 cursor-pointer"
-                  title="استعادة كافة المحاضرات والمذكرات التأسيسية المعتمدة ومزامنتها سحابياً"
-                >
-                  <RotateCcw className="w-3.5 h-3.5 text-amber-500" />
-                  <span>استعادة المحاضرات والملفات المعتمدة (8 محاضرات و 3 مذكرات) 🔄</span>
-                </button>
-              </div>
-            )}
           </div>
 
-          {/* الجانب الأيسر: بطاقة الاشتراك (75 ريال / سنة) */}
-          <div className="lg:col-span-5 flex justify-center">
-            <div className="w-full max-w-sm rounded-3xl tarqa-glass-hero backdrop-blur-2xl p-6 shadow-[0_12px_40px_rgba(14,165,233,0.12)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.8),0_0_25px_rgba(245,158,11,0.18)] relative overflow-hidden">
-              <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-400" />
-              
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
-                  الباقة السنوية الشاملة
-                </span>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                  {moduleEnrollmentInfo.badgeText}
-                </span>
-              </div>
-
-              {/* السعر الكبير */}
-              <div className="flex flex-col mb-4">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-4xl sm:text-5xl font-black text-slate-900 dark:text-white font-mono">
-                    {ANNUAL_SUBSCRIPTION_PRICE_SAR}
-                  </span>
-                  <span className="text-sm font-bold text-slate-500">ريال سعودي / سنوياً</span>
-                </div>
-                <div className="flex items-center gap-1.5 mt-1 text-xs font-bold text-amber-600 dark:text-amber-400 font-mono">
-                  <span>أو ما يعادله في مصر:</span>
-                  <span className="text-sm font-black underline">{ANNUAL_SUBSCRIPTION_PRICE_EGP} جنيه مصري</span>
-                </div>
-              </div>
-
-              {/* قائمة المميزات */}
-              <div className="space-y-2.5 text-xs text-slate-700 dark:text-slate-300 pb-5 mb-5 border-b border-slate-200 dark:border-slate-800">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  <span>فتح كافة محاضرات التأسيس بدون قيود</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  <span>تحميل مذكرة طرقع الشاملة (الملف الكامل PDF)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  <span>ملخص القوانين الذهبية وأوراق العمل</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  <span>تحديثات مستمرة وتجميعات نماذج 1446</span>
-                </div>
-              </div>
-
-              {/* زر الاشتراك أو حالة الاشتراك الحالية */}
-              {subscriptionInfo.isManager ? (
-                <div className="p-3 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-center">
-                  <span className="text-xs font-bold text-purple-600 dark:text-purple-300 flex items-center justify-center gap-1.5">
-                    <Crown className="w-4 h-4 text-amber-500" />
-                    <span>وصول إداري غير محدود مفعّل</span>
-                  </span>
-                </div>
-              ) : subscriptionInfo.isSubscribed ? (
-                <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 text-center space-y-1">
-                  <div className="text-xs font-black text-emerald-600 dark:text-emerald-400 flex items-center justify-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>اشتراكك سارٍ ونشط ✅</span>
+          {/* ======================================================================= */}
+          {/* 2. قسم الدورات التدريبية (الدورات : كما في رسم المستخدم) */}
+          {/* ======================================================================= */}
+          <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-2xl bg-amber-500/15 text-amber-500 flex items-center justify-center font-black">
+                    <GraduationCap className="w-5 h-5" />
                   </div>
-                  <div className="text-[11px] text-slate-500">
-                    متبقي <strong>{subscriptionInfo.daysRemaining} يوماً</strong> • ينتهي في {subscriptionInfo.expiresDateFormatted}
-                  </div>
+                  <h2 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white flex items-center gap-3">
+                    <span>الدورات :</span>
+                    <span className="text-sm sm:text-base font-bold text-amber-600 dark:text-amber-400 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20">
+                      {courses.length} دورات متاحة 🎯
+                    </span>
+                  </h2>
                 </div>
-              ) : (
+                <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-xl">
+                  اختر الدورة التدريبية للانتقال إلى صفحتها الخاصة ومتابعة الأبواب والمحاضرات والملفات المعتمدة.
+                </p>
+              </div>
+
+              {isEditor && (
                 <button
-                  type="button"
-                  onClick={handleConfirmSubscription}
-                  className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-base shadow-lg shadow-amber-500/30 flex items-center justify-center gap-2 cursor-pointer select-none transition-all active:scale-[0.98]"
+                  onClick={openAddCourseModal}
+                  className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs sm:text-sm shadow-md transition flex items-center gap-2 cursor-pointer self-start sm:self-auto shrink-0 active:scale-95"
                 >
-                  <Sparkles className="w-5 h-5 text-slate-950 shrink-0" />
-                  <span>اشترك الآن 🚀 ({ANNUAL_SUBSCRIPTION_PRICE_SAR} ر.س)</span>
+                  <Plus className="w-4 h-4" />
+                  <span>+ إضافة دورة جديدة 🎯</span>
                 </button>
               )}
-
             </div>
+
+            {/* شبكة بطاقات الدورات (3 بطاقات في الصف كما في رسم المستخدم) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+              {courses.map((course) => {
+                const courseModules = modules.filter(
+                  (m) => (m.courseId || 'course-foundation') === course.id
+                );
+                const courseLessons = courseModules.flatMap((m) => m.lessons || []);
+                const courseFiles = files.filter(
+                  (f) => (f.courseId || 'course-foundation') === course.id
+                );
+
+                return (
+                  <div
+                    key={course.id}
+                    onClick={() => setSelectedCourseId(course.id)}
+                    className="group relative rounded-3xl bg-white dark:bg-[#0c1324] border border-slate-200/90 dark:border-slate-800 hover:border-amber-500/60 transition-all duration-300 hover:shadow-[0_12px_35px_rgba(245,158,11,0.15)] flex flex-col justify-between overflow-hidden cursor-pointer"
+                  >
+                    {/* الجزء العلوي: صورة الغلاف أو الأيقونة + الشارة */}
+                    <div className="relative h-48 w-full bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 overflow-hidden">
+                      {course.coverImage ? (
+                        <img
+                          src={course.coverImage}
+                          alt={course.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center relative">
+                          <div className="absolute inset-0 bg-radial from-amber-500/10 via-transparent to-transparent opacity-60" />
+                          <div className="w-16 h-16 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center mb-2 shadow-inner">
+                            <GraduationCap className="w-8 h-8" />
+                          </div>
+                          <span className="text-xs font-bold text-amber-300/80">منصة طرقع التعليمية</span>
+                        </div>
+                      )}
+
+                      {/* الشارات العلوية */}
+                      <div className="absolute top-3 right-3 flex items-center gap-1.5 flex-wrap">
+                        <span className="px-3 py-1 rounded-full text-[11px] font-black bg-slate-950/80 backdrop-blur-md text-amber-400 border border-amber-500/30 shadow-md">
+                          {course.badge || 'دورة معتمدة'}
+                        </span>
+                      </div>
+
+                      {/* أزرار المشرف السريعة */}
+                      {isEditor && (
+                        <div className="absolute top-3 left-3 flex items-center gap-1.5 z-10" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={(e) => openEditCourseModal(course, e)}
+                            className="p-1.5 rounded-xl bg-slate-950/80 backdrop-blur-md text-slate-300 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 transition cursor-pointer"
+                            title="تعديل الدورة"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          {course.id !== 'course-foundation' && (
+                            <button
+                              onClick={(e) => handleDeleteCourse(course.id, course.title, e)}
+                              className="p-1.5 rounded-xl bg-slate-950/80 backdrop-blur-md text-slate-300 hover:text-rose-400 border border-slate-700 hover:border-rose-500/40 transition cursor-pointer"
+                              title="حذف الدورة"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-white dark:from-[#0c1324] to-transparent" />
+                    </div>
+
+                    {/* محتوى البطاقة */}
+                    <div className="p-5 sm:p-6 flex-1 flex flex-col justify-between space-y-4">
+                      <div className="space-y-2">
+                        <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors leading-tight">
+                          {course.title}
+                        </h3>
+                        <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2 leading-relaxed">
+                          {course.description || 'شرح متكامل ومكثف يشمل المحاضرات المسجلة والمذكرات المعتمدة واختبارات قياس.'}
+                        </p>
+                      </div>
+
+                      {/* إحصائيات الدورة */}
+                      <div className="grid grid-cols-2 gap-2 py-2 border-y border-slate-100 dark:border-slate-800/80 text-xs">
+                        <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 font-bold">
+                          <Video className="w-3.5 h-3.5 text-amber-500" />
+                          <span>{courseLessons.length} محاضرة</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 font-bold">
+                          <FileText className="w-3.5 h-3.5 text-blue-500" />
+                          <span>{courseFiles.length} ملفات PDF</span>
+                        </div>
+                      </div>
+
+                      {/* السعر وزر الدخول */}
+                      <div className="flex items-center justify-between pt-1">
+                        <div>
+                          <span className="text-[10px] text-slate-400 block font-bold">الاشتراك السنوي:</span>
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-xl font-black text-amber-600 dark:text-amber-400">
+                              {course.priceSar}
+                            </span>
+                            <span className="text-[11px] font-bold text-slate-500">ريال / سنة</span>
+                          </div>
+                        </div>
+
+                        <div className="px-4 py-2.5 rounded-xl bg-amber-500 group-hover:bg-amber-400 text-slate-950 font-black text-xs shadow-md transition flex items-center gap-1.5">
+                          <span>دخول الدورة 🚀</span>
+                          <ChevronLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        </>
+      ) : (
+        <>
+          {/* زر العودة لقائمة الدورات (في الصفحة المخصصة لكل دورة) */}
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-2">
+            <button
+              onClick={() => setSelectedCourseId(null)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-amber-500/50 text-slate-700 dark:text-slate-200 hover:text-amber-600 dark:hover:text-amber-400 font-black text-xs sm:text-sm shadow-sm transition group cursor-pointer"
+            >
+              <ChevronRight className="w-4 h-4 text-amber-500 group-hover:-translate-x-1 transition-transform" />
+              <span>← العودة إلى قائمة الدورات (الدورات :)</span>
+            </button>
           </div>
 
-        </div>
-      </section>
+          {/* ======================================================================= */}
+          {/* 1. رأس الصفحة والبانر الترحيبي وبطاقة الاشتراك للدورة المحددة */}
+          {/* ======================================================================= */}
+          <section className="relative overflow-hidden pt-4 pb-12 px-4 sm:px-6 lg:px-8 border-b border-sky-200/50 dark:border-amber-500/20 bg-gradient-to-b from-sky-400/10 via-amber-400/5 to-transparent dark:from-amber-950/30 dark:via-[#130d1d]/20 dark:to-transparent">
+            <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-6 md:gap-8 items-center">
+              
+              {/* الجانب الأيمن: النص والعنوان */}
+              <div className="md:col-span-7 space-y-4 text-right">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-b from-amber-400 to-amber-500 p-1 flex items-center justify-center shadow-sm shrink-0">
+                    <img src="/frame_00012.png" alt="شعار طرقع" className="w-full h-full object-contain drop-shadow-sm" />
+                  </div>
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/80 dark:bg-amber-500/15 border border-sky-200/70 dark:border-amber-500/30 text-sky-900 dark:text-amber-400 text-xs font-bold shadow-sm backdrop-blur-sm">
+                    <GraduationCap className="w-4 h-4 text-amber-500" />
+                    <span>{currentCourse.badge || 'دورة معتمدة'}</span>
+                  </div>
+                </div>
+
+                <h1 className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white leading-[1.3]">
+                  {currentCourse.title} 🎯 <br />
+                  <span className="text-transparent bg-clip-text bg-gradient-to-l from-amber-600 via-amber-500 to-yellow-500">
+                    محاضرات مسجلة + ملف المذكرة المعتمد PDF
+                  </span>
+                </h1>
+
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed max-w-xl">
+                  {currentCourse.description || `اشتراك سنوي موحد يمنحك وصولاً شاملاً لمدة 365 يوماً إلى المحاضرات التدريبية (${totalLessons} محاضرة تدريبية)، وقسم الملف الذي يضم المذكرات وأوراق العمل والملخصات القابلة للتحميل.`}
+                </p>
+
+                <div className="flex flex-wrap items-center gap-4 text-xs font-bold text-slate-500 dark:text-slate-400 pt-2">
+                  <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                    <Video className="w-4 h-4" />
+                    <span>{totalLessons} محاضرة مسجلة</span>
+                  </span>
+                  <span>•</span>
+                  <span className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
+                    <FileText className="w-4 h-4" />
+                    <span>{currentCourseFiles.length} ملفات ومذكرات</span>
+                  </span>
+                  <span>•</span>
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-amber-500" />
+                    <span>{Math.round(totalDurationMinutes / 60)} ساعة تدريبية</span>
+                  </span>
+                  <span>•</span>
+                  <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                    <Sparkles className="w-4 h-4" />
+                    <span>{freePreviewsCount} محاضرات مجانية للمعاينة</span>
+                  </span>
+                </div>
+
+                {/* أدوات المشرف / المعلم */}
+                {isEditor && (
+                  <div className="pt-2 flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => setIsEditMode(!isEditMode)}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border shadow-sm ${
+                        isEditMode
+                          ? 'bg-purple-600 text-white border-purple-500'
+                          : 'bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 border-purple-500/30'
+                      }`}
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>{isEditMode ? 'إغلاق وضع تعديل المحتوى' : 'تفعيل وضع إدارة وتعديل المحتوى (معلم / مشرف)'}</span>
+                    </button>
+
+                    <button
+                      onClick={(e) => openEditCourseModal(currentCourse, e)}
+                      className="px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 shadow-sm cursor-pointer"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>تعديل تفاصيل هذه الدورة ⚙️</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* الجانب الأيسر: بطاقة الاشتراك السنوي للدورة */}
+              <div className="md:col-span-5 flex justify-center">
+                <div className="w-full max-w-sm rounded-3xl tarqa-glass-hero backdrop-blur-2xl p-6 shadow-[0_12px_40px_rgba(14,165,233,0.12)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.8),0_0_25px_rgba(245,158,11,0.18)] relative overflow-hidden">
+                  <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-400" />
+                  
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+                      الباقة السنوية الشاملة
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                      {moduleEnrollmentInfo.badgeText}
+                    </span>
+                  </div>
+
+                  {/* السعر الكبير */}
+                  <div className="flex flex-col mb-4">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-4xl sm:text-5xl font-black text-slate-900 dark:text-white font-mono">
+                        {currentCourse.priceSar || ANNUAL_SUBSCRIPTION_PRICE_SAR}
+                      </span>
+                      <span className="text-sm font-bold text-slate-500">ريال سعودي / سنوياً</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-1 text-xs font-bold text-amber-600 dark:text-amber-400 font-mono">
+                      <span>أو ما يعادله في مصر:</span>
+                      <span className="text-sm font-black underline">{currentCourse.priceEg || ANNUAL_SUBSCRIPTION_PRICE_EGP} جنيه مصري</span>
+                    </div>
+                  </div>
+
+                  {/* قائمة المميزات */}
+                  <div className="space-y-2.5 text-xs text-slate-700 dark:text-slate-300 pb-5 mb-5 border-b border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                      <span>فتح كافة محاضرات الدورة بدون قيود</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                      <span>تحميل مذكرة طرقع الشاملة (الملف الكامل PDF)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                      <span>ملخص القوانين الذهبية وأوراق العمل</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                      <span>تحديثات مستمرة وتجميعات نماذج 1446</span>
+                    </div>
+                  </div>
+
+                  {/* زر الاشتراك أو حالة الاشتراك الحالية */}
+                  {subscriptionInfo.isManager ? (
+                    <div className="p-3 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-center">
+                      <span className="text-xs font-bold text-purple-600 dark:text-purple-300 flex items-center justify-center gap-1.5">
+                        <Crown className="w-4 h-4 text-amber-500" />
+                        <span>وصول إداري غير محدود مفعّل</span>
+                      </span>
+                    </div>
+                  ) : subscriptionInfo.isSubscribed ? (
+                    <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 text-center space-y-1">
+                      <div className="text-xs font-black text-emerald-600 dark:text-emerald-400 flex items-center justify-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>اشتراكك سارٍ ونشط ✅</span>
+                      </div>
+                      <div className="text-[11px] text-slate-500">
+                        متبقي <strong>{subscriptionInfo.daysRemaining} يوماً</strong> • ينتهي في {subscriptionInfo.expiresDateFormatted}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={handleConfirmSubscription}
+                        className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-base shadow-lg shadow-amber-500/30 flex items-center justify-center gap-2 cursor-pointer select-none transition-all active:scale-[0.98]"
+                      >
+                        <Sparkles className="w-5 h-5 text-slate-950 shrink-0" />
+                        <span>اشترك الآن 🚀 ({currentCourse.priceSar || ANNUAL_SUBSCRIPTION_PRICE_SAR} ر.س)</span>
+                      </button>
+                    </div>
+                  )}
+
+                </div>
+              </div>
+
+            </div>
+          </section>
 
       {/* ======================================================================= */}
       {/* 2. شريط التبديل بين قسم المحاضرات وقسم الملف */}
@@ -878,7 +1644,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                 </p>
               </div>
 
-              {isEditor && isEditMode && (
+              {isEditor && (
                 <button
                   onClick={() => {
                     setEditingFile(null);
@@ -893,10 +1659,10 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                     });
                     setFileModalOpen(true);
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition flex items-center gap-1.5 shadow-sm cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>إضافة ملف</span>
+                  <span>إضافة ملف ➕</span>
                 </button>
               )}
             </div>
@@ -904,8 +1670,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
             {/* بطاقة الملف الرئيسي البارزة (Hero File Card) أو بطاقة الحالة الفارغة */}
             {mainFile ? (
               <div className="rounded-3xl tarqa-glass-hero p-6 sm:p-8 backdrop-blur-2xl shadow-[0_10px_35px_rgba(14,165,233,0.1)] dark:shadow-[0_10px_35px_rgba(0,0,0,0.8),0_0_20px_rgba(245,158,11,0.15)] relative overflow-hidden">
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-                  <div className="lg:col-span-8 space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6 items-center">
+                  <div className="md:col-span-8 space-y-3">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="px-3 py-1 rounded-full text-[11px] font-black bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 flex items-center gap-1.5">
                         <FileText className="w-3.5 h-3.5" />
@@ -936,8 +1702,26 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                   </div>
 
                   {/* أزرار تحميل ومعاينة الملف الرئيسي */}
-                  <div className="lg:col-span-4 flex flex-col sm:flex-row lg:flex-col gap-3 justify-center">
-                    {Boolean(mainFile.isFreePreview || subscriptionInfo.isSubscribed) ? (
+                  <div className="md:col-span-4 flex flex-col sm:flex-row md:flex-col gap-3 justify-center">
+                    {!currentUser ? (
+                      mainFile.isFreePreview ? (
+                        <button
+                          onClick={() => handleFileAction(mainFile, true)}
+                          className="w-full py-3.5 px-5 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                        >
+                          <Lock className="w-4 h-4" />
+                          <span>سجل حسابك لمعاينة الملف مجاناً 🎁</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleFileAction(mainFile, false)}
+                          className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                        >
+                          <Lock className="w-4 h-4" />
+                          <span>تسجيل الدخول والاشتراك للتحميل 🔒</span>
+                        </button>
+                      )
+                    ) : Boolean(mainFile.isFreePreview || subscriptionInfo.isSubscribed) ? (
                       <button
                         onClick={() => handleFileAction(mainFile, false)}
                         disabled={downloadingFileId === mainFile.id}
@@ -965,7 +1749,15 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                       </button>
                     )}
 
-                    {Boolean(mainFile.isFreePreview || subscriptionInfo.isSubscribed) ? (
+                    {!currentUser ? (
+                      <button
+                        onClick={() => handleFileAction(mainFile, true)}
+                        className="w-full py-3 px-5 rounded-2xl bg-white/80 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs border border-slate-300 dark:border-slate-700 transition flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <Lock className="w-4 h-4 text-amber-500" />
+                        <span>معاينة الملف (يلزم حساب) 👁️</span>
+                      </button>
+                    ) : Boolean(mainFile.isFreePreview || subscriptionInfo.isSubscribed) ? (
                       <button
                         onClick={() => handleFileAction(mainFile, true)}
                         className="w-full py-3 px-5 rounded-2xl bg-white/80 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs border border-slate-300 dark:border-slate-700 transition flex items-center justify-center gap-2 cursor-pointer"
@@ -1056,9 +1848,9 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
             )}
 
             {/* باقي ملفات ومذكرات الدورة */}
-            {files.length > 1 && (
+            {currentCourseFiles.length > 1 && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                {files.slice(1).map((file) => {
+                {currentCourseFiles.slice(1).map((file) => {
                   const hasAccess = file.isFreePreview || subscriptionInfo.isSubscribed;
                   return (
                     <div
@@ -1145,6 +1937,11 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                           <button
                             type="button"
                             onClick={() => {
+                              if (!currentUser) {
+                                setDownloadToast('يرجى تسجيل حسابك أولاً للوصول إلى الملفات والمذكرات 🔒');
+                                onOpenAuth?.();
+                                return;
+                              }
                               setDownloadToast('عفواً، معاينة هذا الملف متاحة للمشتركين فقط 🔒');
                               setShowSubscribeModal(true);
                             }}
@@ -1200,40 +1997,189 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
         {/* ===================================================================== */}
         {(activeTab === 'all' || activeTab === 'lectures') && (
           <section className="space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div>
+            {/* ================================================================= */}
+            {/* شريط اختيار وإدارة الأبواب والفصول التدريبية (الأقسام) */}
+            {/* ================================================================= */}
+            <div className="bg-white/70 dark:bg-[#120e1d]/70 p-4 sm:p-5 rounded-3xl border border-sky-200/70 dark:border-amber-500/25 backdrop-blur-xl shadow-sm space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center">
+                    <BookOpen className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                      <span>أبواب وفصول الدورة التدريبية</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25">
+                        {currentCourseModules.length} أبواب 📚
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      اختر الباب أو الفصل الذي ترغب بمتابعة محاضراته وتمارينه
+                    </p>
+                  </div>
+                </div>
+
+                {isEditor && isEditMode && (
+                  <button
+                    onClick={handleOpenAddModule}
+                    className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs shadow-md transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>إضافة باب جديد 📚</span>
+                  </button>
+                )}
+              </div>
+
+              {/* قائمة كروت الأبواب والفصول */}
+              {currentCourseModules.length === 0 ? (
+                <div className="p-8 text-center bg-white/50 dark:bg-slate-900/50 rounded-2xl border border-dashed border-slate-300 dark:border-slate-800 space-y-3">
+                  <div className="text-3xl">📚</div>
+                  <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                    لم يتم إضافة أبواب لهذه الدورة بعد
+                  </h4>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                    يمكن للمشرف أو المعلم الضغط على زر &quot;إضافة باب جديد&quot; أعلاه لبدء تنظيم المحتوى والمحاضرات.
+                  </p>
+                  {isEditor && (
+                    <button
+                      onClick={handleOpenAddModule}
+                      className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-md transition cursor-pointer"
+                    >
+                      + إضافة أول باب الآن
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+                  {currentCourseModules.map((mod, modIdx) => {
+                    const isCurrent = currentModule.id === mod.id;
+                    const modLessonsCount = mod.lessons?.length || 0;
+                    return (
+                      <div
+                        key={mod.id}
+                        onClick={() => setSelectedModuleId(mod.id)}
+                        className={`p-3.5 rounded-2xl cursor-pointer transition-all border text-right relative overflow-hidden flex flex-col justify-between gap-2.5 ${
+                          isCurrent
+                            ? 'bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-transparent border-amber-500 shadow-md ring-2 ring-amber-500/30'
+                            : 'bg-white/60 dark:bg-slate-900/40 border-slate-200/80 dark:border-slate-800 hover:border-amber-500/40 hover:bg-amber-500/5'
+                        }`}
+                      >
+                        {isCurrent && (
+                          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-400" />
+                        )}
+
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`w-6 h-6 rounded-lg text-xs font-black flex items-center justify-center shrink-0 ${
+                              isCurrent
+                                ? 'bg-amber-500 text-slate-950 shadow-sm'
+                                : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                            }`}>
+                              {modIdx + 1}
+                            </span>
+                            <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate">
+                              {mod.title}
+                            </h4>
+                          </div>
+
+                          <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 shrink-0">
+                            {modLessonsCount} محاضرة
+                          </span>
+                        </div>
+
+                        {mod.description && (
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1 leading-relaxed">
+                            {mod.description}
+                          </p>
+                        )}
+
+                        <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800/80 text-[10px]">
+                          <span className={`font-bold ${isCurrent ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'}`}>
+                            {isCurrent ? '✓ الباب المختار حالياً' : 'اضغط للمشاهدة'}
+                          </span>
+
+                          {isEditor && isEditMode && (
+                            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                onClick={() => handleReorderModule(mod.id, 'up')}
+                                disabled={modIdx === 0}
+                                className="p-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-amber-500 disabled:opacity-30 cursor-pointer"
+                                title="تقديم الباب"
+                              >
+                                ↑
+                              </button>
+                              <button
+                                onClick={() => handleReorderModule(mod.id, 'down')}
+                                disabled={modIdx === currentCourseModules.length - 1}
+                                className="p-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-amber-500 disabled:opacity-30 cursor-pointer"
+                                title="تأخير الباب"
+                              >
+                                ↓
+                              </button>
+                              <button
+                                onClick={() => handleOpenEditModule(mod)}
+                                className="p-1 rounded bg-slate-100 hover:bg-purple-100 dark:bg-slate-800 text-slate-500 hover:text-purple-600 cursor-pointer"
+                                title="تعديل تفاصيل الباب"
+                              >
+                                <Edit3 className="w-3 h-3" />
+                              </button>
+                              {currentCourseModules.length > 1 && (
+                                <button
+                                  onClick={() => handleDeleteModule(mod.id, mod.title)}
+                                  className="p-1 rounded bg-slate-100 hover:bg-rose-100 dark:bg-slate-800 text-slate-500 hover:text-rose-600 cursor-pointer"
+                                  title="حذف هذا الباب"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* تفاصيل الباب المختار وأزرار الإجراءات */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-2">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
                   <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
                     <Video className="w-6 h-6 text-amber-500" />
                     <span>{currentModule.title || 'المحاضرات'} 🎥</span>
                   </h2>
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                    خيارات متعددة للشرح 👨‍🏫
+                    {instructors.length} خيارات للشرح 👨‍🏫
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
-                  اختر المعلم المناسب لأسلوب فهمك، أو تنقل بين شروحات المعلمين بحرية كاملة
+                  {currentModule.description || 'اختر المعلم المناسب لأسلوب فهمك، أو تنقل بين شروحات المعلمين بحرية كاملة'}
                 </p>
               </div>
 
-              {isEditor && isEditMode && (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      setModuleFormData({
-                        title: currentModule.title,
-                        description: currentModule.description,
-                        status: (currentModule.status || 'active') as CourseEnrollmentStatus,
-                        availableDate: currentModule.availableDate || '',
-                        customStatusText: currentModule.customStatusText || '',
-                      });
-                      setModuleModalOpen(true);
-                    }}
-                    className="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-slate-300 transition flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                    <span>تعديل وصف الباب</span>
-                  </button>
+              {isEditor && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  {isEditMode && (
+                    <>
+                      <button
+                        onClick={() => handleOpenEditModule(currentModule)}
+                        className="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-slate-300 transition flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>تعديل هذا الباب</span>
+                      </button>
+
+                      <button
+                        onClick={handleOpenAddTeacher}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>إضافة مدرس 👨‍🏫</span>
+                      </button>
+                    </>
+                  )}
 
                   <button
                     onClick={() => {
@@ -1244,7 +2190,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                         title: '',
                         description: '',
                         teacherId: selectedTeacher,
-                        teacherName: selectedTeacher === 'teacher_2' ? 'مدرس 2' : 'مدرس 1',
+                        teacherName: currentTeacherObj.fullName || currentTeacherObj.name || 'مدرس',
                         videoUrl: '',
                         videoProvider: 'uploaded_video',
                         durationMinutes: 15,
@@ -1254,213 +2200,188 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                       });
                       setLessonModalOpen(true);
                     }}
-                    className="px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold hover:bg-amber-600 transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                    className="px-3.5 py-1.5 rounded-xl bg-amber-500 text-slate-950 text-xs font-black hover:bg-amber-600 transition flex items-center gap-1.5 shadow-sm cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>إضافة محاضرة</span>
+                    <span>إضافة محاضرة ➕</span>
                   </button>
                 </div>
               )}
             </div>
 
-            {/* بطاقتا اختيار المعلم البارزة (Option 1 & Option 2) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* خيار 1: مدرس 1 */}
-              <div
-                onClick={() => setSelectedTeacher('teacher_1')}
-                className={`p-5 rounded-3xl cursor-pointer transition-all duration-300 relative overflow-hidden border ${
-                  selectedTeacher === 'teacher_1'
-                    ? 'bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-transparent border-amber-500 shadow-[0_8px_30px_rgba(245,158,11,0.18)] ring-2 ring-amber-500/40'
-                    : 'bg-white/80 dark:bg-[#120e1d]/70 border-slate-200 dark:border-slate-800 hover:border-amber-500/40 hover:bg-amber-500/5 shadow-sm'
-                }`}
-              >
-                {selectedTeacher === 'teacher_1' && (
-                  <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-400" />
-                )}
+            {/* بطاقات اختيار المعلمين الديناميكية (Dynamic Teachers Grid) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {instructors.map((teacher, idx) => {
+                const teacherLessons = allLessons.filter((l) => (l.teacherId || instructors[0]?.id) === teacher.id);
+                const isSelected = selectedTeacher === teacher.id;
+                const teacherHours = Math.round(teacherLessons.reduce((acc, l) => acc + (l.durationMinutes || 0), 0) / 60);
+                const teacherFreeCount = teacherLessons.filter((l) => l.isFreePreview).length;
 
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-500 flex items-center justify-center text-2xl shrink-0 shadow-inner">
-                      {teacher1Info.avatarIcon || '👨‍🏫'}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-black text-base text-slate-900 dark:text-white">
-                          {teacher1Info.fullName || teacher1Info.name}
-                        </h3>
-                        {selectedTeacher === 'teacher_1' && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-slate-950 flex items-center gap-1 shadow-sm">
-                            <Check className="w-3 h-3 stroke-[3]" />
-                            <span>المسار المحدد</span>
-                          </span>
-                        )}
-                        {isEditor && isEditMode && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingTeacher(teacher1Info);
-                              setTeacherFormData({ ...teacher1Info });
-                              setTeacherModalOpen(true);
-                            }}
-                            className="p-1 rounded-lg bg-amber-500/10 hover:bg-amber-500 hover:text-slate-950 text-amber-600 dark:text-amber-400 border border-amber-500/20 transition cursor-pointer"
-                            title="تعديل اسم وبيانات المدرس 1"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-amber-600 dark:text-amber-400 font-bold mt-0.5">
-                        {teacher1Info.title || 'خبير التأسيس والقدرات'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 shrink-0">
-                    {teacher1Lessons.length} محاضرات
-                  </span>
-                </div>
-
-                <p className="text-xs text-slate-600 dark:text-slate-300 mt-3 leading-relaxed">
-                  {teacher1Info.tagline || 'شرح تأصيلي مبسط يربط المفاهيم بالخرائط الذهنية لضمان ثبات القواعد في ذهنك.'}
-                </p>
-
-                <div className="flex items-center justify-between pt-4 mt-3 border-t border-slate-100 dark:border-slate-800/80 text-xs">
-                  <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400 text-[11px] font-bold">
-                    <span>⏱️ {Math.round(teacher1Lessons.reduce((acc, l) => acc + (l.durationMinutes || 0), 0) / 60)} ساعة تدريب</span>
-                    <span>•</span>
-                    <span className="text-emerald-600 dark:text-emerald-400">
-                      🎁 {teacher1Lessons.filter((l) => l.isFreePreview).length} محاضرات مجانية
-                    </span>
-                  </div>
-
-                  <button
-                    type="button"
-                    className={`px-3.5 py-1.5 rounded-xl font-black text-xs transition flex items-center gap-1.5 ${
-                      selectedTeacher === 'teacher_1'
-                        ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/25'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-amber-500 hover:text-slate-950'
+                return (
+                  <div
+                    key={teacher.id}
+                    onClick={() => setSelectedTeacher(teacher.id)}
+                    className={`p-5 rounded-3xl cursor-pointer transition-all duration-300 relative overflow-hidden border flex flex-col justify-between ${
+                      isSelected
+                        ? 'bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-transparent border-amber-500 shadow-[0_8px_30px_rgba(245,158,11,0.18)] ring-2 ring-amber-500/40'
+                        : 'bg-white/80 dark:bg-[#120e1d]/70 border-slate-200 dark:border-slate-800 hover:border-amber-500/40 hover:bg-amber-500/5 shadow-sm'
                     }`}
                   >
-                    <span>{selectedTeacher === 'teacher_1' ? `تشغيل محاضرات ${teacher1Info.name}` : `اختيار ${teacher1Info.name}`}</span>
-                    <Play className="w-3 h-3 fill-current" />
-                  </button>
-                </div>
-              </div>
+                    {isSelected && (
+                      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-400" />
+                    )}
 
-              {/* خيار 2: مدرس 2 */}
-              <div
-                onClick={() => setSelectedTeacher('teacher_2')}
-                className={`p-5 rounded-3xl cursor-pointer transition-all duration-300 relative overflow-hidden border ${
-                  selectedTeacher === 'teacher_2'
-                    ? 'bg-gradient-to-br from-emerald-500/15 via-emerald-500/5 to-transparent border-emerald-500 shadow-[0_8px_30px_rgba(16,185,129,0.18)] ring-2 ring-emerald-500/40'
-                    : 'bg-white/80 dark:bg-[#120e1d]/70 border-slate-200 dark:border-slate-800 hover:border-emerald-500/40 hover:bg-emerald-500/5 shadow-sm'
-                }`}
-              >
-                {selectedTeacher === 'teacher_2' && (
-                  <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-400" />
-                )}
-
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-500 flex items-center justify-center text-2xl shrink-0 shadow-inner">
-                      {teacher2Info.avatarIcon || '⚡'}
-                    </div>
                     <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-black text-base text-slate-900 dark:text-white">
-                          {teacher2Info.fullName || teacher2Info.name}
-                        </h3>
-                        {selectedTeacher === 'teacher_2' && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500 text-slate-950 flex items-center gap-1 shadow-sm">
-                            <Check className="w-3 h-3 stroke-[3]" />
-                            <span>المسار المحدد</span>
-                          </span>
-                        )}
-                        {isEditor && isEditMode && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingTeacher(teacher2Info);
-                              setTeacherFormData({ ...teacher2Info });
-                              setTeacherModalOpen(true);
-                            }}
-                            className="p-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 transition cursor-pointer"
-                            title="تعديل اسم وبيانات المدرس 2"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-500 flex items-center justify-center text-2xl shrink-0 shadow-inner">
+                            {teacher.avatarIcon || '👨‍🏫'}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-black text-base text-slate-900 dark:text-white">
+                                {teacher.fullName || teacher.name}
+                              </h3>
+                              {isSelected && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-slate-950 flex items-center gap-1 shadow-sm">
+                                  <Check className="w-3 h-3 stroke-[3]" />
+                                  <span>المسار المحدد</span>
+                                </span>
+                              )}
+                              {isEditor && isEditMode && (
+                                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditTeacher(teacher)}
+                                    className="p-1 rounded-lg bg-amber-500/10 hover:bg-amber-500 hover:text-slate-950 text-amber-600 dark:text-amber-400 border border-amber-500/20 transition cursor-pointer"
+                                    title={`تعديل بيانات (${teacher.name})`}
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                  </button>
+                                  {instructors.length > 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteTeacher(teacher.id, teacher.name)}
+                                      className="p-1 rounded-lg bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-500 border border-rose-500/20 transition cursor-pointer"
+                                      title={`حذف (${teacher.name})`}
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-amber-600 dark:text-amber-400 font-bold mt-0.5">
+                              {teacher.title || 'خبير التأسيس والقدرات'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 shrink-0">
+                          {teacherLessons.length} محاضرات
+                        </span>
                       </div>
-                      <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold mt-0.5">
-                        {teacher2Info.title || 'خبير التكنيك السريع'}
+
+                      <p className="text-xs text-slate-600 dark:text-slate-300 mt-3 leading-relaxed">
+                        {teacher.tagline || 'شرح تأصيلي مبسط يربط المفاهيم بالخرائط الذهنية وتكتيكات الحل الخاطف.'}
                       </p>
                     </div>
+
+                    <div className="flex items-center justify-between pt-4 mt-3 border-t border-slate-100 dark:border-slate-800/80 text-xs">
+                      <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400 text-[11px] font-bold">
+                        <span>⏱️ {teacherHours} ساعة</span>
+                        <span>•</span>
+                        <span className="text-emerald-600 dark:text-emerald-400">
+                          🎁 {teacherFreeCount} مجانية
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedTeacher(teacher.id);
+                          const tLessons = allLessons.filter((l) => (l.teacherId || instructors[0]?.id) === teacher.id);
+                          const firstPlayable = tLessons.find((l) => l.isFreePreview) || tLessons[0];
+                          if (firstPlayable) {
+                            if (currentUser || firstPlayable.isFreePreview) {
+                              handleLessonClick(firstPlayable);
+                            } else {
+                              setDownloadToast('يرجى تسجيل حسابك أولاً للوصول إلى المحاضرة 🔒');
+                              onOpenAuth?.();
+                            }
+                          }
+                        }}
+                        className={`px-3.5 py-1.5 rounded-xl font-black text-xs transition flex items-center gap-1.5 cursor-pointer ${
+                          isSelected
+                            ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/25'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-amber-500 hover:text-slate-950'
+                        }`}
+                      >
+                        <span>{isSelected ? `تشغيل محاضرات ${teacher.name}` : `اختيار ${teacher.name}`}</span>
+                        <Play className="w-3 h-3 fill-current" />
+                      </button>
+                    </div>
                   </div>
+                );
+              })}
 
-                  <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0">
-                    {teacher2Lessons.length} محاضرات
-                  </span>
-                </div>
-
-                <p className="text-xs text-slate-600 dark:text-slate-300 mt-3 leading-relaxed">
-                  {teacher2Info.tagline || 'طرق طرقع السحرية للحل الخاطف بمجرد النظر واستبعاد الخيارات للوصول للـ 100%.'}
-                </p>
-
-                <div className="flex items-center justify-between pt-4 mt-3 border-t border-slate-100 dark:border-slate-800/80 text-xs">
-                  <div className="flex items-center gap-3 text-slate-500 dark:text-slate-400 text-[11px] font-bold">
-                    <span>⏱️ {Math.round(teacher2Lessons.reduce((acc, l) => acc + (l.durationMinutes || 0), 0) / 60)} ساعة تدريب</span>
-                    <span>•</span>
-                    <span className="text-emerald-600 dark:text-emerald-400">
-                      🎁 {teacher2Lessons.filter((l) => l.isFreePreview).length} محاضرات مجانية
-                    </span>
+              {/* بطاقة إضافة مدرس جديد للمعلم/المشرف في وضع التعديل */}
+              {isEditor && isEditMode && (
+                <div
+                  onClick={handleOpenAddTeacher}
+                  className="p-5 rounded-3xl border-2 border-dashed border-amber-500/40 hover:border-amber-500 bg-amber-500/5 hover:bg-amber-500/10 cursor-pointer transition flex flex-col items-center justify-center gap-2 text-center min-h-[170px]"
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-500 flex items-center justify-center text-2xl shadow-sm">
+                    👨‍🏫
                   </div>
-
-                  <button
-                    type="button"
-                    className={`px-3.5 py-1.5 rounded-xl font-black text-xs transition flex items-center gap-1.5 ${
-                      selectedTeacher === 'teacher_2'
-                        ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/25'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-emerald-500 hover:text-slate-950'
-                    }`}
-                  >
-                    <span>{selectedTeacher === 'teacher_2' ? `تشغيل محاضرات ${teacher2Info.name}` : `اختيار ${teacher2Info.name}`}</span>
-                    <Play className="w-3 h-3 fill-current" />
-                  </button>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                      + إضافة مدرس جديد للمنصة
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      أضف معلماً جديداً باسمه ولقبه وأسلوب شرحه لتخصيص مسار خاص به
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* شريط الفلترة السريع والمصغر */}
+            {/* شريط الفلترة السريع والمصغر للمدرسين */}
             <div className="flex items-center justify-between flex-wrap gap-3 bg-white/60 dark:bg-[#120e1d]/60 p-2.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 backdrop-blur-md">
               <div className="flex items-center gap-2 overflow-x-auto scrollbar-none py-0.5">
-                <span className="text-xs font-bold text-slate-500 px-2 shrink-0">عرض المحاضرات:</span>
+                <span className="text-xs font-bold text-slate-500 px-2 shrink-0">عرض محاضرات:</span>
                 <button
-                  onClick={() => setSelectedTeacher('teacher_1')}
+                  type="button"
+                  onClick={() => setSelectedTeacher('all')}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                    selectedTeacher === 'teacher_1'
+                    selectedTeacher === 'all'
                       ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
                       : 'text-slate-600 dark:text-slate-300 hover:bg-amber-500/10'
                   }`}
                 >
-                  <span>{teacher1Info.avatarIcon || '👨‍🏫'} {teacher1Info.name} ({teacher1Lessons.length})</span>
+                  <span>✨ جميع المدرسين ({allLessons.length})</span>
                 </button>
-
-                <button
-                  onClick={() => setSelectedTeacher('teacher_2')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                    selectedTeacher === 'teacher_2'
-                      ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
-                      : 'text-slate-600 dark:text-slate-300 hover:bg-emerald-500/10'
-                  }`}
-                >
-                  <span>{teacher2Info.avatarIcon || '⚡'} {teacher2Info.name} ({teacher2Lessons.length})</span>
-                </button>
+                {instructors.map((teacher) => {
+                  const tLessons = allLessons.filter((l) => (l.teacherId || instructors[0]?.id) === teacher.id);
+                  const isSel = selectedTeacher === teacher.id;
+                  return (
+                    <button
+                      key={teacher.id}
+                      onClick={() => setSelectedTeacher(teacher.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                        isSel
+                          ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-amber-500/10'
+                      }`}
+                    >
+                      <span>{teacher.avatarIcon || '👨‍🏫'} {teacher.name} ({tLessons.length})</span>
+                    </button>
+                  );
+                })}
               </div>
 
               <div className="text-xs text-slate-500 font-bold px-2">
-                عرض محاضرات {selectedTeacher === 'teacher_2' ? (teacher2Info.fullName || teacher2Info.name) : (teacher1Info.fullName || teacher1Info.name)} ({displayedLessons.length} محاضرة)
+                عرض محاضرات ({currentTeacherObj.fullName || currentTeacherObj.name}) في باب [{currentModule.title}] ({displayedLessons.length} محاضرة)
               </div>
             </div>
 
@@ -1471,32 +2392,52 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                 <div className="py-12 text-center space-y-3">
                   <Video className="w-12 h-12 text-slate-300 dark:text-slate-700 mx-auto" />
                   <h4 className="text-sm font-black text-slate-700 dark:text-slate-200">
-                    لا توجد محاضرات معروضة لهذا المعلم حالياً
+                    لا توجد محاضرات مضافة لهذا المسار حالياً
                   </h4>
                   <p className="text-xs text-slate-400 max-w-md mx-auto">
-                    اضغط على الزر أدناه لاستعادة المحاضرات التأسيسية المعتمدة لدورة طرقع لمدرسي المادة فوراً.
+                    {isEditor 
+                      ? 'يمكنك إضافة محاضراتك وشروحاتك المسجلة بالضغط على زر الإضافة أدناه.'
+                      : 'سيقوم المعلم برفع ونشر المحاضرات هنا قريباً بإذن الله ✨'}
                   </p>
-                  <button
-                    onClick={handleRestoreDefaults}
-                    className="mt-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs transition shadow-md inline-flex items-center gap-2 cursor-pointer"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                    <span>استعادة المحاضرات التأسيسية المعتمدة (16 محاضرة للمدرسين 1 و 2) 🔄</span>
-                  </button>
+                  {isEditor && (
+                    <button
+                      onClick={() => {
+                        setEditingLesson(null);
+                        setUploadedVideoInfo(null);
+                        setVideoUploadError(null);
+                        setLessonFormData({
+                          title: '',
+                          description: '',
+                          teacherId: selectedTeacher,
+                          teacherName: currentTeacherObj.fullName || currentTeacherObj.name || 'مدرس',
+                          videoUrl: '',
+                          videoProvider: 'uploaded_video',
+                          durationMinutes: 15,
+                          isFreePreview: false,
+                          pdfTitle: '',
+                          pdfUrl: '',
+                        });
+                        setLessonModalOpen(true);
+                      }}
+                      className="mt-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs transition shadow-md inline-flex items-center gap-2 cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>إضافة أول محاضرة الآن ➕</span>
+                    </button>
+                  )}
                 </div>
               ) : (
                 displayedLessons.map((lesson, lesIdx) => {
                   const hasAccess = canAccessLesson(lesson, currentUser);
-                  const isT2 = lesson.teacherId === 'teacher_2';
+                  const tId = lesson.teacherId || instructors[0]?.id || 'teacher_1';
+                  const lesTeacher = instructors.find((i) => i.id === tId) || instructors[0];
 
                   return (
                     <div
                       key={lesson.id}
                       className={`p-4 sm:p-5 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
                         hasAccess
-                          ? isT2
-                            ? 'bg-emerald-50/50 dark:bg-[#0e1f1c]/50 border-emerald-200/70 dark:border-emerald-500/20 hover:bg-white dark:hover:bg-[#122824]/90 hover:border-emerald-400 dark:hover:border-emerald-400/50 shadow-sm'
-                            : 'bg-sky-50/70 dark:bg-[#191326]/70 border-sky-200/80 dark:border-amber-500/20 hover:bg-white dark:hover:bg-[#201733]/90 hover:border-sky-400 dark:hover:border-amber-400/50 shadow-sm'
+                          ? 'bg-amber-50/50 dark:bg-[#191326]/70 border-sky-200/80 dark:border-amber-500/20 hover:bg-white dark:hover:bg-[#201733]/90 hover:border-sky-400 dark:hover:border-amber-400/50 shadow-sm'
                           : 'bg-slate-100/60 dark:bg-slate-900/40 border-slate-200/50 dark:border-slate-800/40 opacity-85'
                       }`}
                     >
@@ -1505,11 +2446,18 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                           onClick={() => handleLessonClick(lesson)}
                           className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 cursor-pointer transition ${
                             hasAccess
-                              ? isT2
-                                ? 'bg-emerald-500/15 text-emerald-500 hover:bg-emerald-500 hover:text-slate-950 border border-emerald-500/30'
-                                : 'bg-amber-500/15 text-amber-500 hover:bg-amber-500 hover:text-slate-950 border border-amber-500/30'
+                              ? 'bg-amber-500/15 text-amber-500 hover:bg-amber-500 hover:text-slate-950 border border-amber-500/30'
+                              : lesson.isFreePreview
+                              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500 hover:text-slate-950 border border-emerald-500/30'
                               : 'bg-slate-200 dark:bg-slate-800 text-slate-400 border border-slate-300 dark:border-slate-700'
                           }`}
+                          title={
+                            hasAccess
+                              ? 'مشاهدة المحاضرة الآن'
+                              : lesson.isFreePreview
+                              ? 'معاينة مجانية (يلزم تسجيل حساب مجاني)'
+                              : 'مخصص للمشتركين فقط (يتطلب اشتراك نشط)'
+                          }
                         >
                           {hasAccess ? <Play className="w-5 h-5 fill-current ml-0.5" /> : <Lock className="w-5 h-5" />}
                         </div>
@@ -1523,22 +2471,15 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                               {lesIdx + 1}. {lesson.title}
                             </h4>
 
-                            {/* شارة المدرس */}
-                            {isT2 ? (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                                <span>{teacher2Info.avatarIcon || '⚡'}</span>
-                                <span>{teacher2Info.fullName || teacher2Info.name || lesson.teacherName || 'مدرس 2'}</span>
-                              </span>
-                            ) : (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
-                                <span>{teacher1Info.avatarIcon || '👨‍🏫'}</span>
-                                <span>{teacher1Info.fullName || teacher1Info.name || lesson.teacherName || 'مدرس 1'}</span>
-                              </span>
-                            )}
+                            {/* شارة المدرس الديناميكية */}
+                            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                              <span>{lesTeacher?.avatarIcon || '👨‍🏫'}</span>
+                              <span>{lesTeacher?.fullName || lesTeacher?.name || lesson.teacherName || 'مدرس'}</span>
+                            </span>
 
                             {lesson.isFreePreview ? (
                               <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                                معاينة مجانية 🎁
+                                معاينة مجانية {!currentUser ? '(يلزم حساب)' : ''} 🎁
                               </span>
                             ) : hasAccess ? (
                               <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
@@ -1596,8 +2537,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                                 setLessonFormData({
                                   title: lesson.title,
                                   description: lesson.description,
-                                  teacherId: (lesson.teacherId || 'teacher_1') as TeacherId,
-                                  teacherName: lesson.teacherName || (lesson.teacherId === 'teacher_2' ? 'مدرس 2' : 'مدرس 1'),
+                                  teacherId: (lesson.teacherId || instructors[0]?.id || 'teacher_1') as TeacherId,
+                                  teacherName: lesson.teacherName || lesTeacher?.fullName || lesTeacher?.name || 'مدرس',
                                   videoUrl: lesson.videoUrl,
                                   videoProvider: lesson.videoProvider || 'uploaded_video',
                                   durationMinutes: lesson.durationMinutes,
@@ -1623,25 +2564,47 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                           </div>
                         )}
 
-                        {/* زر تشغيل المحاضرة أو زر الاشتراك */}
-                        {hasAccess ? (
+                        {/* زر تشغيل المحاضرة أو زر الاشتراك أو تسجيل الحساب للزائر */}
+                        {!currentUser ? (
+                          lesson.isFreePreview ? (
+                            <button
+                              onClick={() => handleLessonClick(lesson)}
+                              className="px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500 text-emerald-600 dark:text-emerald-400 hover:text-slate-950 font-black text-xs transition flex items-center gap-1.5 cursor-pointer shadow-sm border border-emerald-500/30 hover:border-emerald-500 active:scale-95"
+                              title="معاينة مجانية - يلزم إنشاء حساب مجاني لمشاهدتها فوراً"
+                            >
+                              <Lock className="w-3.5 h-3.5" />
+                              <span>معاينة مجانية (يلزم حساب) 🎁</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleLessonClick(lesson)}
+                              className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-amber-500 dark:bg-slate-800 dark:hover:bg-amber-500 text-slate-700 hover:text-slate-950 dark:text-slate-300 dark:hover:text-slate-950 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shadow-sm border border-slate-300 dark:border-slate-700 hover:border-amber-500 active:scale-95"
+                              title="هذه المحاضرة مخصصة للمشتركين فقط 🔒"
+                            >
+                              <Lock className="w-3.5 h-3.5 text-amber-500" />
+                              <span>مخصص للمشتركين 🔒</span>
+                            </button>
+                          )
+                        ) : hasAccess ? (
                           <button
                             onClick={() => handleLessonClick(lesson)}
-                            className={`px-4 py-2 rounded-xl font-black text-xs transition flex items-center gap-1.5 shadow-sm cursor-pointer ${
-                              isT2
+                            className={`px-4 py-2 rounded-xl font-black text-xs transition flex items-center gap-1.5 shadow-sm cursor-pointer active:scale-95 ${
+                              lesTeacher?.badgeColor === 'emerald'
                                 ? 'bg-emerald-500 hover:bg-emerald-600 text-slate-950'
                                 : 'bg-amber-500 hover:bg-amber-600 text-slate-950'
                             }`}
+                            title={lesson.isFreePreview ? 'مشاهدة المعاينة المجانية' : 'مشاهدة المحاضرة الآن'}
                           >
                             <Play className="w-3.5 h-3.5 fill-current" />
-                            <span>مشاهدة الآن</span>
+                            <span>{lesson.isFreePreview ? 'مشاهدة المعاينة 🎁' : 'مشاهدة الآن ▶️'}</span>
                           </button>
                         ) : (
                           <button
                             onClick={() => handleLessonClick(lesson)}
-                            className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                            className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs transition flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                            title="اشترك في منصة طرقع للوصول الفوري لهذه المحاضرة"
                           >
-                            <Sparkles className="w-3.5 h-3.5 text-slate-950" />
+                            <Lock className="w-3.5 h-3.5 text-slate-950" />
                             <span>اشترك للمشاهدة 🚀</span>
                           </button>
                         )}
@@ -1655,6 +2618,8 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
         )}
 
       </main>
+        </>
+      )}
 
       {/* ======================================================================= */}
       {/* 5. نافذة الاشتراك السنوي الموحد (75 ريال / سنة) */}
@@ -1774,53 +2739,52 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
             <form onSubmit={handleSaveLesson} className="space-y-4 text-right">
               {/* اختيار المعلم المشرف على المحاضرة */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                  المعلم المشرف على المحاضرة *
-                </label>
-                <div className="grid grid-cols-2 gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setLessonFormData({
-                        ...lessonFormData,
-                        teacherId: 'teacher_1',
-                        teacherName: teacher1Info.name || 'مدرس 1',
-                      })
-                    }
-                    className={`p-3 rounded-2xl border text-right transition flex items-center gap-2.5 cursor-pointer ${
-                      lessonFormData.teacherId === 'teacher_1'
-                        ? 'bg-amber-500/15 border-amber-500 text-amber-600 dark:text-amber-400 font-black shadow-sm ring-1 ring-amber-500/40'
-                        : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-amber-500/30'
-                    }`}
-                  >
-                    <span className="text-xl">{teacher1Info.avatarIcon || '👨‍🏫'}</span>
-                    <div>
-                      <div className="text-xs font-black">{teacher1Info.fullName || teacher1Info.name || 'مدرس 1'}</div>
-                      <div className="text-[10px] text-slate-400">{teacher1Info.title || 'التأسيس الذهني'}</div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setLessonFormData({
-                        ...lessonFormData,
-                        teacherId: 'teacher_2',
-                        teacherName: teacher2Info.name || 'مدرس 2',
-                      })
-                    }
-                    className={`p-3 rounded-2xl border text-right transition flex items-center gap-2.5 cursor-pointer ${
-                      lessonFormData.teacherId === 'teacher_2'
-                        ? 'bg-emerald-500/15 border-emerald-500 text-emerald-600 dark:text-emerald-400 font-black shadow-sm ring-1 ring-emerald-500/40'
-                        : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-emerald-500/30'
-                    }`}
-                  >
-                    <span className="text-xl">{teacher2Info.avatarIcon || '⚡'}</span>
-                    <div>
-                      <div className="text-xs font-black">{teacher2Info.fullName || teacher2Info.name || 'مدرس 2'}</div>
-                      <div className="text-[10px] text-slate-400">{teacher2Info.title || 'الحل السريع والتكنيك'}</div>
-                    </div>
-                  </button>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                    المعلم المشرف على المحاضرة *
+                  </label>
+                  {isEditor && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLessonModalOpen(false);
+                        handleOpenAddTeacher();
+                      }}
+                      className="text-[11px] font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>+ إضافة مدرس جديد</span>
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-48 overflow-y-auto p-1 border border-slate-100 dark:border-slate-800 rounded-2xl bg-slate-50/50 dark:bg-slate-900/50">
+                  {instructors.map((teacher) => {
+                    const isSelected = (lessonFormData.teacherId || instructors[0]?.id) === teacher.id;
+                    return (
+                      <button
+                        key={teacher.id}
+                        type="button"
+                        onClick={() =>
+                          setLessonFormData({
+                            ...lessonFormData,
+                            teacherId: teacher.id,
+                            teacherName: teacher.fullName || teacher.name,
+                          })
+                        }
+                        className={`p-2.5 rounded-xl border text-right transition flex items-center gap-2.5 cursor-pointer ${
+                          isSelected
+                            ? 'bg-amber-500/15 border-amber-500 text-amber-600 dark:text-amber-400 font-black shadow-sm ring-1 ring-amber-500/40'
+                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-amber-500/30'
+                        }`}
+                      >
+                        <span className="text-xl shrink-0">{teacher.avatarIcon || '👨‍🏫'}</span>
+                        <div className="min-w-0 truncate">
+                          <div className="text-xs font-black truncate">{teacher.fullName || teacher.name}</div>
+                          <div className="text-[10px] text-slate-400 truncate">{teacher.title || 'معلم خبير'}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -2120,7 +3084,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                         setFileFormData({ ...fileFormData, fileUrl: e.target.value });
                       }
                     }}
-                    placeholder="https://tarqa.app/files/tarqa_complete_2025.pdf"
+                    placeholder="https://... أو ارفع الملف من الزر أعلاه"
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 text-left dir-ltr"
                   />
                 </div>
@@ -2188,7 +3152,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
       )}
 
       {/* ======================================================================= */}
-      {/* 8. نافذة تعديل بيانات باب المحاضرات */}
+      {/* 8. نافذة إضافة / تعديل بيانات باب المحاضرات */}
       {/* ======================================================================= */}
       {moduleModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
@@ -2196,7 +3160,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
                 <Video className="w-5 h-5 text-amber-500" />
-                <span>تعديل تفاصيل باب المحاضرات</span>
+                <span>{editingModule ? 'تعديل تفاصيل الباب التدريبي' : 'إضافة باب جديد للدورة التدريبية 📚'}</span>
               </h3>
               <button
                 onClick={() => setModuleModalOpen(false)}
@@ -2209,15 +3173,15 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
             <form onSubmit={handleSaveModule} className="space-y-4 text-right">
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  اسم الباب *
+                  اسم أو عنوان الباب *
                 </label>
                 <input
                   type="text"
                   required
                   value={moduleFormData.title}
                   onChange={(e) => setModuleFormData({ ...moduleFormData, title: e.target.value })}
-                  placeholder="المحاضرات"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                  placeholder="مثال: الباب الثاني: الجبر والمعادلات"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 font-bold"
                 />
               </div>
 
@@ -2229,6 +3193,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                   rows={3}
                   value={moduleFormData.description}
                   onChange={(e) => setModuleFormData({ ...moduleFormData, description: e.target.value })}
+                  placeholder="وصف مختصر لموضوعات هذا الباب وأهدافه التعليمية..."
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                 />
               </div>
@@ -2290,7 +3255,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                   type="submit"
                   className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-md transition cursor-pointer"
                 >
-                  حفظ التعديلات
+                  {editingModule ? 'حفظ التعديلات' : 'إضافة الباب الآن 📚'}
                 </button>
                 <button
                   type="button"
@@ -2305,7 +3270,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
         </div>
       )}
 
-      {/* نافذة تعديل اسم وبيانات المدرس */}
+      {/* نافذة إضافة / تعديل اسم وبيانات المدرس */}
       {teacherModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in">
           <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-[#151022] border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-4">
@@ -2316,10 +3281,10 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                 </div>
                 <div>
                   <h3 className="text-sm font-black text-slate-900 dark:text-white">
-                    تعديل بيانات واسم المدرس
+                    {editingTeacher ? 'تعديل بيانات واسم المدرس' : 'إضافة مدرس جديد للمنصة 👨‍🏫'}
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    تخصيص الاسم واللقب والوصف لمسار ({teacherFormData.id === 'teacher_2' ? 'مدرس 2' : 'مدرس 1'})
+                    {editingTeacher ? `تعديل بيانات (${teacherFormData.name}) ومسار شرحه` : 'أدخل بيانات المدرس الجديد وتخصصه لإنشاء مسار تدريبي له'}
                   </p>
                 </div>
               </div>
@@ -2331,17 +3296,17 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSaveTeacher} className="space-y-3.5">
+            <form onSubmit={handleSaveTeacher} className="space-y-3.5 text-right">
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  اسم المدرس المختصر (يظهر في الأزرار والفلترة):
+                  اسم المدرس المختصر (يظهر في الأزرار والفلترة) *:
                 </label>
                 <input
                   type="text"
                   required
                   value={teacherFormData.name}
                   onChange={(e) => setTeacherFormData({ ...teacherFormData, name: e.target.value })}
-                  placeholder="اسم المدرس المختصر (مثال: مدرس 1)"
+                  placeholder="مثال: أ. أحمد أو مدرس 1"
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 font-bold"
                 />
               </div>
@@ -2354,7 +3319,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                   type="text"
                   value={teacherFormData.fullName || ''}
                   onChange={(e) => setTeacherFormData({ ...teacherFormData, fullName: e.target.value })}
-                  placeholder="الاسم الكامل واللقب (مثال: مدرس 1)"
+                  placeholder="مثال: أستاذ أحمد المنصور"
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                 />
               </div>
@@ -2384,6 +3349,18 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                     placeholder="👨‍🏫 أو ⚡"
                     className="w-full px-3.5 py-2 text-center rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 font-bold"
                   />
+                  <div className="flex items-center justify-center gap-1 pt-1.5 flex-wrap">
+                    {['👨‍🏫', '👩‍🏫', '⚡', '🧠', '🎯', '💡', '🌟', '🚀', '👑'].map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => setTeacherFormData({ ...teacherFormData, avatarIcon: emoji })}
+                        className="w-6 h-6 rounded text-xs hover:bg-amber-500/20 cursor-pointer"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -2405,7 +3382,7 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
                   type="submit"
                   className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md transition cursor-pointer"
                 >
-                  حفظ اسم وبيانات المدرس 💾
+                  {editingTeacher ? 'حفظ تعديلات المدرس 💾' : 'إضافة المدرس للمنصة 👨‍🏫🎉'}
                 </button>
                 <button
                   type="button"
@@ -2501,6 +3478,9 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
           <span>{downloadToast}</span>
         </div>
       )}
+
+      {/* نافذة إضافة وتعديل الدورات التدريبية للمشرف والمعلم */}
+      {renderCourseModal()}
     </div>
   );
 };

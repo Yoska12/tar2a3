@@ -54,6 +54,13 @@ interface LecturesCMSProps {
   onUpdateFile?: (updatedFile: CourseFileItem) => void;
   onDeleteFile?: (fileId: string) => void;
   onToggleFilePreview?: (fileId: string) => void;
+  onAddModule?: (newModule: CourseModule) => void;
+  onUpdateModule?: (updatedModule: CourseModule) => void;
+  onDeleteModule?: (moduleId: string) => void;
+  onReorderModules?: (moduleId: string, direction: 'up' | 'down') => void;
+  onAddInstructor?: (instructor: InstructorInfo) => void;
+  onUpdateInstructor?: (instructor: InstructorInfo) => void;
+  onDeleteInstructor?: (instructorId: string) => void;
 }
 
 export const LecturesCMS: React.FC<LecturesCMSProps> = ({
@@ -71,11 +78,17 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
   onUpdateFile,
   onDeleteFile,
   onToggleFilePreview,
+  onAddModule,
+  onUpdateModule,
+  onDeleteModule,
+  onReorderModules,
+  onAddInstructor,
+  onUpdateInstructor,
+  onDeleteInstructor,
 }) => {
-  // تبويب العرض الحالي: المحاضرات أو المذكرات والملفات
-  const [activeTab, setActiveTab] = useState<'lectures' | 'files'>('lectures');
+  // تبويب العرض الحالي: المحاضرات أو المذكرات والملفات أو الأبواب أو المدرسين
+  const [activeTab, setActiveTab] = useState<'lectures' | 'files' | 'modules' | 'instructors'>('lectures');
   const [selectedModuleId, setSelectedModuleId] = useState<string>('all');
-  const [selectedTeacherFilter, setSelectedTeacherFilter] = useState<TeacherId>('teacher_1');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
@@ -84,6 +97,33 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
   const [courseFiles, setCourseFiles] = useState<CourseFileItem[]>(() => (files !== undefined ? files : coursesStorage.getFiles()));
   // حالة المدرسين
   const [instructors, setInstructors] = useState<InstructorInfo[]>(() => coursesStorage.getInstructors());
+  const [selectedTeacherFilter, setSelectedTeacherFilter] = useState<TeacherId | 'all'>('all');
+
+  // نافذة إضافة / تعديل باب تدريبي (Module Modal)
+  const [isModuleModalOpen, setIsModuleModalOpen] = useState(false);
+  const [isSavingModule, setIsSavingModule] = useState(false);
+  const [editingModule, setEditingModule] = useState<CourseModule | null>(null);
+  const [moduleFormData, setModuleFormData] = useState({
+    title: '',
+    description: '',
+    orderIndex: 1,
+    status: 'active' as CourseEnrollmentStatus,
+    customStatusText: '',
+    badgeColor: 'amber',
+  });
+
+  // نافذة إضافة / تعديل مدرس (Instructor Modal)
+  const [isInstructorModalOpen, setIsInstructorModalOpen] = useState(false);
+  const [editingInstructor, setEditingInstructor] = useState<InstructorInfo | null>(null);
+  const [instructorFormData, setInstructorFormData] = useState<InstructorInfo>({
+    id: '',
+    name: '',
+    fullName: '',
+    title: '',
+    tagline: '',
+    avatarIcon: '👨‍🏫',
+    badgeColor: 'amber',
+  });
 
   useEffect(() => {
     if (files !== undefined) {
@@ -109,8 +149,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
     };
   }, []);
 
-  const teacher1Info = instructors.find((i) => i.id === 'teacher_1') || AVAILABLE_INSTRUCTORS[0];
-  const teacher2Info = instructors.find((i) => i.id === 'teacher_2') || AVAILABLE_INSTRUCTORS[1];
+  const currentTeacherObj = (selectedTeacherFilter !== 'all' ? instructors.find((i) => i.id === selectedTeacherFilter) : null) || instructors[0] || AVAILABLE_INSTRUCTORS[0];
 
   // حالة نموذج إضافة/تعديل درس
   const [formData, setFormData] = useState<{
@@ -130,8 +169,8 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
     moduleId: modules[0]?.id || '',
     title: '',
     description: '',
-    teacherId: 'teacher_1',
-    teacherName: teacher1Info.name,
+    teacherId: instructors[0]?.id || 'teacher_1',
+    teacherName: instructors[0]?.name || 'مدرس 1',
     videoProvider: 'youtube',
     videoUrl: '',
     durationMinutes: 15,
@@ -274,16 +313,189 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
   const totalAttachments = allLessons.reduce((acc, l) => acc + (l.attachments?.length || 0), 0);
   const freePreviewsCount = allLessons.filter((l) => l.isFreePreview).length;
 
+  // ============================================================================
+  // إدارة الأبواب والفصول التدريبية (Course Modules Management)
+  // ============================================================================
+  const openAddModuleModal = () => {
+    setEditingModule(null);
+    setModuleFormData({
+      title: '',
+      description: '',
+      orderIndex: modules.length + 1,
+      status: 'active',
+      customStatusText: '',
+      badgeColor: 'amber',
+    });
+    setIsModuleModalOpen(true);
+  };
+
+  const openEditModuleModal = (mod: CourseModule) => {
+    setEditingModule(mod);
+    setModuleFormData({
+      title: mod.title,
+      description: mod.description || '',
+      orderIndex: mod.orderIndex || 1,
+      status: mod.status || 'active',
+      customStatusText: mod.customStatusText || '',
+      badgeColor: mod.badgeColor || 'amber',
+    });
+    setIsModuleModalOpen(true);
+  };
+
+  const handleSaveModule = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSavingModule) return;
+    const cleanTitle = moduleFormData.title.trim();
+    if (!cleanTitle) {
+      alert('يرجى إدخال عنوان الباب');
+      return;
+    }
+
+    setIsSavingModule(true);
+    try {
+      if (editingModule) {
+        const updated: CourseModule = {
+          ...editingModule,
+          title: cleanTitle,
+          description: moduleFormData.description.trim(),
+          orderIndex: Number(moduleFormData.orderIndex) || 1,
+          status: moduleFormData.status,
+          customStatusText: moduleFormData.customStatusText.trim(),
+          badgeColor: moduleFormData.badgeColor,
+        };
+        coursesStorage.updateModule(updated);
+        if (onUpdateModule) onUpdateModule(updated);
+        setToast({ text: `تم حفظ تعديلات باب "${updated.title}" بنجاح! 📚✅`, type: 'success' });
+      } else {
+        const uniqueId = 'mod_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+        const newMod: CourseModule = {
+          id: uniqueId,
+          title: cleanTitle,
+          description: moduleFormData.description.trim(),
+          orderIndex: Number(moduleFormData.orderIndex) || modules.length + 1,
+          status: moduleFormData.status,
+          customStatusText: moduleFormData.customStatusText.trim(),
+          badgeColor: moduleFormData.badgeColor,
+          isPublished: true,
+          lessons: [],
+          totalDurationMinutes: 0,
+          completedLessonsCount: 0,
+        };
+        coursesStorage.addModule(newMod);
+        if (onAddModule) onAddModule(newMod);
+        setToast({ text: `تمت إضافة باب جديد "${newMod.title}" بنجاح! 📚🎉`, type: 'success' });
+      }
+      setIsModuleModalOpen(false);
+    } finally {
+      setTimeout(() => setIsSavingModule(false), 400);
+    }
+  };
+
+  const handleDeleteModule = (modId: string, title: string) => {
+    if (modules.length <= 1) {
+      alert('لا يمكن حذف الباب الوحيد في الدورة.');
+      return;
+    }
+    if (window.confirm(`هل أنت متأكد من حذف باب "${title}" فقط وكافة المحاضرات التابعة له؟`)) {
+      coursesStorage.deleteModule(modId);
+      if (onDeleteModule) onDeleteModule(modId);
+      if (selectedModuleId === modId) setSelectedModuleId('all');
+      setToast({ text: `تم حذف باب "${title}" بنجاح! 🗑️`, type: 'info' });
+    }
+  };
+
+  const handleReorderModule = (modId: string, direction: 'up' | 'down') => {
+    const updated = coursesStorage.reorderModules(modId, direction);
+    if (onReorderModules) onReorderModules(modId, direction);
+    setToast({ text: 'تم تحديث ترتيب الأبواب بنجاح ↕️', type: 'info' });
+  };
+
+  // ============================================================================
+  // إدارة المدرسين والمعلمين (Instructors Management)
+  // ============================================================================
+  const openAddInstructorModal = () => {
+    setEditingInstructor(null);
+    setInstructorFormData({
+      id: 'teacher_' + Date.now(),
+      name: '',
+      fullName: '',
+      title: '',
+      tagline: '',
+      avatarIcon: '👨‍🏫',
+      badgeColor: 'amber',
+    });
+    setIsInstructorModalOpen(true);
+  };
+
+  const openEditInstructorModal = (inst: InstructorInfo) => {
+    setEditingInstructor(inst);
+    setInstructorFormData({ ...inst });
+    setIsInstructorModalOpen(true);
+  };
+
+  const handleSaveInstructor = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!instructorFormData.name.trim()) {
+      alert('يرجى إدخال اسم المدرس');
+      return;
+    }
+
+    const finalFullName = instructorFormData.fullName.trim() || instructorFormData.name.trim();
+
+    if (editingInstructor) {
+      const updated: InstructorInfo = {
+        ...instructorFormData,
+        name: instructorFormData.name.trim(),
+        fullName: finalFullName,
+        title: instructorFormData.title.trim() || 'معلم خبير في تأسيس القدرات',
+        tagline: instructorFormData.tagline.trim(),
+      };
+      const res = coursesStorage.updateInstructor(updated);
+      setInstructors([...res]);
+      if (onUpdateInstructor) onUpdateInstructor(updated);
+      setToast({ text: `تم تحديث بيانات المعلم (${updated.name}) بنجاح! 👨‍🏫✅`, type: 'success' });
+    } else {
+      const newInst: InstructorInfo = {
+        ...instructorFormData,
+        id: instructorFormData.id || 'teacher_' + Date.now(),
+        name: instructorFormData.name.trim(),
+        fullName: finalFullName,
+        title: instructorFormData.title.trim() || 'معلم خبير في تأسيس القدرات',
+        tagline: instructorFormData.tagline.trim(),
+      };
+      const res = coursesStorage.addInstructor(newInst);
+      setInstructors([...res]);
+      if (onAddInstructor) onAddInstructor(newInst);
+      setToast({ text: `تمت إضافة المعلم الجديد (${newInst.name}) بنجاح! 👨‍🏫🎉`, type: 'success' });
+    }
+    setIsInstructorModalOpen(false);
+  };
+
+  const handleDeleteInstructor = (instId: string, name: string) => {
+    if (instructors.length <= 1) {
+      alert('يجب الإبقاء على مدرس واحد على الأقل في المنصة.');
+      return;
+    }
+    if (window.confirm(`هل أنت متأكد من حذف المدرس "${name}"؟ سيتم تحويل كافة محاضراته إلى المعلم الأول تلقائياً.`)) {
+      const res = coursesStorage.deleteInstructor(instId);
+      setInstructors([...res]);
+      if (onDeleteInstructor) onDeleteInstructor(instId);
+      if (selectedTeacherFilter === instId) {
+        setSelectedTeacherFilter((res[0]?.id as TeacherId) || 'teacher_1');
+      }
+      setToast({ text: `تم حذف المدرس "${name}" بنجاح! 🗑️`, type: 'info' });
+    }
+  };
+
   const openAddModal = (defaultModuleId?: string) => {
     setEditingLesson(null);
-    const defaultTeacherId: TeacherId = selectedTeacherFilter === 'teacher_2' ? 'teacher_2' : 'teacher_1';
-    const defaultTeacher = AVAILABLE_INSTRUCTORS.find((i) => i.id === defaultTeacherId);
+    const activeTeacher = (selectedTeacherFilter !== 'all' ? instructors.find((i) => i.id === selectedTeacherFilter) : null) || instructors[0] || AVAILABLE_INSTRUCTORS[0];
     setFormData({
       moduleId: defaultModuleId || modules[0]?.id || '',
       title: '',
       description: '',
-      teacherId: defaultTeacherId,
-      teacherName: defaultTeacher?.name || (defaultTeacherId === 'teacher_2' ? 'مدرس 2' : 'مدرس 1'),
+      teacherId: activeTeacher.id,
+      teacherName: activeTeacher.name,
       videoProvider: 'youtube',
       videoUrl: '',
       durationMinutes: 15,
@@ -297,14 +509,14 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
 
   const openEditModal = (lesson: Lesson) => {
     setEditingLesson(lesson);
-    const currentTeacherId = (lesson.teacherId as TeacherId) || 'teacher_1';
-    const currentTeacher = AVAILABLE_INSTRUCTORS.find((i) => i.id === currentTeacherId);
+    const currentTeacherId = (lesson.teacherId as TeacherId) || instructors[0]?.id || 'teacher_1';
+    const currentTeacher = instructors.find((i) => i.id === currentTeacherId) || instructors[0];
     setFormData({
       moduleId: lesson.moduleId,
       title: lesson.title,
       description: lesson.description,
       teacherId: currentTeacherId,
-      teacherName: lesson.teacherName || currentTeacher?.name || (currentTeacherId === 'teacher_2' ? 'مدرس 2' : 'مدرس 1'),
+      teacherName: lesson.teacherName || currentTeacher?.name || 'مدرس',
       videoProvider: lesson.videoProvider || 'youtube',
       videoUrl: lesson.videoUrl,
       durationMinutes: lesson.durationMinutes,
@@ -385,10 +597,10 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
       return;
     }
 
-    const defaultVideoUrl = 'https://vjs.zencdn.net/v/oceans.mp4';
+    const defaultVideoUrl = '';
     const finalVideoUrl = formData.videoUrl.trim() || defaultVideoUrl;
-    const currentTeacher = AVAILABLE_INSTRUCTORS.find((i) => i.id === formData.teacherId);
-    const resolvedTeacherName = formData.teacherName?.trim() || currentTeacher?.name || (formData.teacherId === 'teacher_2' ? 'مدرس 2' : 'مدرس 1');
+    const currentTeacher = instructors.find((i) => i.id === formData.teacherId) || instructors[0];
+    const resolvedTeacherName = formData.teacherName?.trim() || currentTeacher?.name || 'مدرس';
 
     if (editingLesson) {
       const updated: Lesson = {
@@ -426,6 +638,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
         attachments: formData.attachments,
       };
       onAddLesson(formData.moduleId, newLesson);
+      setSelectedTeacherFilter('all');
       setToast({ text: `تمت إضافة المحاضرة ونشرها للمدرس (${resolvedTeacherName}) بنجاح! ✅`, type: 'success' });
     }
 
@@ -440,10 +653,11 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
       return;
     }
 
-    // تجهيز رابط الملف (استخدام الرابط المرفوع أو توليد رابط سحابي موثوق للملف)
-    let finalFileUrl = fileFormData.fileUrl.trim();
+    // تجهيز رابط الملف المرفوع
+    const finalFileUrl = fileFormData.fileUrl.trim();
     if (!finalFileUrl) {
-      finalFileUrl = `https://tarqa.app/files/tarqa_${Date.now()}_file.pdf`;
+      alert('يرجى رفع ملف PDF أو إدخال رابط الملف أولاً ليتمكن الطلاب من تحميله');
+      return;
     }
 
     if (fileModalMode === 'lesson_attachment') {
@@ -550,7 +764,9 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
     .filter((m) => selectedModuleId === 'all' || m.id === selectedModuleId)
     .map((m) => ({
       ...m,
-      lessons: m.lessons.filter((l) => (l.teacherId || 'teacher_1') === selectedTeacherFilter),
+      lessons: selectedTeacherFilter === 'all'
+        ? m.lessons
+        : m.lessons.filter((l) => (l.teacherId || 'teacher_1') === selectedTeacherFilter),
     }));
 
   const filteredFiles = courseFiles.filter((file) => {
@@ -587,14 +803,17 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
             </div>
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-bold">
               <Video className="w-3.5 h-3.5" />
-              <span>لوحة إدارة المحاضرات والمذكرات (Lectures CMS)</span>
+              <span>لوحة إدارة المحاضرات والمناهج (Lectures CMS)</span>
             </div>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
-            {activeTab === 'lectures' ? 'إدارة مسار تأسيس القدرات بالفيديو' : 'إدارة بنك المذكرات وملفات الـ PDF'}
+            {activeTab === 'lectures' && 'إدارة مسار تأسيس القدرات بالفيديو 🎥'}
+            {activeTab === 'files' && 'إدارة بنك المذكرات وملفات الـ PDF 📄'}
+            {activeTab === 'modules' && 'إدارة الأبواب والفصول التدريبية 📚'}
+            {activeTab === 'instructors' && 'إدارة المدرسين والمعلمين المعتمدين 👨‍🏫'}
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            رفع وتعديل شروحات الأبواب التأسيسية، ربط ملفات PDF، وتحديد المعاينات المجانية.
+            إضافة وتعديل الأبواب التدريبية، المدرسين، فيديوهات الشرح، وربط مذكرات الـ PDF بكل سهولة.
           </p>
         </div>
 
@@ -618,30 +837,34 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
             </button>
           )}
 
-          {onResetDefault && activeTab === 'lectures' && (
-            <button
-              onClick={() => {
-                if (window.confirm('هل أنت متأكد من رغبتك في استعادة المحاضرات الافتراضية؟ سيتم إعادة تحميل المسار التأسيسي الأصلي.')) {
-                  onResetDefault();
-                  setToast({ text: 'تمت استعادة المحاضرات الافتراضية بنجاح! 🔄', type: 'info' });
-                }
-              }}
-              className="inline-flex items-center gap-1 px-2.5 sm:px-4 py-2 sm:py-3 rounded-xl sm:rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition active:scale-95 border border-slate-200 dark:border-slate-700 cursor-pointer"
-              title="استعادة البيانات الافتراضية"
-            >
-              <RotateCcw className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500" />
-              <span>استعادة</span>
-            </button>
-          )}
+          {/* زر إضافة باب جديد */}
+          <button
+            onClick={() => openAddModuleModal()}
+            className="inline-flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 sm:py-3 rounded-xl sm:rounded-2xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs sm:text-sm transition shadow-lg shadow-purple-600/20 active:scale-95 cursor-pointer"
+            title="إضافة باب أو فصل تدريبي جديد"
+          >
+            <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span>إضافة باب 📚</span>
+          </button>
 
-          {/* زر إضافة ملف / مذكرة بارز وواضح جداً */}
+          {/* زر إضافة مدرس جديد */}
+          <button
+            onClick={() => openAddInstructorModal()}
+            className="inline-flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 sm:py-3 rounded-xl sm:rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm transition shadow-lg shadow-emerald-600/20 active:scale-95 cursor-pointer"
+            title="إضافة مدرس جديد لمنصة طرقع"
+          >
+            <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span>إضافة مدرس 👨‍🏫</span>
+          </button>
+
+          {/* زر إضافة ملف / مذكرة */}
           <button
             onClick={() => openAddCourseFileModal()}
             className="inline-flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 sm:py-3 rounded-xl sm:rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm transition shadow-lg shadow-blue-500/20 active:scale-95 cursor-pointer"
             title="إضافة ملف PDF أو مذكرة جديدة للموقع"
           >
             <FileUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            <span>إضافة ملف / مذكرة 📄</span>
+            <span>إضافة مذكرة 📄</span>
           </button>
 
           {/* زر إضافة محاضرة */}
@@ -655,36 +878,61 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
         </div>
       </div>
 
-      {/* بطاقات الإحصائيات الأربعة */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="p-5 rounded-3xl bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 shadow-sm">
-          <div className="text-xs font-bold text-slate-400">إجمالي الأبواب</div>
+      {/* بطاقات الإحصائيات الأربعة التفاعلية */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        <div 
+          onClick={() => setActiveTab('modules')}
+          className={`p-5 rounded-3xl bg-white dark:bg-[#0a0f1d] border shadow-sm cursor-pointer transition group ${
+            activeTab === 'modules' ? 'border-purple-500 ring-2 ring-purple-500/20' : 'border-slate-200 dark:border-slate-800 hover:border-purple-500/40'
+          }`}
+        >
+          <div className="text-xs font-bold text-slate-400 flex items-center justify-between">
+            <span>الأبواب والفصول</span>
+            <Layers className="w-3.5 h-3.5 text-purple-500 group-hover:scale-110 transition" />
+          </div>
           <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1">
             {modules.length} أبواب
           </div>
-          <p className="text-[11px] text-amber-500 mt-1">تغطي كامل قسم الكمي</p>
+          <p className="text-[11px] text-purple-500 mt-1 font-semibold">+ إضافة وإدارة الأبواب 📚</p>
         </div>
 
-        <div className="p-5 rounded-3xl bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 shadow-sm">
-          <div className="text-xs font-bold text-slate-400">المحاضرات المسجلة</div>
+        <div 
+          onClick={() => setActiveTab('lectures')}
+          className={`p-5 rounded-3xl bg-white dark:bg-[#0a0f1d] border shadow-sm cursor-pointer transition group ${
+            activeTab === 'lectures' ? 'border-amber-500 ring-2 ring-amber-500/20' : 'border-slate-200 dark:border-slate-800 hover:border-amber-500/40'
+          }`}
+        >
+          <div className="text-xs font-bold text-slate-400 flex items-center justify-between">
+            <span>المحاضرات المسجلة</span>
+            <Video className="w-3.5 h-3.5 text-amber-500 group-hover:scale-110 transition" />
+          </div>
           <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1">
             {allLessons.length} محاضرة
           </div>
-          <p className="text-[11px] text-emerald-500 mt-1">{freePreviewsCount} معاينة مجانية</p>
+          <p className="text-[11px] text-emerald-500 mt-1">{freePreviewsCount} معاينة مجانية • {Math.round((totalDuration / 60) * 10) / 10} س</p>
         </div>
 
-        <div className="p-5 rounded-3xl bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 shadow-sm">
-          <div className="text-xs font-bold text-slate-400">ساعات الشرح المركزة</div>
-          <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1">
-            {Math.round((totalDuration / 60) * 10) / 10} ساعة
+        <div 
+          onClick={() => setActiveTab('instructors')}
+          className={`p-5 rounded-3xl bg-white dark:bg-[#0a0f1d] border shadow-sm cursor-pointer transition group ${
+            activeTab === 'instructors' ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-200 dark:border-slate-800 hover:border-emerald-500/40'
+          }`}
+        >
+          <div className="text-xs font-bold text-slate-400 flex items-center justify-between">
+            <span>المدرسين المعتمدين</span>
+            <Shield className="w-3.5 h-3.5 text-emerald-500 group-hover:scale-110 transition" />
           </div>
-          <p className="text-[11px] text-slate-400 mt-1">متوسط 20 دقيقة للدرس</p>
+          <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1">
+            {instructors.length} مدرسين
+          </div>
+          <p className="text-[11px] text-emerald-500 mt-1 font-semibold">+ إضافة وتعديل المدرسين 👨‍🏫</p>
         </div>
 
         <div 
           onClick={() => setActiveTab('files')}
-          className="p-5 rounded-3xl bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 shadow-sm cursor-pointer hover:border-blue-500/50 transition group"
-          title="اضغط للانتقال لقسم المذكرات والملفات"
+          className={`p-5 rounded-3xl bg-white dark:bg-[#0a0f1d] border shadow-sm cursor-pointer transition group ${
+            activeTab === 'files' ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-slate-200 dark:border-slate-800 hover:border-blue-500/40'
+          }`}
         >
           <div className="text-xs font-bold text-slate-400 flex items-center justify-between">
             <span>ملفات ومذكرات الدورة (PDF)</span>
@@ -693,15 +941,15 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
           <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-1">
             {courseFiles.length} ملف
           </div>
-          <p className="text-[11px] text-blue-400 mt-1">إضافة وإدارة المذكرات 📄</p>
+          <p className="text-[11px] text-blue-400 mt-1 font-semibold">إضافة وإدارة المذكرات 📄</p>
         </div>
       </div>
 
-      {/* شريط التبديل بين المحاضرات والمذكرات */}
-      <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+      {/* شريط التبديل بين الأقسام الأربعة */}
+      <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-x-auto scrollbar-none">
         <button
           onClick={() => setActiveTab('lectures')}
-          className={`flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 transition cursor-pointer ${
+          className={`flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 transition cursor-pointer whitespace-nowrap ${
             activeTab === 'lectures'
               ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -713,14 +961,38 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
 
         <button
           onClick={() => setActiveTab('files')}
-          className={`flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 transition cursor-pointer ${
+          className={`flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 transition cursor-pointer whitespace-nowrap ${
             activeTab === 'files'
               ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
           <FileText className="w-4 h-4" />
-          <span>المذكرات وملفات الدورة (PDF) ({courseFiles.length})</span>
+          <span>المذكرات والملفات ({courseFiles.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('modules')}
+          className={`flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 transition cursor-pointer whitespace-nowrap ${
+            activeTab === 'modules'
+              ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          <span>الأبواب والفصول ({modules.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('instructors')}
+          className={`flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 transition cursor-pointer whitespace-nowrap ${
+            activeTab === 'instructors'
+              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Shield className="w-4 h-4" />
+          <span>المدرسين ({instructors.length})</span>
         </button>
       </div>
 
@@ -729,44 +1001,61 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
       {/* ======================================================================= */}
       {activeTab === 'lectures' && (
         <div className="space-y-6">
-          {/* شريط تصفية المدرس 1 والمدرس 2 */}
+          {/* شريط تصفية المدرسين الديناميكي (يدعم أي عدد من المدرسين) */}
           <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-slate-50 dark:via-slate-900/60 to-emerald-500/10 border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <span className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                 <span>👨‍🏫 تصفية المحاضرات حسب المدرس:</span>
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
-                onClick={() => setSelectedTeacherFilter('teacher_1')}
+                type="button"
+                onClick={() => setSelectedTeacherFilter('all')}
                 className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
-                  selectedTeacherFilter === 'teacher_1'
+                  selectedTeacherFilter === 'all'
                     ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
-                    : 'bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/10'
+                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-amber-500/40'
                 }`}
               >
-                <span>{teacher1Info.avatarIcon || '👨‍🏫'} {teacher1Info.fullName || teacher1Info.name}</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 font-mono">
-                  {allLessons.filter(l => (l.teacherId || 'teacher_1') === 'teacher_1').length}
+                <span>🌟 عرض جميع المحاضرات (الكل)</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/10 dark:bg-white/10 font-mono">
+                  {allLessons.length}
                 </span>
               </button>
+              {instructors.map((inst) => {
+                const isSelected = selectedTeacherFilter === inst.id;
+                const count = allLessons.filter((l) => (l.teacherId || 'teacher_1') === inst.id).length;
+                return (
+                  <button
+                    key={inst.id}
+                    onClick={() => setSelectedTeacherFilter(inst.id as TeacherId)}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                      isSelected
+                        ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-amber-500/40'
+                    }`}
+                  >
+                    <span>{inst.avatarIcon || '👨‍🏫'} {inst.name || inst.fullName}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/10 dark:bg-white/10 font-mono">
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+
               <button
-                onClick={() => setSelectedTeacherFilter('teacher_2')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
-                  selectedTeacherFilter === 'teacher_2'
-                    ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                    : 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/10'
-                }`}
+                onClick={() => openAddInstructorModal()}
+                className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 transition flex items-center gap-1 cursor-pointer"
+                title="إضافة مدرس جديد"
               >
-                <span>{teacher2Info.avatarIcon || '⚡'} {teacher2Info.fullName || teacher2Info.name}</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 font-mono">
-                  {allLessons.filter(l => l.teacherId === 'teacher_2').length}
-                </span>
+                <Plus className="w-3.5 h-3.5" />
+                <span>مدرس جديد</span>
               </button>
             </div>
           </div>
 
-          {/* الفلترة حسب الباب */}
+          {/* الفلترة حسب الباب وزر إضافة باب */}
           <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
             <button
               onClick={() => setSelectedModuleId('all')}
@@ -792,6 +1081,14 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                 {m.title} ({m.lessons.length})
               </button>
             ))}
+
+            <button
+              onClick={() => openAddModuleModal()}
+              className="px-3 py-2 rounded-xl text-xs font-bold bg-purple-500/15 hover:bg-purple-500/25 text-purple-600 dark:text-purple-400 border border-purple-500/30 transition whitespace-nowrap flex items-center gap-1 cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>باب جديد</span>
+            </button>
           </div>
 
           {/* قائمة الدروس منظمة حسب الأبواب */}
@@ -830,7 +1127,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {/* محول حالة التسجيل المباشر من لوحة المعلم */}
                     <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
                       <span className="text-[11px] font-bold text-slate-500 px-1">التسجيل:</span>
@@ -852,12 +1149,48 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                       </select>
                     </div>
 
+                    {/* أزرار ترتيب الباب للأعلى والأسفل */}
+                    <div className="flex items-center bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                      <button
+                        onClick={() => handleReorderModule(mod.id, 'up')}
+                        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition cursor-pointer"
+                        title="رفع ترتيب الباب للأعلى"
+                      >
+                        <ArrowUp className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleReorderModule(mod.id, 'down')}
+                        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition cursor-pointer border-r border-slate-200 dark:border-slate-700"
+                        title="إنزال ترتيب الباب للأسفل"
+                      >
+                        <ArrowDown className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    {/* زر تعديل الباب */}
+                    <button
+                      onClick={() => openEditModuleModal(mod)}
+                      className="p-2 rounded-xl bg-purple-500/10 hover:bg-purple-500 hover:text-white text-purple-600 dark:text-purple-400 border border-purple-500/20 transition cursor-pointer"
+                      title="تعديل بيانات الباب"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+
+                    {/* زر حذف الباب */}
+                    <button
+                      onClick={() => handleDeleteModule(mod.id, mod.title)}
+                      className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-600 dark:text-rose-400 border border-rose-500/20 transition cursor-pointer"
+                      title="حذف هذا الباب بالكامل"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+
                     <button
                       onClick={() => openAddModal(mod.id)}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-700 dark:text-slate-200 font-bold text-xs transition cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      <span>إضافة درس لهذا الباب</span>
+                      <span>إضافة درس</span>
                     </button>
                   </div>
                 </div>
@@ -881,15 +1214,19 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                                 {lesson.title}
                               </h4>
                               {/* شارة المدرس */}
-                              {(lesson.teacherId === 'teacher_2') ? (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                                  <span>{teacher2Info.avatarIcon || '⚡'} {lesson.teacherName || teacher2Info.name || 'مدرس 2'}</span>
-                                </span>
-                              ) : (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
-                                  <span>{teacher1Info.avatarIcon || '👨‍🏫'} {lesson.teacherName || teacher1Info.name || 'مدرس 1'}</span>
-                                </span>
-                              )}
+                              {(() => {
+                                const lTeacher = instructors.find((i) => i.id === lesson.teacherId) || instructors[0];
+                                const isGreen = lTeacher?.badgeColor === 'emerald' || lesson.teacherId === 'teacher_2';
+                                return (
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border ${
+                                    isGreen
+                                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                                      : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30'
+                                  }`}>
+                                    <span>{lTeacher?.avatarIcon || '👨‍🏫'} {lesson.teacherName || lTeacher?.name || lTeacher?.fullName || 'مدرس'}</span>
+                                  </span>
+                                );
+                              })()}
                               {lesson.isFreePreview && (
                                 <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-500 text-[10px] font-bold">
                                   معاينة مجانية
@@ -1193,7 +1530,255 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
       )}
 
       {/* ======================================================================= */}
-      {/* 3. نافذة منبثقة لإضافة / تعديل المحاضرة (Lecture Modal) */}
+      {/* 3. تبويب إدارة الأبواب والفصول التدريبية (Chapters/Modules Tab) */}
+      {/* ======================================================================= */}
+      {activeTab === 'modules' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white dark:bg-[#0a0f1d] p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div>
+              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <Layers className="w-5 h-5 text-purple-500" />
+                <span>قائمة الأبواب والفصول التدريبية ({modules.length})</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                يمكنك إضافة فصول وأبواب جديدة بحرية، ترتيبها، وتعديل حالات التسجيل بها
+              </p>
+            </div>
+
+            <button
+              onClick={() => openAddModuleModal()}
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs sm:text-sm transition shadow-lg shadow-purple-600/20 active:scale-95 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ إضافة باب جديد 📚</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {modules.map((mod, idx) => {
+              const lessonsCount = mod.lessons?.length || 0;
+              const duration = (mod.lessons || []).reduce((sum, l) => sum + (l.durationMinutes || 0), 0);
+              return (
+                <div
+                  key={mod.id}
+                  className="bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm flex flex-col justify-between gap-5 relative overflow-hidden group hover:border-purple-500/50 transition-all"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-10 h-10 rounded-2xl bg-purple-500/15 text-purple-600 dark:text-purple-400 flex items-center justify-center font-black text-sm shrink-0">
+                          #{mod.orderIndex || idx + 1}
+                        </div>
+                        <div>
+                          <h4 className="font-black text-base text-slate-900 dark:text-white group-hover:text-purple-500 transition">
+                            {mod.title}
+                          </h4>
+                          <span className="text-[11px] font-mono text-slate-400">ID: {mod.id}</span>
+                        </div>
+                      </div>
+
+                      <span className={`text-[10px] px-2.5 py-1 rounded-full font-black border ${
+                        mod.status === 'active'
+                          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                          : mod.status === 'upcoming'
+                          ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30'
+                          : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30'
+                      }`}>
+                        {mod.status === 'active'
+                          ? 'متاح للتسجيل ✅'
+                          : mod.status === 'upcoming'
+                          ? 'قادم قريباً ⏳'
+                          : 'التسجيل مغلق مؤقتاً ⏸️'}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                      {mod.description || 'لا يوجد وصف مدخل لهذا الباب.'}
+                    </p>
+
+                    {mod.customStatusText && (
+                      <div className="text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-3 py-1 rounded-xl inline-block">
+                        📢 {mod.customStatusText}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-4 text-xs font-bold text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800">
+                      <span className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400">
+                        <Video className="w-3.5 h-3.5" />
+                        <span>{lessonsCount} محاضرات</span>
+                      </span>
+                      <span>•</span>
+                      <span className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>{Math.round(duration / 60 * 10) / 10} ساعة</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleReorderModule(mod.id, 'up')}
+                        disabled={idx === 0}
+                        className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 cursor-pointer"
+                        title="تحريك للأعلى"
+                      >
+                        <ArrowUp className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleReorderModule(mod.id, 'down')}
+                        disabled={idx === modules.length - 1}
+                        className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30 cursor-pointer"
+                        title="تحريك للأسفل"
+                      >
+                        <ArrowDown className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => openEditModuleModal(mod)}
+                        className="p-2 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 hover:bg-purple-500 hover:text-white transition cursor-pointer"
+                        title="تعديل الباب"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteModule(mod.id, mod.title)}
+                        className="p-2 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500 hover:text-white transition cursor-pointer"
+                        title="حذف الباب"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setSelectedModuleId(mod.id);
+                        setActiveTab('lectures');
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-amber-500 hover:text-slate-950 dark:bg-slate-800 dark:hover:bg-amber-500 text-slate-700 dark:text-slate-200 font-bold text-xs transition cursor-pointer"
+                    >
+                      استعراض الدروس 🎥
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================= */}
+      {/* 4. تبويب إدارة المدرسين والمعلمين (Instructors Tab) */}
+      {/* ======================================================================= */}
+      {activeTab === 'instructors' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white dark:bg-[#0a0f1d] p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div>
+              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <Shield className="w-5 h-5 text-emerald-500" />
+                <span>إدارة المدرسين والمعلمين المعتمدين ({instructors.length})</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                يمكنك إضافة مدرسين جدد بحرية، تخصيص ألقابهم، نبذاتهم، وأيقوناتهم المعبرة
+              </p>
+            </div>
+
+            <button
+              onClick={() => openAddInstructorModal()}
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm transition shadow-lg shadow-emerald-600/20 active:scale-95 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ إضافة مدرس جديد 👨‍🏫</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {instructors.map((inst) => {
+              const teacherLessons = allLessons.filter((l) => (l.teacherId || 'teacher_1') === inst.id);
+              const duration = teacherLessons.reduce((sum, l) => sum + (l.durationMinutes || 0), 0);
+              return (
+                <div
+                  key={inst.id}
+                  className="bg-white dark:bg-[#0a0f1d] border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm flex flex-col justify-between gap-5 relative overflow-hidden group hover:border-emerald-500/50 transition-all"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-3xl shrink-0 shadow-inner">
+                          {inst.avatarIcon || '👨‍🏫'}
+                        </div>
+                        <div>
+                          <h4 className="font-black text-base text-slate-900 dark:text-white group-hover:text-emerald-500 transition">
+                            {inst.fullName || inst.name}
+                          </h4>
+                          <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
+                            {inst.title || 'معلم خبير'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 font-mono">
+                        {inst.id}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                      {inst.tagline || 'شرح تأصيلي ومبسط لمنهج القدرات العامة.'}
+                    </p>
+
+                    <div className="flex items-center gap-3 text-xs font-bold text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800">
+                      <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                        <Video className="w-3.5 h-3.5" />
+                        <span>{teacherLessons.length} محاضرات منشورة</span>
+                      </span>
+                      <span>•</span>
+                      <span className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>{Math.round(duration / 60 * 10) / 10} ساعة</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => openEditInstructorModal(inst)}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500 hover:text-white transition flex items-center gap-1 text-xs font-bold cursor-pointer"
+                        title="تعديل بيانات المعلم"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>تعديل</span>
+                      </button>
+
+                      {instructors.length > 1 && (
+                        <button
+                          onClick={() => handleDeleteInstructor(inst.id, inst.name)}
+                          className="p-1.5 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500 hover:text-white transition cursor-pointer"
+                          title="حذف هذا المعلم"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setSelectedTeacherFilter(inst.id as TeacherId);
+                        setActiveTab('lectures');
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-amber-500 hover:text-slate-950 dark:bg-slate-800 dark:hover:bg-amber-500 text-slate-700 dark:text-slate-200 font-bold text-xs transition cursor-pointer"
+                    >
+                      محاضراته ({teacherLessons.length}) 🎥
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================= */}
+      {/* 5. نافذة منبثقة لإضافة / تعديل المحاضرة (Lecture Modal) */}
       {/* ======================================================================= */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
@@ -1229,10 +1814,9 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
                   مدرس المحاضرة:
                 </label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                   {instructors.map((teacher) => {
                     const isSelected = formData.teacherId === teacher.id;
-                    const isTeacher1 = teacher.id === 'teacher_1';
                     return (
                       <button
                         key={teacher.id}
@@ -1240,27 +1824,23 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                         onClick={() => setFormData({ ...formData, teacherId: teacher.id as TeacherId, teacherName: teacher.name })}
                         className={`p-3 rounded-2xl border text-right transition cursor-pointer flex items-center gap-3 ${
                           isSelected
-                            ? isTeacher1
-                              ? 'bg-amber-500/15 border-amber-500 text-slate-900 dark:text-white shadow-md shadow-amber-500/10 ring-2 ring-amber-500/30'
-                              : 'bg-emerald-500/15 border-emerald-500 text-slate-900 dark:text-white shadow-md shadow-emerald-500/10 ring-2 ring-emerald-500/30'
+                            ? 'bg-amber-500/15 border-amber-500 text-slate-900 dark:text-white shadow-md shadow-amber-500/10 ring-2 ring-amber-500/30'
                             : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700'
                         }`}
                       >
                         <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0 ${
-                          isSelected
-                            ? isTeacher1 ? 'bg-amber-500 text-slate-950' : 'bg-emerald-500 text-slate-950'
-                            : 'bg-slate-200 dark:bg-slate-800'
+                          isSelected ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-slate-200 dark:bg-slate-800'
                         }`}>
-                          {teacher.avatarIcon || (isTeacher1 ? '👨‍🏫' : '⚡')}
+                          {teacher.avatarIcon || '👨‍🏫'}
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-black truncate">{teacher.fullName || teacher.name}</span>
                             {isSelected && (
-                              <Check className={`w-3.5 h-3.5 shrink-0 ${isTeacher1 ? 'text-amber-500' : 'text-emerald-500'}`} />
+                              <Check className="w-3.5 h-3.5 shrink-0 text-amber-500" />
                             )}
                           </div>
-                          <p className="text-[10px] text-slate-400 truncate">{teacher.title} • {teacher.tagline}</p>
+                          <p className="text-[10px] text-slate-400 truncate">{teacher.title || 'معلم خبير'}</p>
                         </div>
                       </button>
                     );
@@ -1700,7 +2280,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                   </div>
                   <input
                     type="text"
-                    placeholder="https://tarqa.app/files/math_foundation_2025.pdf (أو ارفع الملف أعلاه)"
+                    placeholder="https://... (أو ارفع الملف أعلاه مباشرة)"
                     value={fileFormData.fileUrl.startsWith('data:') ? 'تم تجهيز وتضمين ملف PDF محلياً بنجاح 📄' : fileFormData.fileUrl}
                     onChange={(e) => {
                       if (!e.target.value.includes('تم تجهيز')) {
@@ -1883,6 +2463,279 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                 <span>إضافة مذكرة جديدة لهذا الدرس 📄</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================= */}
+      {/* 6. نافذة إضافة / تعديل الباب التدريبي (Module Modal) */}
+      {/* ======================================================================= */}
+      {isModuleModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white dark:bg-[#0c1222] border border-purple-500/30 w-full max-w-lg rounded-3xl p-6 sm:p-8 shadow-2xl space-y-5 my-8 animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
+                  <Layers className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                    {editingModule ? 'تعديل الباب التدريبي' : 'إضافة باب تدريبي جديد 📚'}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    أدخل تفاصيل الباب ورتبته وحالة التسجيل المتاحة للطلاب
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsModuleModalOpen(false)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveModule} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  عنوان الباب أو الفصل: <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="مثال: الباب الثاني: الهندسة والزوايا والأشكال"
+                  value={moduleFormData.title}
+                  onChange={(e) => setModuleFormData({ ...moduleFormData, title: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  وصف الباب ومحتواه التدريبي:
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="نبذة عن المهارات والقوانين التي يغطيها هذا الباب..."
+                  value={moduleFormData.description}
+                  onChange={(e) => setModuleFormData({ ...moduleFormData, description: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-purple-500 resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    ترتيب ظهور الباب:
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={moduleFormData.orderIndex}
+                    onChange={(e) => setModuleFormData({ ...moduleFormData, orderIndex: Number(e.target.value) || 1 })}
+                    className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    حالة التسجيل في الباب:
+                  </label>
+                  <select
+                    value={moduleFormData.status}
+                    onChange={(e) => setModuleFormData({ ...moduleFormData, status: e.target.value as CourseEnrollmentStatus })}
+                    className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-purple-500 cursor-pointer"
+                  >
+                    <option value="active">🟢 متاح للتسجيل للجميع (Active)</option>
+                    <option value="paused">⏸️ مغلق مؤقتاً للتحديث (Paused)</option>
+                    <option value="upcoming">⏳ قادم قريباً (Upcoming)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  نص حالة مخصص أو تنبيه اختياري:
+                </label>
+                <input
+                  type="text"
+                  placeholder="مثال: يفتح التسجيل مع بداية الأسبوع القادم"
+                  value={moduleFormData.customStatusText}
+                  onChange={(e) => setModuleFormData({ ...moduleFormData, customStatusText: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsModuleModalOpen(false)}
+                  className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold text-slate-600 dark:text-slate-400 transition cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition shadow-md shadow-purple-600/20 active:scale-95 cursor-pointer"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{editingModule ? 'حفظ تعديلات الباب' : 'إنشاء الباب الآن 📚'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================= */}
+      {/* 7. نافذة إضافة / تعديل المدرس (Instructor Modal) */}
+      {/* ======================================================================= */}
+      {isInstructorModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white dark:bg-[#0c1222] border border-emerald-500/30 w-full max-w-lg rounded-3xl p-6 sm:p-8 shadow-2xl space-y-5 my-8 animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+                  <Shield className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                    {editingInstructor ? 'تعديل بيانات المعلم' : 'إضافة مدرس جديد لمنصة طرقع 👨‍🏫'}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    أدخل الاسم، اللقب، وأسلوب الشرح ليكون خياراً متاحاً للطلاب
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsInstructorModalOpen(false)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveInstructor} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    الاسم المعروض: <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="مثال: أ. محمد عبد الله"
+                    value={instructorFormData.name}
+                    onChange={(e) => setInstructorFormData({ ...instructorFormData, name: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    الاسم الكامل:
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="مثال: الأستاذ محمد عبد الله السعيد"
+                    value={instructorFormData.fullName}
+                    onChange={(e) => setInstructorFormData({ ...instructorFormData, fullName: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  اللقب والتخصص التدريبي:
+                </label>
+                <input
+                  type="text"
+                  placeholder="مثال: خبير التأسيس السريع واستراتيجيات الحل الخاطف"
+                  value={instructorFormData.title}
+                  onChange={(e) => setInstructorFormData({ ...instructorFormData, title: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  النبذة التعريفية وأسلوب الشرح:
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="مثال: شرح مبسط من الصفر يركز على الفهم العميق وقوانين قياس الأساسية..."
+                  value={instructorFormData.tagline}
+                  onChange={(e) => setInstructorFormData({ ...instructorFormData, tagline: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    الأيقونة التعبيرية (Emoji):
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      maxLength={4}
+                      value={instructorFormData.avatarIcon || '👨‍🏫'}
+                      onChange={(e) => setInstructorFormData({ ...instructorFormData, avatarIcon: e.target.value })}
+                      className="w-16 text-center text-xl px-2 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:outline-none focus:border-emerald-500"
+                    />
+                    <div className="flex items-center gap-1 overflow-x-auto">
+                      {['👨‍🏫', '⚡', '🎯', '🧠', '🚀', '💡', '🌟', '📚'].map((emoji) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => setInstructorFormData({ ...instructorFormData, avatarIcon: emoji })}
+                          className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-base cursor-pointer"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    لون البادج والشعار:
+                  </label>
+                  <select
+                    value={instructorFormData.badgeColor}
+                    onChange={(e) => setInstructorFormData({ ...instructorFormData, badgeColor: e.target.value })}
+                    className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                  >
+                    <option value="amber">كهرماني (Amber) 🟡</option>
+                    <option value="emerald">زمردي (Emerald) 🟢</option>
+                    <option value="cyan">سماوي (Cyan) 🔵</option>
+                    <option value="purple">بنفسجي (Purple) 🟣</option>
+                    <option value="rose">وردي (Rose) 🔴</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsInstructorModalOpen(false)}
+                  className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold text-slate-600 dark:text-slate-400 transition cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition shadow-md shadow-emerald-600/20 active:scale-95 cursor-pointer"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{editingInstructor ? 'حفظ تعديلات المعلم' : 'إضافة المعلم الآن 👨‍🏫'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

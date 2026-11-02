@@ -54,10 +54,10 @@ export default async function handler(req, res) {
       ...kashierPayload
     } = body;
 
-    const mode = settingsMode || process.env.KASHIER_MODE || 'test';
+    const mode = settingsMode || process.env.KASHIER_MODE || 'live';
     const merchantId = customMerchantId || process.env.KASHIER_MERCHANT_ID || 'MID-50598-297';
-    const apiKey = customApiKey || process.env.KASHIER_API_KEY || '980f3d9b-9782-40a0-ad47-f49ae98fdbb7';
-    const secretKey = customSecretKey || process.env.KASHIER_SECRET_KEY || '6ec661c17fe95a9faae76df553f6ecb6$c02d309b502aa7a0f1eb27dbdb37f61f58e17df14f8a04b43ffa526a9e51b2f9281357acae5ca6412eb4ba540b919776';
+    const apiKey = customApiKey || process.env.KASHIER_IFRAME_KEY || process.env.KASHIER_API_KEY || '91bdc6e4-423d-4bcb-91ef-a27485a465d1';
+    const secretKey = customSecretKey || process.env.KASHIER_SECRET_KEY || 'b46424f4680afffc7f19ee0fcaa4ff68$fd7738111efb5531f2f08898775d3a3ebb735de9a628ff4acfda3cf098d91aea4a4100f86d1459c4cf06a590354d061b';
 
     // Choose Kashier official endpoint based on mode
     const endpoint = mode === 'live'

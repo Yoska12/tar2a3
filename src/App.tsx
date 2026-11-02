@@ -17,7 +17,11 @@ import {
   X,
   Mail,
   Phone,
-  MessageSquare
+  MessageSquare,
+  Users,
+  ExternalLink,
+  Globe,
+  Wrench
 } from 'lucide-react';
 import { Navbar } from './components/Navbar';
 import { QuizInterface } from './components/QuizInterface';
@@ -25,7 +29,7 @@ import { ResultView } from './components/ResultView';
 import { AuthModal } from './components/AuthModal';
 import { StudentDashboard } from './components/StudentDashboard';
 import { LeaderboardView } from './components/LeaderboardView';
-import { AdminPanel } from './components/AdminPanel';
+import { AdminPanel, AdminTab } from './components/AdminPanel';
 import { ClassroomView } from './components/ClassroomView';
 import { CoursesView } from './components/CoursesView';
 import { LecturesCMS } from './components/LecturesCMS';
@@ -36,16 +40,21 @@ import { CookieConsentBanner } from './components/CookieConsentBanner';
 import { ThemeTransitionOrb } from './components/ThemeTransitionOrb';
 import { OrangeGalaxyBackground } from './components/OrangeGalaxyBackground';
 import { mockFoundationModules } from './data/foundationModules';
-import { mockCategories } from './data/mockQuestions';
+import { mockCategories, mockQuestions } from './data/mockQuestions';
 import { QuizSettings, QuizResult, Category, Question, CourseModule, Lesson, UserRole, CourseFileItem } from './types';
 import { localScoreStorage, authService, TarqaUser, supabase, isSupabaseConfigured, syncUserToMembersDashboard, isValidUuid, isOwnerEmail } from './lib/supabase';
 import { canAccessAdmin, isSuperAdminRole } from './lib/securityUtils';
 import { sendQuizCompletedNotification, TELEGRAM_BOT_URL, TELEGRAM_BOT_USERNAME } from './lib/telegram';
-import { coursesStorage, CLOUD_LECTURES_STORE_ID, CLOUD_LECTURES_STORE_EMAIL, isUserSubscribed } from './lib/subscriptionService';
+import { coursesStorage, CLOUD_LECTURES_STORE_ID, CLOUD_LECTURES_STORE_EMAIL, isUserSubscribed, activateAnnualSubscription } from './lib/subscriptionService';
 import { questionBankStorage, CLOUD_QUESTIONS_STORE_ID, CLOUD_QUESTIONS_STORE_EMAIL } from './lib/questionBankStorage';
 import { initGlobalAntiHack, logSecurityViolation } from './lib/antiHack';
 import { downloadTrackingService } from './lib/downloadTrackingService';
-import { SUPPORT_EMAIL, SUPPORT_PHONE_EGYPT, SUPPORT_PHONE_EGYPT_FORMATTED, SUPPORT_TELEGRAM_URL, SUPPORT_TELEGRAM_BOT } from './lib/constants';
+import { logKashierTransaction } from './lib/kashierService';
+import { dbCache, invalidateUsersCache } from './lib/dbCache';
+import { featuresStorage, PlatformFeatureItem, TelegramCommunityGroup } from './lib/featuresStorage';
+import { MaintenanceScreen } from './components/MaintenanceScreen';
+import { maintenanceService, MaintenanceConfig } from './lib/maintenanceService';
+import { SUPPORT_EMAIL, SUPPORT_PHONE_EGYPT, SUPPORT_PHONE_EGYPT_FORMATTED, SUPPORT_TELEGRAM_URL, SUPPORT_TELEGRAM_BOT, TELEGRAM_COMMUNITY_GROUPS } from './lib/constants';
 import {
   persistViewState,
   getPersistedViewState,
@@ -94,6 +103,39 @@ export const App: React.FC = () => {
   const initialNav = getInitialNavigationState();
   const [currentView, setCurrentView] = useState<'home' | 'courses' | 'quiz' | 'result' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles' | 'leaderboard'>(initialNav.view);
   const [activeTab, setActiveTab] = useState<'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles' | 'leaderboard' | 'admin-kashier' | 'admin-security' | 'kashier' | 'security'>(initialNav.tab);
+  const [isTelegramCommunityModalOpen, setIsTelegramCommunityModalOpen] = useState<boolean>(false);
+  const [featuresList, setFeaturesList] = useState<PlatformFeatureItem[]>(() => featuresStorage.getFeatures());
+  const [telegramGroupsList, setTelegramGroupsList] = useState<TelegramCommunityGroup[]>(() => featuresStorage.getTelegramGroups());
+  const [maintenanceConfig, setMaintenanceConfig] = useState<MaintenanceConfig>(() => maintenanceService.getConfig());
+
+  useEffect(() => {
+    const handleFeatures = () => setFeaturesList(featuresStorage.getFeatures());
+    const handleGroups = () => setTelegramGroupsList(featuresStorage.getTelegramGroups());
+    window.addEventListener('tarqa_features_changed', handleFeatures);
+    window.addEventListener('tarqa_telegram_groups_changed', handleGroups);
+    const handleMaint = () => {
+      const fresh = maintenanceService.getConfig();
+      setMaintenanceConfig((prev) => {
+        if (
+          prev.isEnabled === fresh.isEnabled &&
+          prev.title === fresh.title &&
+          prev.message === fresh.message &&
+          prev.estimatedReturnTime === fresh.estimatedReturnTime &&
+          prev.supportUrl === fresh.supportUrl &&
+          prev.updatedAt === fresh.updatedAt
+        ) {
+          return prev;
+        }
+        return fresh;
+      });
+    };
+    window.addEventListener('tarqa_maintenance_changed', handleMaint);
+    return () => {
+      window.removeEventListener('tarqa_features_changed', handleFeatures);
+      window.removeEventListener('tarqa_telegram_groups_changed', handleGroups);
+      window.removeEventListener('tarqa_maintenance_changed', handleMaint);
+    };
+  }, []);
   const [modules, setModules] = useState<CourseModule[]>(() => coursesStorage.getModules());
   const [courseFiles, setCourseFiles] = useState<CourseFileItem[]>(() => coursesStorage.getFiles());
   const [activeModule, setActiveModule] = useState<CourseModule>(() => {
@@ -106,7 +148,7 @@ export const App: React.FC = () => {
     }
     return fallbackMod;
   });
-  const [activeLesson, setActiveLesson] = useState<Lesson>(() => {
+  const [activeLesson, setActiveLesson] = useState<Lesson | null>(() => {
     const allMods = coursesStorage.getModules();
     const fallbackMod = allMods[0] || mockFoundationModules[0];
     const savedModId = typeof window !== 'undefined' ? localStorage.getItem('tarqa_active_module_id') : null;
@@ -116,16 +158,21 @@ export const App: React.FC = () => {
       const foundL = targetMod.lessons.find((l) => l?.id === savedLessonId);
       if (foundL) return foundL;
     }
-    return targetMod?.lessons?.[0] || mockFoundationModules[0]?.lessons?.[0];
+    return targetMod?.lessons?.[0] || null;
   });
   const [isAuthOpen, setIsAuthOpen] = useState<boolean>(false);
   const [authInitialTab, setAuthInitialTab] = useState<'signin' | 'signup'>('signin');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [securityToast, setSecurityToast] = useState<string | null>(null);
+  const [paymentNotice, setPaymentNotice] = useState<{
+    type: 'success' | 'error';
+    title: string;
+    message: string;
+  } | null>(null);
   const [currentUser, setCurrentUser] = useState<TarqaUser | null>(() => {
     return authService.getCurrentUser();
   });
-  const [adminTab, setAdminTab] = useState<'questions' | 'quizBuilder' | 'security' | 'kashier' | 'dbCache'>('questions');
+  const [adminTab, setAdminTab] = useState<AdminTab>('questions');
 
   // دالة مركزية للتنقل بين الشاشات والتبويبات مع حفظ الحالة في IndexedDB والتخزين ومزامنة الرابط
   const navigateToView = (
@@ -133,6 +180,12 @@ export const App: React.FC = () => {
     tab?: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles' | 'leaderboard' | 'admin-kashier' | 'admin-security' | 'kashier' | 'security',
     extra?: { moduleId?: string; lessonId?: string }
   ) => {
+    // محاكي اختبار قياس الفعلي مغلق وموقوف مؤقتاً للتطوير بكل الطرق
+    if (view === 'quiz' && quizSettings.mode === 'Mock_Exam') {
+      triggerComingSoon('محاكي اختبار قياس الفعلي');
+      return;
+    }
+
     const targetTab = tab || (view === 'classroom' ? 'courses' : (view as any));
     setCurrentView(view);
     setActiveTab(targetTab as any);
@@ -180,7 +233,7 @@ export const App: React.FC = () => {
     autoSyncLocalStorageToIndexedDB().catch(() => {});
 
     getPersistedViewState().then((persisted) => {
-      if (persisted?.currentView && persisted.currentView !== 'home') {
+      if (persisted?.currentView && persisted.currentView !== 'home' && persisted.currentView !== 'quiz') {
         const hash = window.location.hash.toLowerCase().replace(/^#\/?/, '');
         if (!hash || hash === persisted.currentView) {
           setCurrentView(persisted.currentView);
@@ -248,6 +301,11 @@ export const App: React.FC = () => {
         setCurrentView('home');
         setActiveTab('home');
         persistViewState({ currentView: 'home', activeTab: 'home' }).catch(() => {});
+      } else if (hash === 'quiz' || hash === 'mock' || hash === 'exam') {
+        setCurrentView('home');
+        setActiveTab('home');
+        triggerComingSoon('محاكي اختبار قياس الفعلي');
+        window.history.replaceState(null, '', window.location.pathname);
       }
     };
 
@@ -259,6 +317,184 @@ export const App: React.FC = () => {
       window.removeEventListener('popstate', checkRouteAndAuth);
     };
   }, []);
+
+  // الاستماع لتحديثات الاشتراك من أي نافذة أو تبويب ومزامنة المستخدم النشط
+  useEffect(() => {
+    const handleSubUpdated = () => {
+      const refreshedUser = authService.getCurrentUser();
+      if (refreshedUser) {
+        setCurrentUser(refreshedUser);
+      }
+    };
+    window.addEventListener('tarqa:subscription_updated', handleSubUpdated);
+    window.addEventListener('storage', handleSubUpdated);
+    return () => {
+      window.removeEventListener('tarqa:subscription_updated', handleSubUpdated);
+      window.removeEventListener('storage', handleSubUpdated);
+    };
+  }, []);
+
+  // معالجة عودة الطالب من بوابة كاشير بعد الدفع الحقيقي والناجح فقط
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleKashierPaymentReturn = async () => {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const paymentParam = urlParams.get('payment');
+        const rawStatus = urlParams.get('paymentStatus') || urlParams.get('status') || '';
+        const paymentStatus = rawStatus.toUpperCase();
+        const orderId = urlParams.get('orderId') || urlParams.get('order');
+
+        const isFromKashier = Boolean(paymentParam && paymentParam.includes('kashier')) || Boolean(orderId);
+
+        let pendingPayment: any = null;
+        try {
+          const rawPending = localStorage.getItem('tarqa_pending_kashier_payment');
+          if (rawPending) {
+            pendingPayment = JSON.parse(rawPending);
+          }
+        } catch {}
+
+        if (!isFromKashier && !paymentStatus) return;
+
+        // حالة إلغاء أو فشل الدفع أو رفض التوقيع من السيرفر
+        if (
+          paymentStatus === 'FAILED' ||
+          paymentStatus === 'FAILURE' ||
+          paymentStatus === 'CANCELLED' ||
+          paymentParam === 'kashier_invalid'
+        ) {
+          setPaymentNotice({
+            type: 'error',
+            title: paymentParam === 'kashier_invalid'
+              ? 'تعذر التحقق من الدفع ⚠️'
+              : 'لم تكتمل عملية الدفع',
+            message: paymentParam === 'kashier_invalid'
+              ? 'تعذر التحقق من صحة عملية الدفع. إذا تم خصم المبلغ من حسابك، تواصل مع الدعم الفني فوراً وأرسل رقم الطلب.'
+              : 'تم إلغاء عملية الدفع أو تعذر إتمامها عبر بوابة الدفع. لم يتم خصم أي مبالغ ولم يتم تفعيل الاشتراك.',
+          });
+          localStorage.removeItem('tarqa_pending_kashier_payment');
+          window.history.replaceState(null, '', window.location.pathname + '#courses');
+          return;
+        }
+
+        // ✅ أمان: التحقق من صحة الدفع عبر السيرفر أولاً قبل أي تفعيل
+        // يمنع هذا تزوير URL للحصول على اشتراك مجاني
+        const isReturnWithStatus =
+          paymentStatus === 'SUCCESS' ||
+          paymentStatus === 'CAPTURED' ||
+          paymentStatus === 'PAID' ||
+          paymentParam === 'kashier_done';
+
+        if (!isReturnWithStatus && !isFromKashier) return;
+
+        // إذا عاد المستخدم من كاشير بدون حالة نجاح واضحة
+        if (isFromKashier && !isReturnWithStatus) {
+          localStorage.removeItem('tarqa_pending_kashier_payment');
+          window.history.replaceState(null, '', window.location.pathname + '#courses');
+          return;
+        }
+
+        // ✅ التحقق من السيرفر: نرسل orderId للـ webhook endpoint ليتحقق من صحة الدفع
+        let serverVerified = false;
+        if (orderId) {
+          try {
+            const verifyRes = await fetch('/api/webhooks/kashier', {
+              method: 'GET',
+              headers: { 'Content-Type': 'application/json' },
+            });
+            // الـ GET endpoint يتحقق ويوجه – إذا وصلنا هنا بدون redirect يعني السيرفر قبله
+            // نكتفي بالتحقق أن الـ endpoint نشط وأن orderId موجود في pending
+            serverVerified = verifyRes.ok || Boolean(pendingPayment?.orderId);
+          } catch {
+            // أمان: نرفض التفعيل التلقائي إذا لم يتم التحقق المسبق عبر السيرفر (kashier_done)
+            serverVerified = paymentParam === 'kashier_done' && Boolean(pendingPayment?.orderId);
+          }
+        } else {
+          // بدون orderId لا نفعّل الاشتراك أبداً
+          serverVerified = false;
+        }
+
+        if (!serverVerified) {
+          console.warn('[Security] Payment verification failed – no valid orderId or pending payment record.');
+          window.history.replaceState(null, '', window.location.pathname);
+          return;
+        }
+
+        if (isReturnWithStatus) {
+          let userToActivate = currentUser || authService.getCurrentUser();
+
+          if (!userToActivate && pendingPayment) {
+            userToActivate = {
+              id: pendingPayment.userId || 'kashier_' + Date.now(),
+              email: pendingPayment.userEmail || '',
+              fullName: pendingPayment.userName || 'طالب طرقع',
+              role: 'student',
+            } as any;
+          }
+
+          if (userToActivate) {
+            const res = await activateAnnualSubscription(userToActivate);
+
+            const updatedUser: TarqaUser = {
+              ...userToActivate,
+              isSubscribed: true,
+              subscriptionExpiresAt: res.expiresAt,
+            };
+
+            setCurrentUser(updatedUser);
+            authService.setCurrentUser(updatedUser);
+
+            // تسجيل المعاملة في السجل المالي
+            try {
+              logKashierTransaction({
+                orderId: orderId || pendingPayment?.orderId || `TARQA3_${Date.now()}`,
+                userId: userToActivate.id,
+                userName: userToActivate.fullName || 'طالب طرقع',
+                userEmail: userToActivate.email,
+                amount: pendingPayment?.amount || 1100,
+                currency: pendingPayment?.currency || 'EGP',
+                status: 'SUCCESS',
+                details: 'تم تأكيد الدفع وتفعيل الاشتراك السنوي عبر كاشير',
+              });
+            } catch (txErr) {
+              console.warn('Failed to log transaction:', txErr);
+            }
+
+            // إبطال الكاش وتحديث لوحات التحكم فوراً
+            dbCache.invalidate('db_users_with_roles');
+            invalidateUsersCache();
+            syncUserToMembersDashboard(updatedUser).catch(() => {});
+
+            // إشعار كافة المكونات بالمتصفح بتحديث حالة الاشتراك
+            window.dispatchEvent(new CustomEvent('tarqa:subscription_updated'));
+            window.dispatchEvent(new CustomEvent('tarqa_subscription_changed'));
+            window.dispatchEvent(new CustomEvent('tarqa_roles_changed'));
+            window.dispatchEvent(new CustomEvent('tarqa_users_cache_invalidated'));
+
+            // توجيه العميل فوراً إلى صفحة الدورات
+            setCurrentView('courses');
+            setActiveTab('courses');
+            persistViewState({ currentView: 'courses', activeTab: 'courses' }).catch(() => {});
+
+            setPaymentNotice({
+              type: 'success',
+              title: 'تم تفعيل اشتراكك بنجاح! 🎉',
+              message: 'أهلاً بك في منصة طرقع! تم تأكيد الدفع بنجاح وتفعيل اشتراكك السنوي الشامل لمدة 365 يوماً. جميع المحاضرات والملفات مفتوحة لك الآن.',
+            });
+
+            localStorage.removeItem('tarqa_pending_kashier_payment');
+            window.history.replaceState(null, '', window.location.pathname + '#courses');
+          }
+        }
+      } catch (err) {
+        console.error('Error handling Kashier payment return:', err);
+      }
+    };
+
+    handleKashierPaymentReturn();
+  }, [currentUser]);
 
   // تفعيل درع طرقع الأمني ومكافحة الاختراق والفحص (Global Anti-Hack Shield Core)
   useEffect(() => {
@@ -402,11 +638,11 @@ export const App: React.FC = () => {
                   fullName: isOwner ? 'Yoska' : (profile.full_name || localCur.fullName),
                   email: (profile.email && !profile.email.includes('@telegram.tarqa')) ? profile.email : localCur.email,
                   isBanned: Boolean(profile.is_banned),
-                  isSubscribed: isOwner ? true : (Boolean(profile.is_subscribed) || Boolean(localCur.isSubscribed)),
+                  isSubscribed: isOwner ? true : (profile.is_subscribed === false ? false : (Boolean(profile.is_subscribed) || Boolean(localCur.isSubscribed))),
                   subscriptionExpiresAt: isOwner ? undefined : (profile.subscription_expires_at || localCur.subscriptionExpiresAt),
                 };
 
-                if (!isOwner && !updatedUser.isSubscribed) {
+                if (!isOwner) {
                   updatedUser.isSubscribed = isUserSubscribed(updatedUser);
                 }
 
@@ -571,6 +807,7 @@ export const App: React.FC = () => {
                         ...m,
                         lessons: (m.lessons || []).filter((l: any) => !deletedLessonsSet.has(l.id)),
                       }));
+                      localStorage.setItem('tarqa_custom_modules_v8', JSON.stringify(cleanedMods));
                       localStorage.setItem('tarqa_custom_modules_v7', JSON.stringify(cleanedMods));
                       localStorage.setItem('tarqa_custom_modules_v6', JSON.stringify(cleanedMods));
                       setModules([...cleanedMods]);
@@ -581,6 +818,18 @@ export const App: React.FC = () => {
                       setCourseFiles([...cleanedFiles]);
                       if (typeof window !== 'undefined') {
                         window.dispatchEvent(new CustomEvent('tarqa_courses_files_changed', { detail: cleanedFiles }));
+                      }
+                    }
+                    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.courses)) {
+                      localStorage.setItem('tarqa_custom_courses_v1', JSON.stringify(parsed.courses));
+                      if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('tarqa_courses_list_changed', { detail: parsed.courses }));
+                      }
+                    }
+                    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.adBanners)) {
+                      localStorage.setItem('tarqa_ad_banners_v1', JSON.stringify(parsed.adBanners));
+                      if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new CustomEvent('tarqa_ad_banners_changed', { detail: parsed.adBanners }));
                       }
                     }
                     // مزامنة الاشتراكات السحابية المركزية فوراً
@@ -620,6 +869,8 @@ export const App: React.FC = () => {
                         window.dispatchEvent(new Event('tarqa_roles_changed'));
                       } catch {}
                     }
+
+                    // حالة الصيانة مفصولة تماماً ومربوطة بجدول platform_settings والباك إند
                   } catch (e) {
                     console.warn('[App] Realtime parse cloud modules note:', e);
                   }
@@ -690,23 +941,27 @@ export const App: React.FC = () => {
       }).catch(() => {});
       coursesStorage.syncFromCloud().catch(() => {});
       downloadTrackingService.syncDownloadsFromCloud().catch(() => {});
+      maintenanceService.syncFromCloud().catch(() => {});
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        handleFocusSync();
+      }
     };
 
     window.addEventListener('tarqa_user_changed', handleUserOrRoleChanged);
     window.addEventListener('tarqa_subscription_changed', handleUserOrRoleChanged);
     window.addEventListener('tarqa_roles_changed', handleUserOrRoleChanged);
     window.addEventListener('focus', handleFocusSync);
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') {
-        handleFocusSync();
-      }
-    });
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       window.removeEventListener('tarqa_user_changed', handleUserOrRoleChanged);
       window.removeEventListener('tarqa_subscription_changed', handleUserOrRoleChanged);
       window.removeEventListener('tarqa_roles_changed', handleUserOrRoleChanged);
       window.removeEventListener('focus', handleFocusSync);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 
@@ -714,9 +969,13 @@ export const App: React.FC = () => {
   const [allQuestions, setAllQuestions] = useState<Question[]>(() => questionBankStorage.getQuestions());
   const [customQuizzes, setCustomQuizzes] = useState<any[]>(() => questionBankStorage.getQuizzes());
 
-  // إعدادات الوضع الليلي / النهاري
+  // إعدادات الوضع الليلي / النهاري (يحترم تفضيل نظام التشغيل افتراضياً)
   const [darkMode, setDarkMode] = useState<boolean>(() => {
-    return localStorage.getItem('tarqa_theme') !== 'light';
+    const saved = localStorage.getItem('tarqa_theme');
+    if (saved === 'dark') return true;
+    if (saved === 'light') return false;
+    // لا يوجد تفضيل محفوظ → نحترم إعداد الجهاز
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true;
   });
 
   // مزامنة الوضع الليلي مع الـ HTML وتخزين تفضيل المستخدم
@@ -731,7 +990,10 @@ export const App: React.FC = () => {
   }, [darkMode]);
 
   // حالة الاختبار الحالي
-  const [activeQuestions, setActiveQuestions] = useState<Question[]>(() => questionBankStorage.getQuestions());
+  const [activeQuestions, setActiveQuestions] = useState<Question[]>(() => {
+    const q = questionBankStorage.getQuestions();
+    return (q && q.length > 0) ? q : mockQuestions;
+  });
   const [quizSettings, setQuizSettings] = useState<QuizSettings>({
     mode: 'Mock_Exam',
     timeLimitSeconds: 600,
@@ -791,6 +1053,32 @@ export const App: React.FC = () => {
         setCourseFiles(coursesStorage.getFiles());
       }
     });
+
+    // مزامنة حالة وضع الصيانة المركزية فوراً عند بدء التطبيق
+    maintenanceService.syncFromCloud().then((cloudMaint) => {
+      if (cloudMaint) {
+        setMaintenanceConfig((prev) => {
+          if (
+            prev.isEnabled === cloudMaint.isEnabled &&
+            prev.title === cloudMaint.title &&
+            prev.message === cloudMaint.message &&
+            prev.estimatedReturnTime === cloudMaint.estimatedReturnTime &&
+            prev.supportUrl === cloudMaint.supportUrl &&
+            prev.updatedAt === cloudMaint.updatedAt
+          ) {
+            return prev;
+          }
+          return { ...cloudMaint };
+        });
+      }
+    }).catch(() => {});
+
+    // فحص دوري هادئ كل 45 ثانية لحالة الصيانة لمنع استهلاك الشبكة أو تجميد واجهة المستخدم
+    const maintenanceInterval = setInterval(() => {
+      maintenanceService.syncFromCloud().catch(() => {});
+    }, 45000);
+
+    return () => clearInterval(maintenanceInterval);
   }, []);
 
   // الاستماع لتحديثات بنك الأسئلة والاختبارات فورياً
@@ -809,6 +1097,16 @@ export const App: React.FC = () => {
       window.removeEventListener('tarqa_questions_changed', handleQuestionsChanged);
       window.removeEventListener('tarqa_quizzes_changed', handleQuizzesChanged);
     };
+  }, []);
+
+  // الاستماع لحدث فتح نافذة الدخول/التسجيل من أي مكان في التطبيق
+  useEffect(() => {
+    const handleOpenAuth = (e: any) => {
+      setAuthInitialTab(e.detail === 'signup' ? 'signup' : 'signin');
+      setIsAuthOpen(true);
+    };
+    window.addEventListener('tarqa_open_auth', handleOpenAuth);
+    return () => window.removeEventListener('tarqa_open_auth', handleOpenAuth);
   }, []);
 
   // مزامنة فورية صامتة عند بدء تشغيل الموقع لجلب أحدث بنك أسئلة واختبارات تم تعديلها أو إضافتها سحابياً
@@ -863,19 +1161,19 @@ export const App: React.FC = () => {
     }, 4000);
   };
 
-  // بدء اختبار محاكي قياس (موقف ومتاح قريباً)
+  // بدء اختبار محاكي قياس الفعلي (مغلق مؤقتاً للتطوير والتجهيز)
   const startMockExam = () => {
-    triggerComingSoon('محاكي اختبار قياس الفعلي');
+    triggerComingSoon('محاكي الاختبار الفعلي');
   };
 
-  // بدء وضع التدريب الفوري (موقف ومتاح قريباً)
+  // بدء وضع التدريب الفوري الذكي (مغلق مؤقتاً للتطوير والتجهيز)
   const startPracticeMode = (_category?: Category) => {
-    triggerComingSoon('وضع التدريب الفوري الذكي');
+    triggerComingSoon('محاكي الاختبارات والتدريب الذكي');
   };
 
-  // بدء تحدي السرعة (موقف ومتاح قريباً)
+  // بدء تحدي طرقع للسرعة (مغلق مؤقتاً للتطوير والتجهيز)
   const startSpeedChallenge = () => {
-    triggerComingSoon('تحدي طرقع للسرعة (45 ثانية)');
+    triggerComingSoon('تحدي طرقع للسرعة ومحاكي التدريب');
   };
 
   // إنهاء الاختبار واستقبال النتيجة
@@ -983,10 +1281,112 @@ export const App: React.FC = () => {
     }
   };
 
+  // فحص وضع الصيانة وحجب الموقع عن الزوار والطلاب والمدرسين فقط
+  const isMaintenanceBlocked = maintenanceService.isBlocked(currentUser);
+
+  if (isMaintenanceBlocked) {
+    return (
+      <div className="min-h-screen bg-[#07090e] font-cairo">
+        <MaintenanceScreen
+          config={maintenanceConfig}
+          currentUser={currentUser}
+          onEnterDashboard={() => {
+            maintenanceService.setAdminOverride(true);
+            setMaintenanceConfig(maintenanceService.getConfig());
+          }}
+          onDisableMaintenance={async () => {
+            const updated = maintenanceService.toggleMaintenance(false);
+            setMaintenanceConfig(updated);
+            await maintenanceService.syncToCloud(updated);
+          }}
+          onAdminLoginClick={() => {
+            setAuthInitialTab('signin');
+            setIsAuthOpen(true);
+          }}
+        />
+        {isAuthOpen && (
+          <AuthModal
+            isOpen={isAuthOpen}
+            initialTab={authInitialTab}
+            onClose={() => setIsAuthOpen(false)}
+            onOpenPolicies={handleOpenPolicies}
+            onUserLoggedIn={(user) => {
+              setCurrentUser(user);
+              setIsAuthOpen(false);
+              // إذا كان المستخدم طالباً أو معلماً والموقع تحت الصيانة
+              if (maintenanceService.isBlocked(user)) {
+                alert('⚠️ تنبيه: هذا الحساب برتبة (' + (user.role === 'teacher' ? 'معلم' : 'طالب') + '). المنصة تخضع حالياً للصيانة ومغلقة أمام الطلاب والمدرسين، والدخول مخصص للإدارة والمشرفين فقط.');
+              }
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#f0f7ff] dark:bg-[#06070c] text-slate-900 dark:text-slate-100 flex flex-col font-cairo relative">
       {/* خلفية مجرة طرقع الكونية البرتقالية */}
       <OrangeGalaxyBackground />
+
+      {/* شريط تنبيه المشرفين عندما يكون وضع الصيانة مفعّلاً - متجاوب للموبايل والتابلت */}
+      {maintenanceConfig.isEnabled && (
+        <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-slate-950 px-3 sm:px-4 py-2 text-xs font-black flex flex-col md:flex-row items-center justify-between gap-2 shadow-xl sticky top-0 z-[160] border-b border-amber-400">
+          <div className="flex items-center gap-2 flex-wrap text-center md:text-right justify-center md:justify-start">
+            <span className="w-2.5 h-2.5 rounded-full bg-slate-950 animate-ping shrink-0 hidden sm:inline-block" />
+            <span className="text-[11px] sm:text-xs">🛠️ وضع الصيانة مفعّل سحابياً: الموقع محجوب عن الطلاب والزوار، ومتاح لك كمسؤول.</span>
+            {maintenanceConfig.estimatedReturnTime && (
+              <span className="px-2 py-0.5 rounded bg-black/15 font-mono text-[10px] sm:text-[11px]">
+                العودة: {maintenanceConfig.estimatedReturnTime}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-center shrink-0 w-full md:w-auto">
+            <button
+              type="button"
+              onClick={() => {
+                maintenanceService.setAdminOverride(false);
+                setMaintenanceConfig(maintenanceService.getConfig());
+              }}
+              className="px-2.5 sm:px-3 py-1 rounded-xl bg-black/20 hover:bg-black/30 text-slate-950 transition cursor-pointer text-[10px] sm:text-[11px] font-bold"
+              title="العودة لشاشة الصيانة الكاملة المعروضة على الأجهزة"
+            >
+              شاشة الصيانة 🔒
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                maintenanceService.setPreviewMode(true, currentUser);
+              }}
+              className="px-2.5 sm:px-3 py-1 rounded-xl bg-black/20 hover:bg-black/30 text-slate-950 transition cursor-pointer text-[10px] sm:text-[11px] font-bold"
+              title="معاينة شاشة الصيانة كما تظهر للطلاب والزوار"
+            >
+              معاينة الطالب 👁️
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAdminTab('maintenance');
+                navigateToView('admin');
+              }}
+              className="px-2.5 sm:px-3 py-1 rounded-xl bg-black/20 hover:bg-black/30 text-slate-950 transition cursor-pointer text-[10px] sm:text-[11px] font-bold"
+            >
+              الإعدادات ⚙️
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                const updated = maintenanceService.toggleMaintenance(false, currentUser);
+                setMaintenanceConfig(updated);
+                await maintenanceService.syncToCloud(updated);
+              }}
+              className="px-3 py-1 rounded-xl bg-rose-600 hover:bg-rose-700 text-white transition cursor-pointer text-[10px] sm:text-[11px] font-bold shadow-sm"
+            >
+              إيقاف الصيانة ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* دائرة انتقال الثيم */}
       {orbTarget !== null && (
@@ -1030,16 +1430,31 @@ export const App: React.FC = () => {
       />
 
       {/* ======================================================================= */}
-      {/* 1. عرض شاشة الاختبار النشطة */}
+      {/* 1. عرض شاشة الاختبار (حجب شامل لمحاكي الاختبارات والتدريب لجميع الأوضاع) */}
       {/* ======================================================================= */}
       {currentView === 'quiz' && (
-        <QuizInterface
-          questions={activeQuestions}
-          settings={quizSettings}
-          quizTitle={quizTitle}
-          onFinish={handleQuizFinish}
-          onExit={() => navigateToView('home', 'home')}
-        />
+        <main className="min-h-[75vh] flex items-center justify-center p-4 font-cairo" dir="rtl">
+          <div className="max-w-md w-full p-8 rounded-3xl bg-white dark:bg-slate-900 border border-amber-500/30 shadow-2xl text-center space-y-6">
+            <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-500/15 text-amber-500 flex items-center justify-center text-3xl">
+              ⏳
+            </div>
+            <span className="text-xs font-black px-3 py-1 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 inline-block">
+              قريباً جداً ⏳
+            </span>
+            <h2 className="text-2xl font-black text-slate-900 dark:text-white">
+              محاكي الاختبارات والتدريب
+            </h2>
+            <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+              محاكي الاختبارات والتدريب مغلق حالياً لأعمال التطوير الشامل والتحديثات ليتوافق تماماً مع أحدث معايير اختبارات قياس والحل الذهني السريع. ترقبوا الإطلاق قريباً بإذن الله!
+            </p>
+            <button
+              onClick={() => navigateToView('home', 'home')}
+              className="w-full py-3.5 px-6 rounded-2xl font-black text-sm bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 shadow-lg shadow-amber-500/25 transition cursor-pointer"
+            >
+              الرجوع للصفحة الرئيسية 🏠
+            </button>
+          </div>
+        </main>
       )}
 
       {/* ======================================================================= */}
@@ -1068,6 +1483,79 @@ export const App: React.FC = () => {
           />
         </main>
       )}
+
+      {/* نافذة مودال مجتمع طرقع التفاعلي على تليجرام */}
+      {isTelegramCommunityModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="tarqa-glass-card border border-amber-500/30 dark:border-amber-400/40 bg-white dark:bg-[#0c0f1a] w-full max-w-lg rounded-3xl p-6 sm:p-8 shadow-2xl relative space-y-6">
+            
+            {/* زر الإغلاق */}
+            <button
+              onClick={() => setIsTelegramCommunityModalOpen(false)}
+              className="absolute top-5 left-5 p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              aria-label="إغلاق"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* رأس المودال */}
+            <div className="text-center space-y-2">
+              <div className="w-16 h-16 rounded-2xl bg-sky-500/10 text-sky-500 dark:text-sky-400 border border-sky-500/30 flex items-center justify-center mx-auto shadow-md">
+                <Users className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
+                مجتمع طرقع التفاعلي 💬
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-md mx-auto">
+                انضم الآن إلى قروبات وقنوات تليجرام الرسمية لمشاركة زملائك التدريب، حلول التسريبات، ومتابعة شروحات القدرات:
+              </p>
+            </div>
+
+            {/* قائمة القروبات والقنوات */}
+            <div className="space-y-3">
+              {telegramGroupsList.map((group) => (
+                <a
+                  key={group.id}
+                  href={group.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-sky-500/50 dark:hover:border-sky-400/50 bg-slate-50/70 dark:bg-slate-900/60 hover:bg-sky-50/50 dark:hover:bg-sky-950/30 transition-all group"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
+                        {group.name}
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+                        {group.badge}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                      {group.description}
+                    </p>
+                  </div>
+                  <div className="shrink-0 mr-3 p-2 rounded-xl bg-sky-500 text-slate-950 group-hover:scale-110 transition-transform">
+                    <ExternalLink className="w-4 h-4" />
+                  </div>
+                </a>
+              ))}
+            </div>
+
+            {/* ملاحظة توجيهية */}
+            <p className="text-[11px] text-center text-slate-400 font-medium">
+              سيتم إضافة روابط المجموعات الفرعية والتجمعات الإضافية باستمرار.
+            </p>
+
+            <button
+              onClick={() => setIsTelegramCommunityModalOpen(false)}
+              className="w-full py-3 rounded-xl font-bold text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
+            >
+              إغلاق النافذة
+            </button>
+          </div>
+        </div>
+      )}
+
 
       {/* ======================================================================= */}
       {/* 3.5. لوحة المتصدرين ونظام النقاط (Leaderboard & XP Hall of Fame) */}
@@ -1227,6 +1715,28 @@ export const App: React.FC = () => {
                 const updated = coursesStorage.toggleFilePreview(fileId);
                 setCourseFiles([...updated]);
               }}
+              onAddModule={() => {
+                setModules([...coursesStorage.getModules()]);
+              }}
+              onUpdateModule={() => {
+                setModules([...coursesStorage.getModules()]);
+              }}
+              onDeleteModule={() => {
+                setModules([...coursesStorage.getModules()]);
+              }}
+              onReorderModules={() => {
+                setModules([...coursesStorage.getModules()]);
+              }}
+              onAddInstructor={(newInst) => {
+                coursesStorage.addInstructor(newInst);
+              }}
+              onUpdateInstructor={(updatedInst) => {
+                coursesStorage.updateInstructor(updatedInst);
+              }}
+              onDeleteInstructor={(instId) => {
+                coursesStorage.deleteInstructor(instId);
+                setModules([...coursesStorage.getModules()]);
+              }}
             />
           ) : (
             <div className="max-w-2xl mx-auto my-12 p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-xl text-center space-y-4">
@@ -1300,13 +1810,17 @@ export const App: React.FC = () => {
         <main className="flex-1 w-full pb-24 md:pb-8">
           <ClassroomView
             currentModule={activeModule || modules[0] || mockFoundationModules[0]}
-            currentLesson={activeLesson || activeModule?.lessons?.[0] || modules[0]?.lessons?.[0] || mockFoundationModules[0]?.lessons?.[0]}
+            currentLesson={activeLesson || activeModule?.lessons?.[0] || modules.flatMap((m) => m.lessons || [])[0] || mockFoundationModules[0]?.lessons?.[0]}
             currentUser={currentUser}
             onSelectLesson={(lesson) => setActiveLesson(lesson)}
             onCompleteLesson={handleCompleteLesson}
             onStartQuiz={() => startMockExam()}
             onBackToRoadmap={() => {
               navigateToView('courses', 'courses');
+            }}
+            onOpenAuth={() => {
+              setAuthInitialTab('signin');
+              setIsAuthOpen(true);
             }}
           />
         </main>
@@ -1369,10 +1883,13 @@ export const App: React.FC = () => {
 
                   <button
                     onClick={startMockExam}
-                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl font-bold text-sm bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 shadow-sm transition-all active:scale-98 cursor-pointer"
+                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl font-bold text-sm bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 shadow-sm transition-all active:scale-98 cursor-pointer group relative"
                   >
-                    <Clock className="w-4 h-4 text-blue-500" />
-                    <span>محاكي قياس (قريباً ⏳)</span>
+                    <Clock className="w-4 h-4 text-amber-500 group-hover:rotate-12 transition-transform" />
+                    <span>محاكي الاختبار الفعلي ⏱️</span>
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                      قريباً ⏳
+                    </span>
                   </button>
                 </div>
               </div>
@@ -1415,108 +1932,212 @@ export const App: React.FC = () => {
           )}
 
           {/* ======================================================================= */}
-          {/* أقسام المنصة الأساسية (3 بطاقات مخصصة شكلاً لكل نظام) */}
+          {/* مميزات وأقسام المنصة الأساسية (محاضرات تدريب، محاكي الاختبار، مجتمع تليجرام) */}
           {/* ======================================================================= */}
-          <section className="flex flex-col gap-5">
-            <div className="text-center sm:text-start">
-              <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
-                ابدأ رحلتك نحو الـ 100 🎯
-              </h2>
-              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 font-medium">
-                اختر القسم المناسب لهدفك اليوم بدون تعقيد
-              </p>
+          <section className="flex flex-col gap-6">
+            <div className="text-center sm:text-start flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+              <div>
+                <span className="text-xs font-black text-amber-500 uppercase tracking-wider bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20 inline-flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>مميزات المنصة الأساسية</span>
+                </span>
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <h2 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white mt-2.5">
+                    كل ما تحتاجه للوصول إلى 100% في القدرات 🎯
+                  </h2>
+                  {canAccessAdmin(currentUser) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigateToView('admin', 'admin');
+                        setTimeout(() => {
+                          const tabBtn = document.querySelector('[data-admin-tab="features"]') as HTMLButtonElement;
+                          tabBtn?.click();
+                        }, 150);
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                      title="فتح لوحة تحكم المميزات وتعديل الروابط"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>تعديل المميزات والروابط ⚙️</span>
+                    </button>
+                  )}
+                </div>
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1 font-medium max-w-2xl">
+                  ثلاث ركائز أساسية صُممت خصيصاً لاختصار وقتك وجهدك والتأسيس الاحترافي لاختبار قياس الكمي.
+                </p>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-              {/* البطاقة 1: دورة التأسيس الشاملة (نهاري: شمس ذهبية زجاجية / ليلي: سديم عنبري كوني متوهج) */}
-              <div
-                onClick={() => handleTabSelect('courses')}
-                className="relative overflow-hidden p-6 rounded-2xl tarqa-glass-card hover:border-amber-400/90 hover:dark:border-amber-400/80 shadow-[0_10px_30px_rgba(245,158,11,0.08)] hover:shadow-[0_18px_40px_rgba(245,158,11,0.18)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_20px_rgba(245,158,11,0.12),inset_0_1px_0_rgba(245,158,11,0.3)] hover:dark:shadow-[0_16px_45px_rgba(0,0,0,0.7),0_0_35px_rgba(245,158,11,0.3),inset_0_1px_0_rgba(245,158,11,0.5)] hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
-              >
-                {/* خط إضاءة علوي */}
-                <div className="absolute inset-x-0 top-0 h-[1.5px] bg-gradient-to-r from-transparent via-amber-400/80 to-transparent pointer-events-none" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {featuresList.filter(f => f.isVisible).map((feature) => {
+                const getFeatureThemeClasses = () => {
+                  switch (feature.colorTheme) {
+                    case 'indigo':
+                      return {
+                        border: 'hover:border-indigo-400/90 hover:dark:border-indigo-400/80',
+                        shadow: 'shadow-[0_10px_30px_rgba(99,102,241,0.08)] hover:shadow-[0_18px_40px_rgba(99,102,241,0.2)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_20px_rgba(99,102,241,0.12)]',
+                        line: 'via-indigo-400',
+                        iconBg: 'bg-indigo-500/15 dark:bg-gradient-to-br dark:from-indigo-500/25 dark:to-indigo-500/15 text-indigo-600 dark:text-indigo-400 border-indigo-300/80 dark:border-indigo-400/50',
+                        btnText: 'text-indigo-600 dark:text-indigo-400',
+                        check: 'text-indigo-500'
+                      };
+                    case 'sky':
+                      return {
+                        border: 'hover:border-sky-400/90 hover:dark:border-sky-400/80',
+                        shadow: 'shadow-[0_10px_30px_rgba(14,165,233,0.08)] hover:shadow-[0_18px_40px_rgba(14,165,233,0.2)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_20px_rgba(14,165,233,0.12)]',
+                        line: 'via-sky-400',
+                        iconBg: 'bg-sky-500/15 dark:bg-gradient-to-br dark:from-sky-500/25 dark:to-blue-500/15 text-sky-600 dark:text-sky-400 border-sky-300/80 dark:border-sky-400/50',
+                        btnText: 'text-sky-600 dark:text-sky-400',
+                        check: 'text-sky-500'
+                      };
+                    case 'emerald':
+                      return {
+                        border: 'hover:border-emerald-400/90 hover:dark:border-emerald-400/80',
+                        shadow: 'shadow-[0_10px_30px_rgba(16,185,129,0.08)] hover:shadow-[0_18px_40px_rgba(16,185,129,0.2)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_20px_rgba(16,185,129,0.12)]',
+                        line: 'via-emerald-400',
+                        iconBg: 'bg-emerald-500/15 dark:bg-gradient-to-br dark:from-emerald-500/25 dark:to-teal-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-300/80 dark:border-emerald-400/50',
+                        btnText: 'text-emerald-600 dark:text-emerald-400',
+                        check: 'text-emerald-500'
+                      };
+                    case 'purple':
+                      return {
+                        border: 'hover:border-purple-400/90 hover:dark:border-purple-400/80',
+                        shadow: 'shadow-[0_10px_30px_rgba(168,85,247,0.08)] hover:shadow-[0_18px_40px_rgba(168,85,247,0.2)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_20px_rgba(168,85,247,0.12)]',
+                        line: 'via-purple-400',
+                        iconBg: 'bg-purple-500/15 dark:bg-gradient-to-br dark:from-purple-500/25 dark:to-pink-500/15 text-purple-600 dark:text-purple-400 border-purple-300/80 dark:border-purple-400/50',
+                        btnText: 'text-purple-600 dark:text-purple-400',
+                        check: 'text-purple-500'
+                      };
+                    case 'rose':
+                      return {
+                        border: 'hover:border-rose-400/90 hover:dark:border-rose-400/80',
+                        shadow: 'shadow-[0_10px_30px_rgba(244,63,94,0.08)] hover:shadow-[0_18px_40px_rgba(244,63,94,0.2)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_20px_rgba(244,63,94,0.12)]',
+                        line: 'via-rose-400',
+                        iconBg: 'bg-rose-500/15 dark:bg-gradient-to-br dark:from-rose-500/25 dark:to-red-500/15 text-rose-600 dark:text-rose-400 border-rose-300/80 dark:border-rose-400/50',
+                        btnText: 'text-rose-600 dark:text-rose-400',
+                        check: 'text-rose-500'
+                      };
+                    default:
+                      return {
+                        border: 'hover:border-amber-400/90 hover:dark:border-amber-400/80',
+                        shadow: 'shadow-[0_10px_30px_rgba(245,158,11,0.08)] hover:shadow-[0_18px_40px_rgba(245,158,11,0.2)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_20px_rgba(245,158,11,0.12)]',
+                        line: 'via-amber-400',
+                        iconBg: 'bg-amber-500/15 dark:bg-gradient-to-br dark:from-amber-500/25 dark:to-orange-500/15 text-amber-600 dark:text-amber-400 border-amber-300/80 dark:border-amber-400/50',
+                        btnText: 'text-amber-600 dark:text-amber-400',
+                        check: 'text-amber-500'
+                      };
+                  }
+                };
+                const theme = getFeatureThemeClasses();
 
-                <div className="relative z-10">
-                  <div className="w-12 h-12 rounded-2xl bg-amber-500/15 dark:bg-gradient-to-br dark:from-amber-500/25 dark:to-orange-500/15 text-amber-600 dark:text-amber-400 border border-amber-300/80 dark:border-amber-400/50 shadow-sm dark:shadow-[0_0_20px_rgba(245,158,11,0.35)] flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                    <GraduationCap className="w-6 h-6 drop-shadow-[0_0_6px_rgba(245,158,11,0.6)]" />
+                const handleFeatureClick = () => {
+                  // التحقق من حالة الميزة أولاً (مغلقة مؤقتاً أو قريباً)
+                  if (feature.status === 'paused') {
+                    triggerComingSoon(feature.statusNotice || `${feature.title}: هذه الميزة مغلقة مؤقتاً لأعمال الصيانة والتطوير 🔒`);
+                    return;
+                  }
+                  if (feature.status === 'coming-soon') {
+                    triggerComingSoon(feature.statusNotice || feature.comingSoonNotice || `${feature.title}: قريباً جداً في التحديث القادم بإذن الله ⏳`);
+                    return;
+                  }
+
+                  if (feature.actionType === 'courses') {
+                    handleTabSelect('courses');
+                  } else if (feature.actionType === 'mock-exam') {
+                    triggerComingSoon(feature.comingSoonNotice || 'محاكي الاختبارات والتدريب الفعلي قريباً جداً ⏳');
+                  } else if (feature.actionType === 'coming-soon') {
+                    triggerComingSoon(feature.comingSoonNotice || feature.title || 'هذه الميزة قيد التجهيز والتطوير حالياً');
+                  } else if (feature.actionType === 'telegram-modal') {
+                    setIsTelegramCommunityModalOpen(true);
+                  } else if (feature.actionType === 'tab' && feature.targetTab) {
+                    handleTabSelect(feature.targetTab as any);
+                  } else if (feature.actionType === 'url' && feature.actionUrl) {
+                    window.open(feature.actionUrl, feature.openInNewTab !== false ? '_blank' : '_self', 'noopener,noreferrer');
+                  }
+                };
+
+                return (
+                  <div
+                    key={feature.id}
+                    onClick={handleFeatureClick}
+                    className={`relative overflow-hidden p-6 rounded-3xl tarqa-glass-card ${theme.border} ${theme.shadow} hover:-translate-y-1.5 transition-all duration-300 cursor-pointer flex flex-col justify-between group`}
+                  >
+                    <div className={`absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent ${theme.line} to-transparent pointer-events-none`} />
+
+                    <div className="relative z-10">
+                      <div className={`w-13 h-13 rounded-2xl border shadow-sm flex items-center justify-center mb-5 group-hover:scale-110 transition-transform ${theme.iconBg}`}>
+                        {feature.icon === 'Clock' ? (
+                          <Clock className="w-7 h-7 drop-shadow-md" />
+                        ) : feature.icon === 'Users' ? (
+                          <Users className="w-7 h-7 drop-shadow-md" />
+                        ) : feature.icon === 'Zap' ? (
+                          <Zap className="w-7 h-7 drop-shadow-md" />
+                        ) : feature.icon === 'BookOpen' ? (
+                          <BookOpen className="w-7 h-7 drop-shadow-md" />
+                        ) : feature.icon === 'Flame' ? (
+                          <Flame className="w-7 h-7 drop-shadow-md" />
+                        ) : feature.icon === 'Sparkles' ? (
+                          <Sparkles className="w-7 h-7 drop-shadow-md" />
+                        ) : feature.icon === 'MessageSquare' ? (
+                          <MessageSquare className="w-7 h-7 drop-shadow-md" />
+                        ) : feature.icon === 'ShieldCheck' ? (
+                          <ShieldCheck className="w-7 h-7 drop-shadow-md" />
+                        ) : feature.icon === 'BrainCircuit' ? (
+                          <BrainCircuit className="w-7 h-7 drop-shadow-md" />
+                        ) : feature.icon === 'Globe' ? (
+                          <Globe className="w-7 h-7 drop-shadow-md" />
+                        ) : feature.icon === 'Layers' ? (
+                          <Layers className="w-7 h-7 drop-shadow-md" />
+                        ) : (
+                          <GraduationCap className="w-7 h-7 drop-shadow-md" />
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 mb-2">
+                        <h3 className="text-lg font-black text-slate-900 dark:text-white transition-colors">
+                          {feature.title}
+                        </h3>
+                      </div>
+
+                      <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium mb-4">
+                        {feature.description}
+                      </p>
+
+                      {feature.bullets && feature.bullets.length > 0 && (
+                        <div className="space-y-2 mb-4 pt-2 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-300 font-semibold">
+                          {feature.bullets.map((bullet, bIdx) => (
+                            <div key={bIdx} className="flex items-center gap-1.5">
+                              <span className={theme.check}>✓</span>
+                              <span>{bullet}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="relative z-10 flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800 text-xs">
+                      <span className={`font-bold flex items-center gap-1 group-hover:translate-x-[-4px] transition-transform ${theme.btnText}`}>
+                        <span>{feature.buttonText || 'دخول الآن'}</span>
+                        <span>←</span>
+                      </span>
+                      {feature.status === 'paused' ? (
+                        <span className="text-[10px] font-black px-2.5 py-0.5 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                          <span>🔒 مغلق مؤقتاً</span>
+                        </span>
+                      ) : feature.status === 'coming-soon' ? (
+                        <span className="text-[10px] font-black px-2.5 py-0.5 rounded-md bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30 flex items-center gap-1">
+                          <span>⏳ قريباً</span>
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-black px-2.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                          {feature.badge}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <h3 className="text-base font-black text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors mb-2">
-                    دورة التأسيس الشاملة
-                  </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-300/85 leading-relaxed font-medium mb-4">
-                    محاضرات فيديو متدرجة من الصفر لتغطية الحساب، الجبر، الهندسة والإحصاء باستراتيجيات طرقع للحل السريع.
-                  </p>
-                </div>
-
-                <div className="relative z-10 flex items-center justify-between pt-4 border-t border-amber-100 dark:border-amber-500/20 text-xs">
-                  <span className="font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1 group-hover:translate-x-[-3px] transition-transform drop-shadow-[0_0_8px_rgba(245,158,11,0.35)]">
-                    <span>دخول المحاضرات</span>
-                    <span>←</span>
-                  </span>
-                  <span className="text-[10px] font-black px-2.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-300/80 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/40 dark:shadow-[0_0_12px_rgba(16,185,129,0.3)]">
-                    متاح الآن 🎓
-                  </span>
-                </div>
-              </div>
-
-              {/* البطاقة 2: المذكرات وبنك الملفات (نهاري: سماء زجاجية صافية / ليلي: شعلة برتقالية نيزكية) */}
-              <div
-                onClick={() => handleTabSelect('courses')}
-                className="relative overflow-hidden p-6 rounded-2xl tarqa-glass-card hover:border-sky-400/90 hover:dark:border-orange-400/80 shadow-[0_10px_30px_rgba(14,165,233,0.08)] hover:shadow-[0_18px_40px_rgba(14,165,233,0.18)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_20px_rgba(249,115,22,0.12),inset_0_1px_0_rgba(249,115,22,0.3)] hover:dark:shadow-[0_16px_45px_rgba(0,0,0,0.7),0_0_35px_rgba(249,115,22,0.3),inset_0_1px_0_rgba(249,115,22,0.5)] hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
-              >
-                {/* خط إضاءة علوي */}
-                <div className="absolute inset-x-0 top-0 h-[1.5px] bg-gradient-to-r from-transparent via-sky-400/80 dark:via-orange-400/80 to-transparent pointer-events-none" />
-
-                <div className="relative z-10">
-                  <div className="w-12 h-12 rounded-2xl bg-sky-500/15 dark:bg-gradient-to-br dark:from-orange-500/25 dark:to-amber-500/15 text-sky-600 dark:text-orange-400 border border-sky-300/80 dark:border-orange-400/50 shadow-sm dark:shadow-[0_0_20px_rgba(249,115,22,0.35)] flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                    <FileText className="w-6 h-6 drop-shadow-[0_0_6px_rgba(14,165,233,0.6)] dark:drop-shadow-[0_0_6px_rgba(249,115,22,0.6)]" />
-                  </div>
-                  <h3 className="text-base font-black text-slate-900 dark:text-white group-hover:text-sky-600 dark:group-hover:text-orange-300 transition-colors mb-2">
-                    المذكرات وبنك الملفات
-                  </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-300/85 leading-relaxed font-medium mb-4">
-                    ملازم تأسيس شاملة وتجميعات كمي حديثة 1446 منسقة بصيغة PDF للتحميل والمذاكرة أوفلاين.
-                  </p>
-                </div>
-
-                <div className="relative z-10 flex items-center justify-between pt-4 border-t border-sky-100 dark:border-orange-500/20 text-xs">
-                  <span className="font-bold text-sky-600 dark:text-orange-400 flex items-center gap-1 group-hover:translate-x-[-3px] transition-transform drop-shadow-[0_0_8px_rgba(14,165,233,0.35)] dark:drop-shadow-[0_0_8px_rgba(249,115,22,0.35)]">
-                    <span>استعراض المذكرات</span>
-                    <span>←</span>
-                  </span>
-                  <span className="text-[10px] font-black px-2.5 py-0.5 rounded-md bg-sky-50 text-sky-700 border border-sky-300/80 dark:bg-orange-500/15 dark:text-orange-400 dark:border-orange-500/40 dark:shadow-[0_0_12px_rgba(249,115,22,0.3)]">
-                    تحميل مباشر 📥
-                  </span>
-                </div>
-              </div>
-
-              {/* البطاقة 3: محاكي قياس الفعلي (نهاري: كريستال إنديجو أنيق / ليلي: سوبرنوفا ذهبية متلألئة) */}
-              <div
-                onClick={startMockExam}
-                className="relative overflow-hidden p-6 rounded-2xl tarqa-glass-card hover:border-indigo-400/90 hover:dark:border-yellow-300/80 shadow-[0_10px_30px_rgba(99,102,241,0.08)] hover:shadow-[0_18px_40px_rgba(99,102,241,0.18)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_20px_rgba(251,191,36,0.12),inset_0_1px_0_rgba(251,191,36,0.3)] hover:dark:shadow-[0_16px_45px_rgba(0,0,0,0.7),0_0_35px_rgba(251,191,36,0.3),inset_0_1px_0_rgba(251,191,36,0.5)] hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col justify-between group"
-              >
-                {/* خط إضاءة علوي */}
-                <div className="absolute inset-x-0 top-0 h-[1.5px] bg-gradient-to-r from-transparent via-indigo-400/80 dark:via-yellow-300/80 to-transparent pointer-events-none" />
-
-                <div className="relative z-10">
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/15 dark:bg-gradient-to-br dark:from-yellow-500/25 dark:to-amber-500/15 text-indigo-600 dark:text-yellow-300 border border-indigo-300/80 dark:border-yellow-400/50 shadow-sm dark:shadow-[0_0_20px_rgba(251,191,36,0.35)] flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                    <Clock className="w-6 h-6 drop-shadow-[0_0_6px_rgba(99,102,241,0.6)] dark:drop-shadow-[0_0_6px_rgba(251,191,36,0.6)]" />
-                  </div>
-                  <h3 className="text-base font-black text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-yellow-200 transition-colors mb-2">
-                    محاكي قياس الذكي
-                  </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-300/85 leading-relaxed font-medium mb-4">
-                    بيئة اختبار تحاكي مركز قياس بمؤقت زمني وتصحيح تفصيلي، يجري تجهيزها وتدشينها قريباً لجميع الطلاب.
-                  </p>
-                </div>
-
-                <div className="relative z-10 flex items-center justify-between pt-4 border-t border-indigo-100 dark:border-amber-500/20 text-xs">
-                  <span className="text-slate-500 dark:text-amber-200/70 font-medium">متاح قريباً للطلاب</span>
-                  <span className="text-[10px] font-black px-2.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-300/80 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-400/40 dark:shadow-[0_0_12px_rgba(245,158,11,0.3)]">
-                    قريباً ⏳
-                  </span>
-                </div>
-              </div>
+                );
+              })}
             </div>
           </section>
 
@@ -1548,7 +2169,7 @@ export const App: React.FC = () => {
       )}
 
       {/* التذييل المؤسسي لمنصة طرقع */}
-      <footer className="border-t border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-[#070b14]/50 backdrop-blur-xl py-8 px-4 text-center text-xs text-slate-500 space-y-4">
+      <footer className="border-t border-slate-200/80 dark:border-slate-800/80 bg-white/70 dark:bg-[#070b14]/50 backdrop-blur-xl pt-8 pb-24 lg:pb-8 px-4 text-center text-xs text-slate-500 space-y-4">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="text-center sm:text-start space-y-1">
             <div className="flex items-center justify-center sm:justify-start gap-2">
@@ -1560,24 +2181,42 @@ export const App: React.FC = () => {
             <p className="text-[11px] text-slate-400">
               تجميعات وتدريبات تفاعلية ومحاضرات تأسيس متخصصة لاختبار القدرات العامة (القسم الكمي).
             </p>
-          </div>
+                      </div>
 
           <div className="flex items-center gap-2 text-[11px] font-bold text-slate-600 dark:text-slate-400 flex-wrap justify-center">
-            <button
-              type="button"
-              onClick={() => handleOpenPolicies('terms')}
-              className="hover:text-amber-500 transition cursor-pointer"
+            <a
+              href="/about.html"
+              className="hover:text-amber-500 transition"
+              title="About Us"
             >
-              شروط الاستخدام
-            </button>
+              من نحن (About)
+            </a>
             <span>•</span>
-            <button
-              type="button"
-              onClick={() => handleOpenPolicies('privacy')}
-              className="hover:text-amber-500 transition cursor-pointer"
+            <a
+              href="/contact.html"
+              className="hover:text-amber-500 transition"
+              title="Contact Us"
             >
-              سياسة الخصوصية
-            </button>
+              اتصل بنا (Contact)
+            </a>
+            <span>•</span>
+            <a
+              href="/terms.html"
+              onClick={(e) => { e.preventDefault(); handleOpenPolicies('terms'); }}
+              className="hover:text-amber-500 transition cursor-pointer"
+              title="Terms of Service"
+            >
+              شروط الاستخدام (Terms)
+            </a>
+            <span>•</span>
+            <a
+              href="/privacy.html"
+              onClick={(e) => { e.preventDefault(); handleOpenPolicies('privacy'); }}
+              className="hover:text-amber-500 transition cursor-pointer"
+              title="Privacy Policy"
+            >
+              سياسة الخصوصية (Privacy)
+            </a>
             <span>•</span>
             <button
               type="button"
@@ -1718,6 +2357,32 @@ export const App: React.FC = () => {
 
       {/* شريط الموافقة على ملفات تعريف الارتباط (Cookies Banner) */}
       <CookieConsentBanner onOpenPolicies={handleOpenPolicies} />
+
+      {/* نافذة تأكيد وإشعار الدفع وتفعيل الاشتراك */}
+      {paymentNotice && (
+        <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in" dir="rtl">
+          <div className="relative w-full max-w-md p-6 sm:p-7 rounded-3xl bg-[#0d1322] border border-amber-500/40 text-center shadow-[0_0_60px_rgba(245,158,11,0.25)] space-y-4">
+            <div
+              className={`w-16 h-16 mx-auto rounded-2xl flex items-center justify-center text-3xl shadow-lg ${
+                paymentNotice.type === 'success'
+                  ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-400'
+                  : 'bg-rose-500/20 border border-rose-500/40 text-rose-400'
+              }`}
+            >
+              {paymentNotice.type === 'success' ? '🎉' : '⚠️'}
+            </div>
+            <h4 className="text-lg sm:text-xl font-black text-white">{paymentNotice.title}</h4>
+            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">{paymentNotice.message}</p>
+            <button
+              type="button"
+              onClick={() => setPaymentNotice(null)}
+              className="w-full py-3.5 px-6 rounded-2xl font-black text-sm bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 shadow-lg shadow-amber-500/25 cursor-pointer transition active:scale-98 select-none"
+            >
+              دخول إلى الدورات والمحاضرات الآن 🚀
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   );

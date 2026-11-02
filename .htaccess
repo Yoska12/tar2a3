@@ -1,16 +1,21 @@
 # ==============================================================================
 # منصة طرقع - ملف إعدادات أباتشي و لايت سبيد (Apache / LiteSpeed Web Server)
-# Tarqa Platform - Production .htaccess (SPA Routing, CORS, Security & Caching)
+# Tarqa Platform - Production .htaccess (Agent-Ready, SPA Routing, CORS, Security & 404s)
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
 # 1. خيارات السيرفر الأساسية (Server Options)
 # ------------------------------------------------------------------------------
-Options -Indexes -MultiViews
+<IfModule mod_negotiation.c>
+  Options -MultiViews
+</IfModule>
+<IfModule mod_autoindex.c>
+  Options -Indexes
+</IfModule>
 ServerSignature Off
 
 # ------------------------------------------------------------------------------
-# 2. ضبط أنواع الملفات (MIME Types) للمتصفحات الحديثة و Vite Chunks
+# 2. ضبط أنواع الملفات (MIME Types) للمتصفحات ووكلاء الذكاء الاصطناعي
 # ------------------------------------------------------------------------------
 <IfModule mod_mime.c>
   AddType application/javascript              .js .mjs
@@ -21,19 +26,24 @@ ServerSignature Off
   AddType font/woff                           .woff
   AddType font/woff2                          .woff2
   AddType application/pdf                     .pdf
-  AddCharset UTF-8                            .html .css .js .json .svg .xml
+  AddType text/plain                          .txt
+  AddType text/markdown                       .md
+  AddCharset UTF-8                            .html .css .js .json .svg .xml .txt .md
 </IfModule>
 
 # ------------------------------------------------------------------------------
-# 3. إعدادات مشاركة الموارد عبر النطاقات (CORS - Cross-Origin Resource Sharing)
+# 3. إعدادات مشاركة الموارد وتوجيه إشارات الذكاء الاصطناعي (CORS & Content Signals)
 # ------------------------------------------------------------------------------
 <IfModule mod_headers.c>
   # السماح بالوصول عبر النطاقات مع دعم الـ Preflight OPTIONS
   Header always set Access-Control-Allow-Origin "*"
   Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD"
   Header always set Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Authorization, Range, X-CSRF-Token, api-key, Cache-Control"
-  Header always set Access-Control-Expose-Headers "Content-Length, Content-Range, Content-Disposition, Content-Type"
+  Header always set Access-Control-Expose-Headers "Content-Length, Content-Range, Content-Disposition, Content-Type, Link, Content-Signal"
   Header always set Access-Control-Max-Age "86400"
+
+  # إشارة Content-Signal الرسمية لوكلاء ومحركات الذكاء الاصطناعي
+  Header always set Content-Signal "search=yes, ai-train=no"
 
   # ----------------------------------------------------------------------------
   # 4. ترويسات الحماية والأمان المتقدمة (Security Headers)
@@ -46,13 +56,14 @@ ServerSignature Off
 </IfModule>
 
 # ------------------------------------------------------------------------------
-# 5. ضغط الملفات لتسريع التحميل بنسبة تصل إلى 70% (Gzip / Deflate Compression)
+# 5. ضغط الملفات لتسريع التحميل (Gzip / Deflate Compression)
 # ------------------------------------------------------------------------------
 <IfModule mod_deflate.c>
   AddOutputFilterByType DEFLATE text/html
   AddOutputFilterByType DEFLATE text/plain
   AddOutputFilterByType DEFLATE text/xml
   AddOutputFilterByType DEFLATE text/css
+  AddOutputFilterByType DEFLATE text/markdown
   AddOutputFilterByType DEFLATE text/javascript
   AddOutputFilterByType DEFLATE application/javascript
   AddOutputFilterByType DEFLATE application/x-javascript
@@ -66,7 +77,7 @@ ServerSignature Off
 </IfModule>
 
 # ------------------------------------------------------------------------------
-# 6. إدارة التخزين المؤقت (Caching Policy)
+# 6. إدارة التخزين المؤقت وترويسات الموارد الذكية (Caching & Link Headers)
 # ------------------------------------------------------------------------------
 <IfModule mod_expires.c>
   ExpiresActive On
@@ -74,8 +85,10 @@ ServerSignature Off
 
   # ملف index.html لا يُخزن أبداً لضمان استلام الزائر لأحدث نسخة فور النشر
   ExpiresByType text/html "access plus 0 seconds"
+  ExpiresByType text/markdown "access plus 0 seconds"
+  ExpiresByType text/plain "access plus 1 hour"
 
-  # ملفات الـ Assets المخرجة من Vite (تحتوي على هاش في أسمائها وتُخزن لسنة كاملة)
+  # ملفات الـ Assets المخرجة من Vite
   ExpiresByType text/css "access plus 1 year"
   ExpiresByType application/javascript "access plus 1 year"
   ExpiresByType application/x-javascript "access plus 1 year"
@@ -88,12 +101,47 @@ ServerSignature Off
   ExpiresByType image/x-icon "access plus 1 year"
 </IfModule>
 
-# منع كاش المتصفح لصفحة index.html حصراً
+# توجيه الخطأ 404 الفعلي لصفحة الخطأ 404
+ErrorDocument 404 /404.php
+
+# ترويسات صفحة index.html وترويسات Link للموارد الذكية (RFC 8288 Discovery)
 <Files "index.html">
   <IfModule mod_headers.c>
     Header set Cache-Control "no-cache, no-store, must-revalidate, max-age=0"
     Header set Pragma "no-cache"
     Header set Expires "0"
+    Header set Link "</llms.txt>; rel=\"alternate\"; type=\"text/plain\", </index.md>; rel=\"alternate\"; type=\"text/markdown\", </.well-known/mcp/server-card.json>; rel=\"service-desc\"; type=\"application/json\""
+  </IfModule>
+</Files>
+
+# ترويسة Link عند طلب الجذر / مباشرة
+<IfModule mod_headers.c>
+  SetEnvIf Request_URI "^/(index\.html)?$" IS_HOMEPAGE=1
+  Header set Link "</llms.txt>; rel=\"alternate\"; type=\"text/plain\", </index.md>; rel=\"alternate\"; type=\"text/markdown\", </.well-known/mcp/server-card.json>; rel=\"service-desc\"; type=\"application/json\"" env=IS_HOMEPAGE
+</IfModule>
+
+# ترويسات ملف index.md عند تقديمه كـ Markdown
+<Files "index.md">
+  <IfModule mod_headers.c>
+    Header set Content-Type "text/markdown; charset=utf-8"
+    Header set Vary "Accept"
+    Header set Access-Control-Allow-Origin "*"
+  </IfModule>
+</Files>
+
+# ترويسات ملف llms.txt
+<Files "llms.txt">
+  <IfModule mod_headers.c>
+    Header set Content-Type "text/plain; charset=utf-8"
+    Header set Access-Control-Allow-Origin "*"
+  </IfModule>
+</Files>
+
+# ترويسات ملف server-card.json
+<Files "server-card.json">
+  <IfModule mod_headers.c>
+    Header set Content-Type "application/json; charset=utf-8"
+    Header set Access-Control-Allow-Origin "*"
   </IfModule>
 </Files>
 
@@ -111,7 +159,7 @@ ServerSignature Off
 </FilesMatch>
 
 # ------------------------------------------------------------------------------
-# 8. إعادة توجيه الروابط وتوجيه تطبيق الصفحة الواحدة (SPA Routing & Rewrites)
+# 8. إعادة توجيه الروابط وتوجيه وكلاء الذكاء الاصطناعي ورمز 404 الحقيقي (Routing & Real 404s)
 # ------------------------------------------------------------------------------
 <IfModule mod_rewrite.c>
   RewriteEngine On
@@ -129,17 +177,36 @@ ServerSignature Off
   RewriteCond %{HTTP:X-Forwarded-Proto} !https [NC]
   RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
-  # ج. استثناء الملفات والمجلدات الحقيقية الموجودة بالفعل على السيرفر
+  # ج. خدمة تمثيل Markdown لوكلاء الذكاء الاصطناعي عند إرسال Accept: text/markdown
+  RewriteCond %{HTTP:Accept} text/markdown [NC]
+  RewriteCond %{REQUEST_URI} ^/?(index(\.html)?)?$
+  RewriteRule ^.*$ index.md [T=text/markdown,L]
+
+  # د. استثناء الملفات والمجلدات الحقيقية الموجودة بالفعل على السيرفر
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
 
-  # د. استثناء مسارات الـ API ومجلد التخزين المباشر (uploads) على هوستينجر
+  # هـ. استثناء مسارات الـ API ومجلد التخزين المباشر ومجلد .well-known والملفات النصية للوكلاء
   RewriteRule ^api/ - [L]
   RewriteRule ^uploads/ - [L]
+  RewriteRule ^\.well-known/ - [L]
+  RewriteRule ^llms\.txt$ - [L]
+  RewriteRule ^llms-full\.txt$ - [L]
+  RewriteRule ^index\.md$ - [L]
+  RewriteRule ^robots\.txt$ - [L]
+  RewriteRule ^sitemap\.xml$ - [L]
 
-  # هـ. توجيه جميع المسارات الأخرى إلى index.html ليعمل راوتر التطبيق (React Router / SPA)
-  RewriteRule ^ index.html [L]
+  # و. توجيه المسارات المعتمدة لتطبيق الصفحة الواحدة (SPA Routes) إلى index.html
+  RewriteRule ^(courses|quiz|leaderboard|dashboard|classroom|admin|admin-lectures|admin-roles|result|about|contact|terms|privacy|cookies|refund|login|signin|signup|register|categories|roadmap|kashier|security|admin-kashier|admin-security)/?$ index.html [L]
+
+  # ز. أي مسار غير موجود على السيرفر وغير معتمد كتطبيق يُرجع كود 404 حقيقي مع صفحة الخطأ
+  <IfModule mod_php.c>
+    RewriteRule ^.*$ 404.php [L]
+  </IfModule>
+  <IfModule !mod_php.c>
+    RewriteRule ^.*$ 404.html [R=404,L]
+  </IfModule>
 </IfModule>
 
 # ------------------------------------------------------------------------------
@@ -168,4 +235,3 @@ ServerSignature Off
   php_value max_execution_time 600
   php_value max_input_time 600
 </IfModule>
-

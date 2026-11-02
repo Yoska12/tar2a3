@@ -1,0 +1,14 @@
+# Content-Signal directives for AI Agents and Crawlers
+Content-Signal: search=yes, ai-train=no
+
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /uploads/
+
+# Host
+Host: https://tarqa3.net
+
+# Sitemaps and AI Context
+Sitemap: https://tarqa3.net/sitemap.xml
+Sitemap: https://tarqa3.net/llms.txt

@@ -1,0 +1,37 @@
+<?php
+http_response_code(404);
+header("HTTP/1.1 404 Not Found");
+header("Status: 404 Not Found");
+header("Content-Type: text/html; charset=utf-8");
+header("X-Robots-Tag: noindex, nofollow");
+?>
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>404 - الصفحة غير موجودة | منصة طرقع</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/png" href="/frame_00001.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+      body { font-family: 'Cairo', sans-serif; background: #070b14; color: #e2e8f0; margin: 0; padding: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; text-align: center; }
+      .container { max-width: 600px; padding: 40px 24px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 24px; box-shadow: 0 25px 50px rgba(0,0,0,0.6); }
+      .code { font-size: 80px; font-weight: 900; color: #f59e0b; margin: 0; line-height: 1; }
+      h1 { font-size: 24px; margin: 16px 0; color: #fff; }
+      p { color: #94a3b8; font-size: 15px; margin-bottom: 24px; }
+      .btn { display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; font-weight: 800; border-radius: 14px; text-decoration: none; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 10px 20px rgba(245, 158, 11, 0.3); }
+      .btn:hover { transform: translateY(-2px); box-shadow: 0 15px 25px rgba(245, 158, 11, 0.4); }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="code">404</div>
+      <h1>الصفحة المطلوبة غير موجودة</h1>
+      <p>عذراً، الرابط الذي حاولت الوصول إليه غير صحيح أو تم نقله. يمكنك العودة للصفحة الرئيسية ومتابعة تدريبات القدرات.</p>
+      <a href="/" class="btn">العودة للرئيسية 🚀</a>
+    </div>
+  </body>
+</html>

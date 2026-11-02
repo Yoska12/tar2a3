@@ -156,6 +156,7 @@ const readFileAsDataUrl = (file: File): Promise<string> => {
 
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { downloadTrackingService } from './downloadTrackingService';
+import { getStudentDisplayIdentity } from './userUtils';
 
 /**
  * ذاكرة مؤقتة للعلامات المائية لتسريع التوليد والتحميل الفوري
@@ -304,19 +305,7 @@ export const getWatermarkedPdfBlob = async (
     throw new Error('لم يتم رفع ملف أصلي لهذه المذكرة بعد من قبل المدرس أو الإدارة.');
   }
 
-  const studentName =
-    currentUser?.fullName?.trim() ||
-    currentUser?.full_name?.trim() ||
-    currentUser?.name?.trim() ||
-    currentUser?.email?.split('@')[0] ||
-    'طالب منصة طرقع';
-  const studentId =
-    currentUser?.phone ||
-    currentUser?.phoneNumber ||
-    currentUser?.phone_number ||
-    currentUser?.email ||
-    currentUser?.telegram_username ||
-    (currentUser?.id ? `ID-#${currentUser.id.slice(0, 10)}` : 'حساب مسجل');
+  const { name: studentName, identifier: studentId } = getStudentDisplayIdentity(currentUser);
   const codeSeed = (currentUser?.id || currentUser?.email || 'tarqa_student')
     .split('')
     .reduce((acc: number, char: string) => (acc << 5) - acc + char.charCodeAt(0), 0);

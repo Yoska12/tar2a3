@@ -30,6 +30,13 @@ import { downloadTrackingService } from '../lib/downloadTrackingService';
 import { fileStorageService, isMobileDevice } from '../lib/fileStorageService';
 import { PdfPreviewModal } from './PdfPreviewModal';
 import { isUserSubscribed, coursesStorage } from '../lib/subscriptionService';
+import { getStudentDisplayIdentity } from '../lib/userUtils';
+import {
+  isYouTubeUrl as isYouTube,
+  isVimeoUrl as isVimeo,
+  getYouTubeEmbedUrl,
+  getVimeoEmbedUrl,
+} from '../lib/videoUrlUtils';
 
 interface ClassroomViewProps {
   currentModule: CourseModule;
@@ -134,21 +141,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
   } | null>(null);
 
   // هوية الطالب للعلامة المائية المانعة للتسريب
-  const studentName =
-    currentUser?.fullName?.trim() ||
-    (currentUser as any)?.full_name?.trim() ||
-    (currentUser as any)?.name?.trim() ||
-    currentUser?.email?.split('@')[0] ||
-    'طالب منصة طرقع';
-  const studentId =
-    (currentUser as any)?.phone ||
-    (currentUser as any)?.phoneNumber ||
-    (currentUser as any)?.phone_number ||
-    currentUser?.email ||
-    (currentUser as any)?.telegramUsername ||
-    (currentUser as any)?.telegram_username ||
-    (currentUser?.id ? `#${currentUser.id.slice(0, 10)}` : 'حساب مسجل');
-  const studentUid = currentUser?.id ? `#${currentUser.id.slice(0, 8)}` : 'TRQ-STUDENT';
+  const { name: studentName, identifier: studentId, shortId: studentUid } = getStudentDisplayIdentity(currentUser);
 
   // موضع العلامة المائية المتحركة عشوائياً كل 10 ثوانٍ لمنع تصوير الشاشة
   const [watermarkPos, setWatermarkPos] = useState({ x: 15, y: 20 });
@@ -206,31 +199,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
     </>
   );
 
-  // استخراج رابط الـ Embed ليوتيوب
-  // فحص واستخراج روابط التشغيل لليوتيوب وفيميو والروابط المباشرة
-  const isYouTube = (url: string = '', provider: string = '') => {
-    if (provider === 'youtube') return true;
-    return url.includes('youtube.com') || url.includes('youtu.be');
-  };
 
-  const isVimeo = (url: string = '', provider: string = '') => {
-    if (provider === 'vimeo') return true;
-    return url.includes('vimeo.com');
-  };
-
-  const getYouTubeEmbedUrl = (url: string) => {
-    if (!url) return '';
-    const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/|watch\?.+&v=))([\w-]{11})/);
-    const videoId = match ? match[1] : '';
-    return `https://www.youtube-nocookie.com/embed/${videoId || 'dQw4w9WgXcQ'}?autoplay=0&rel=0&modestbranding=1&playsinline=1&enablejsapi=1`;
-  };
-
-  const getVimeoEmbedUrl = (url: string) => {
-    if (!url) return '';
-    const match = url.match(/vimeo\.com\/(?:video\/)?([0-9]+)/);
-    const videoId = match ? match[1] : '';
-    return `https://player.vimeo.com/video/${videoId || ''}?badge=0&autopause=0&player_id=0`;
-  };
 
   // التحكم بسرعة الشرح في جميع المشغلات (فيديو عادي، مشغل مشفر، ويوتيوب وفيميو)
   const handleSpeedChange = (speed: number) => {
@@ -1054,7 +1023,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
         onSubscribeClick={() => {
           alert('هذا الملف متاح حصرياً لمشتركي باقة طرقع 🔒 يرجى تفعيل أو تجديد الاشتراك لتنزيل الملفات');
         }}
-        onDownloadClick={(fileToDownload) => {
+        onDownloadClick={(fileToDownload: CourseFileItem) => {
           const hasAccess = Boolean(fileToDownload.isFreePreview || isUserSubscribed(currentUser));
           if (!hasAccess) return;
           downloadTrackingService.trackDownload(
@@ -1097,8 +1066,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
             </a>
             <a
               href={downloadNotice.url}
-              target="_blank"
-              rel="noopener"
+              {...(downloadNotice.url.startsWith('blob:') ? {} : { target: '_blank', rel: 'noopener' })}
               className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
               title="فتح الملف في تبويب مستقل للموبايل"
             >

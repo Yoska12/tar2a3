@@ -3454,10 +3454,9 @@ export const CoursesView: React.FC<CoursesViewProps> = ({
             </a>
             <a
               href={downloadNotice.url}
-              target="_blank"
-              rel="noopener"
+              {...(downloadNotice.url.startsWith('blob:') ? {} : { target: '_blank', rel: 'noopener' })}
               className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
-              title="فتح الملف في تبويب مستقل للموبايل"
+              title="فتح وتصفح الملف"
             >
               <Eye className="w-3.5 h-3.5" />
               <span>فتح 👁️</span>

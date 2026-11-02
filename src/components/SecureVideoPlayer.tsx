@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { TarqaUser } from '../lib/supabase';
 import { resolveVideoUrl, resolveVideoDetails } from '../lib/videoUploadService';
+import { isYouTubeUrl, isVimeoUrl, getYouTubeEmbedUrl, getVimeoEmbedUrl } from '../lib/videoUrlUtils';
 
 interface SecureVideoPlayerProps {
   src: string;
@@ -448,13 +449,11 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
   }, [togglePlay]);
 
   // التحقق التلقائي إذا كان الرابط يوتيوب أو فيميو
-  const isYouTube = resolvedSrc.includes('youtube.com') || resolvedSrc.includes('youtu.be');
-  const isVimeo = resolvedSrc.includes('vimeo.com');
+  const isYouTube = isYouTubeUrl(resolvedSrc);
+  const isVimeo = isVimeoUrl(resolvedSrc);
 
   if (isYouTube) {
-    const match = resolvedSrc.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/|watch\?.+&v=))([\w-]{11})/);
-    const videoId = match ? match[1] : '';
-    const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId || ''}?autoplay=0&rel=0&modestbranding=1&playsinline=1&enablejsapi=1`;
+    const embedUrl = getYouTubeEmbedUrl(resolvedSrc);
 
     return (
       <div
@@ -493,9 +492,7 @@ export const SecureVideoPlayer: React.FC<SecureVideoPlayerProps> = ({
   }
 
   if (isVimeo) {
-    const match = resolvedSrc.match(/vimeo\.com\/(?:video\/)?([0-9]+)/);
-    const videoId = match ? match[1] : '';
-    const embedUrl = `https://player.vimeo.com/video/${videoId || ''}?badge=0&autopause=0&player_id=0`;
+    const embedUrl = getVimeoEmbedUrl(resolvedSrc);
 
     return (
       <div

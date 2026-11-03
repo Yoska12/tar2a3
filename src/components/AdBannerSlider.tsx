@@ -220,18 +220,19 @@ export const AdBannerSlider: React.FC<AdBannerSliderProps> = ({
   };
 
   const handleDeleteBanner = (bannerId: string) => {
-    if (window.confirm('هل أنت متأكد من حذف هذا الإعلان نهائياً؟')) {
+    if (window.confirm('هل أنت متأكد من حذف هذا الإعلان نهائياً من الموقع؟')) {
       const updated = coursesStorage.deleteBanner(bannerId);
       setBanners([...updated]);
       if (editingBanner?.id === bannerId) {
         setIsManageModalOpen(false);
       }
+      setCurrentIndex((prev) => (prev >= updated.length ? Math.max(0, updated.length - 1) : prev));
     }
   };
 
   // الحالة عندما لا توجد أي إعلانات:
   // إذا لم يكن مشرفاً: لا يظهر شيء مطلقاً (حسب طلب المستخدم الصريح)
-  // إذا كان مشرفاً: يظهر زر أنيق لإضافة أول إعلان
+  // إذا كان مشرفاً: يظهر زر أنيق لإضافة أول إعلان أو إدارة المحفوظ
   if (activeBanners.length === 0) {
     if (!isEditor) {
       return null;
@@ -249,13 +250,24 @@ export const AdBannerSlider: React.FC<AdBannerSliderProps> = ({
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto mb-6">
             لا توجد إعلانات معروضة حالياً. كمسؤول أو معلم، يمكنك رفع صور إعلانات لدوراتك التدريبية تتقلب تلقائياً كل 5 ثوانٍ بتأثير تقليب الصفحة.
           </p>
-          <button
-            onClick={openAddBannerModal}
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl font-bold text-sm bg-gradient-to-r from-amber-500 via-amber-600 to-yellow-500 text-slate-950 shadow-lg shadow-amber-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
-          >
-            <Plus className="w-5 h-5" />
-            <span>إضافة أول إعلان / بانر ترويجي</span>
-          </button>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <button
+              onClick={openAddBannerModal}
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl font-bold text-sm bg-gradient-to-r from-amber-500 via-amber-600 to-yellow-500 text-slate-950 shadow-lg shadow-amber-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+            >
+              <Plus className="w-5 h-5" />
+              <span>إضافة إعلان / بانر ترويجي</span>
+            </button>
+            {banners.length > 0 && (
+              <button
+                onClick={() => setIsManageModalOpen(true)}
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl font-bold text-sm bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 transition cursor-pointer"
+              >
+                <Edit3 className="w-4 h-4 text-amber-500" />
+                <span>إدارة الإعلانات المحفوظة ({banners.length})</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* نافذة إدارة الإعلانات */}
@@ -271,22 +283,33 @@ export const AdBannerSlider: React.FC<AdBannerSliderProps> = ({
     <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-4">
       {/* شريط الإدارة للمشرف */}
       {isEditor && (
-        <div className="flex items-center justify-between mb-3 px-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3 px-2">
           <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
             <Sparkles className="w-4 h-4 text-amber-500" />
             <span>بنرات وإعلانات الدورات ({activeBanners.length} إعلانات نشطة)</span>
           </div>
           <div className="flex items-center gap-2">
             <button
+              type="button"
+              onClick={() => handleDeleteBanner(currentBanner.id)}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-500/15 hover:bg-rose-500/25 text-rose-600 dark:text-rose-400 border border-rose-500/30 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+              title="حذف هذا الإعلان نهائياً من الموقع"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>حذف هذا الإعلان</span>
+            </button>
+            <button
+              type="button"
               onClick={() => openEditBannerModal(currentBanner)}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
             >
               <Edit3 className="w-3.5 h-3.5" />
               <span>تعديل هذا البانر</span>
             </button>
             <button
+              type="button"
               onClick={openAddBannerModal}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-400 border border-amber-500/30 transition flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-600 dark:text-amber-400 border border-amber-500/30 transition flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>إضافة إعلان جديد</span>
@@ -302,6 +325,35 @@ export const AdBannerSlider: React.FC<AdBannerSliderProps> = ({
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
+        {/* أزرار الإدارة السريعة العائمة على البانر مباشرة للمشرف */}
+        {isEditor && (
+          <div className="absolute top-3 left-3 z-30 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeleteBanner(currentBanner.id);
+              }}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-600/90 hover:bg-rose-600 text-white backdrop-blur-md border border-rose-400/40 transition flex items-center gap-1.5 shadow-lg cursor-pointer"
+              title="حذف هذا الإعلان نهائياً من الموقع"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>حذف الإعلان 🗑️</span>
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                openEditBannerModal(currentBanner);
+              }}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-black/60 hover:bg-black/80 text-white backdrop-blur-md border border-white/20 transition flex items-center gap-1.5 shadow-lg cursor-pointer"
+              title="تعديل هذا البانر"
+            >
+              <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+              <span>تعديل</span>
+            </button>
+          </div>
+        )}
         {/* شاشة العرض مع تأثير تقليب الصفحة الفعلي */}
         <div
           onClick={() => handleBannerClick(currentBanner)}

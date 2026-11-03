@@ -497,9 +497,14 @@ export const AdBannerSlider: React.FC<AdBannerSliderProps> = ({
           <form onSubmit={handleSaveBanner} className="space-y-4">
             {/* 1. رفع الصورة أو إدخال الرابط */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                صورة الإعلان <span className="text-rose-500">*</span>
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  صورة الإعلان <span className="text-rose-500">*</span>
+                </label>
+                <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 dark:bg-amber-500/20 px-2.5 py-0.5 rounded-full border border-amber-500/20">
+                  الأبعاد المثالية: 1920 × 720 px (8:3)
+                </span>
+              </div>
               
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
@@ -521,11 +526,16 @@ export const AdBannerSlider: React.FC<AdBannerSliderProps> = ({
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-3.5 py-2.5 rounded-xl text-xs font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1.5 shrink-0 transition"
+                    className="px-3.5 py-2.5 rounded-xl text-xs font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1.5 shrink-0 transition cursor-pointer"
                   >
                     <Upload className="w-4 h-4" />
                     <span>رفع من جهازي</span>
                   </button>
+                </div>
+
+                <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  <span>المقاس الموصى به: <strong>1920 × 720 بكسل</strong> (أو 1600 × 600 بكسل). احرص على جعل النصوص والشعارات في الوسط بعيداً عن الأطراف.</span>
                 </div>
 
                 {/* معاينة الصورة المرفوعة */}

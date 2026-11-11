@@ -11,7 +11,7 @@
   <!-- الصفحة الرئيسية لمنصة طرقع قدرات -->
   <url>
     <loc>https://tarqa3.net/</loc>
-    <lastmod>2026-09-19</lastmod>
+    <lastmod>2026-11-11</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
     <xhtml:link rel="alternate" hreflang="ar" href="https://tarqa3.net/" />
@@ -25,6 +25,62 @@
       <image:title>لوجو منصة طرقع</image:title>
       <image:caption>منصة طرقع للقدرات والكمي</image:caption>
     </image:image>
+  </url>
+
+  <!-- الدورات التدريبية -->
+  <url>
+    <loc>https://tarqa3.net/courses</loc>
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <!-- محاكيات قياس التفاعلية -->
+  <url>
+    <loc>https://tarqa3.net/simulator</loc>
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <!-- لوحة الشرف والمتصدرين -->
+  <url>
+    <loc>https://tarqa3.net/leaderboard</loc>
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- صفحة من نحن -->
+  <url>
+    <loc>https://tarqa3.net/about.html</loc>
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- صفحة اتصل بنا -->
+  <url>
+    <loc>https://tarqa3.net/contact.html</loc>
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- شروط الاستخدام والأحكام -->
+  <url>
+    <loc>https://tarqa3.net/terms.html</loc>
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+  <!-- سياسة الخصوصية -->
+  <url>
+    <loc>https://tarqa3.net/privacy.html</loc>
+    <lastmod>2026-11-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
   </url>
 
 </urlset>

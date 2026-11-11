@@ -32,7 +32,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.kashier.io https://payments.kashier.io https://fonts.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' data: blob: https: https://djkwgwdlygxqcateivbc.supabase.co; connect-src 'self' https://djkwgwdlygxqcateivbc.supabase.co wss://djkwgwdlygxqcateivbc.supabase.co https://checkout.kashier.io https://payments.kashier.io https://api.telegram.org; frame-src 'self' https://checkout.kashier.io https://payments.kashier.io; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self' https://checkout.kashier.io https://payments.kashier.io;"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.kashier.io https://payments.kashier.io https://fonts.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; img-src 'self' data: blob: https: https://djkwgwdlygxqcateivbc.supabase.co https://tarqa3.net; connect-src 'self' https://tarqa3.net wss://tarqa3.net https://djkwgwdlygxqcateivbc.supabase.co wss://djkwgwdlygxqcateivbc.supabase.co https://checkout.kashier.io https://payments.kashier.io https://api.telegram.org; frame-src 'self' https://checkout.kashier.io https://payments.kashier.io; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self' https://checkout.kashier.io https://payments.kashier.io;"
         },
         {
           "key": "Content-Signal",
@@ -112,6 +112,14 @@
   ],
   "rewrites": [
     {
+      "source": "/api/:match*",
+      "destination": "https://tarqa3.net/api/:match*"
+    },
+    {
+      "source": "/Login/:match*",
+      "destination": "https://tarqa3.net/Login/:match*"
+    },
+    {
       "source": "/",
       "has": [
         {
@@ -134,7 +142,7 @@
       "destination": "/index.md"
     },
     {
-      "source": "/(courses|quiz|leaderboard|dashboard|classroom|admin|admin-lectures|admin-roles|result|about|contact|terms|privacy|cookies|refund|login|signin|signup|register|categories|roadmap|kashier|security|admin-kashier|admin-security)",
+      "source": "/(courses|simulator|simulators|quiz|leaderboard|dashboard|classroom|admin|admin-lectures|admin-roles|result|about|contact|terms|privacy|cookies|refund|login|signin|signup|register|categories|roadmap|kashier|security|admin-kashier|admin-security)",
       "destination": "/index.html"
     }
   ]

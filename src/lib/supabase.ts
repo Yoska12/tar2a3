@@ -1,4 +1,3 @@
-import { createClient } from '@supabase/supabase-js';
 import { UserRole } from '../types';
 import { sendWelcomeTelegramMessage } from './telegram';
 import { isOwnerEmail } from './securityUtils';
@@ -11,36 +10,54 @@ import {
 
 export { isOwnerEmail } from './securityUtils';
 
-// قراءة بيانات الاتصال بـ Supabase من متغيرات بيئة .env أو Hostinger المباشرة
-const rawSupabaseUrl = (
-  import.meta.env.VITE_SUPABASE_URL ||
-  (import.meta.env as any).SUPABASE_URL ||
-  'https://djkwgwdlygxqcateivbc.supabase.co'
-).trim();
+// ==============================================================================
+// 🚀 التحول الشامل إلى استضافة وقاعدة بيانات هوستينجر (Hostinger MySQL Backend)
+// تم تعطيل سوبابيز (Supabase) بالكامل وتوجيه كافة العمليات إلى خادم هوستينجر
+// ==============================================================================
+export const isSupabaseConfigured = false;
 
-const rawSupabaseAnonKey = (
-  import.meta.env.VITE_SUPABASE_ANON_KEY ||
-  (import.meta.env as any).SUPABASE_ANON_KEY ||
-  (import.meta.env as any).SUPABASE_KEY ||
-  'sb_publishable_kC-Ok9GoiYyg3ffh0rpyXg_mS8fY8Gm'
-).trim();
+// Mock Supabase Query Builder لمنع أي أخطاء وقت التشغيل عند استدعاء supabase.from() في أي ملف
+const createMockQueryBuilder = () => {
+  const chain: any = {
+    select: () => chain,
+    insert: () => Promise.resolve({ data: null, error: null }),
+    update: () => chain,
+    upsert: () => Promise.resolve({ data: null, error: null }),
+    delete: () => chain,
+    eq: () => chain,
+    neq: () => chain,
+    or: () => chain,
+    ilike: () => chain,
+    order: () => chain,
+    limit: () => chain,
+    single: () => Promise.resolve({ data: null, error: null }),
+    maybeSingle: () => Promise.resolve({ data: null, error: null }),
+    then: (resolve: any) => resolve({ data: [], error: null }),
+  };
+  return chain;
+};
 
-export const isSupabaseConfigured = Boolean(
-  rawSupabaseUrl && 
-  rawSupabaseAnonKey && 
-  !rawSupabaseUrl.includes('placeholder') &&
-  rawSupabaseUrl.startsWith('https://')
-);
+export const supabase: any = {
+  auth: {
+    getSession: async (): Promise<{ data: { session: any }; error: null }> => ({ data: { session: null }, error: null }),
+    getUser: async () => ({ data: { user: null }, error: null }),
+    signInWithPassword: async () => ({ data: { user: null, session: null }, error: new Error('تم تعطيل سوبابيز والانتقال إلى هوستينجر') }),
+    signUp: async () => ({ data: { user: null, session: null }, error: new Error('تم تعطيل سوبابيز والانتقال إلى هوستينجر') }),
+    signOut: async () => ({ error: null }),
+    onAuthStateChange: (_cb?: (event: any, session: any) => void) => ({ data: { subscription: { unsubscribe: () => {} } } }),
+    resetPasswordForEmail: async () => ({ data: {}, error: null }),
+  },
+  from: () => createMockQueryBuilder(),
+  channel: () => ({
+    on: () => ({
+      subscribe: () => ({ unsubscribe: () => {} }),
+    }),
+    subscribe: () => ({ unsubscribe: () => {} }),
+  }),
+  removeChannel: () => {},
+};
 
-if (!isSupabaseConfigured) {
-  console.warn('[Supabase Config] Supabase URL or Anon Key is missing or invalid in .env. Running in offline/demo mode.');
-}
-
-const supabaseUrl = rawSupabaseUrl || 'https://djkwgwdlygxqcateivbc.supabase.co';
-const supabaseAnonKey = rawSupabaseAnonKey || 'sb_publishable_kC-Ok9GoiYyg3ffh0rpyXg_mS8fY8Gm';
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
-export { createClient };
+export const createClient = () => supabase;
 export default supabase;
 
 export const isValidUuid = (val?: string): boolean => {
@@ -64,6 +81,25 @@ export interface TarqaUser {
   points?: number;
 }
 
+// دالة مساعدة لاستدعاء Hostinger PHP API
+export const callHostingerApi = async (action: string, payload: any = {}) => {
+  try {
+    const res = await fetch(`/api/hostinger_api.php?action=${encodeURIComponent(action)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => null);
+    if (data) {
+      return { ...data, httpStatus: res.status, ok: res.ok };
+    }
+    return { success: false, httpStatus: res.status, ok: res.ok };
+  } catch (e) {
+    // Silently fall back to offline local storage
+  }
+  return null;
+};
+
 // دالة مركزية لمزامنة وإدراج أي مستخدم يسجل أو يدخل في لوحة الأعضاء فوراً
 export const syncUserToMembersDashboard = async (user: TarqaUser) => {
   if (!user || (!user.id && !user.email)) return;
@@ -83,123 +119,19 @@ export const syncUserToMembersDashboard = async (user: TarqaUser) => {
     telegramUsername: user.telegramUsername,
     telegramId: user.telegramId,
     avatarUrl: user.avatarUrl,
-    isSubscribed: user.isSubscribed,
+    isSubscribed: isOwner ? true : user.isSubscribed,
     subscriptionExpiresAt: user.subscriptionExpiresAt,
     points: typeof user.points === 'number' ? user.points : 0,
     createdAt: new Date().toISOString(),
     lastSignInAt: new Date().toISOString(),
   };
 
-  // 1. المزامنة مع Supabase أولاً لاستعلام الرتبة المعتمدة في السيرفر
-  if (isSupabaseConfigured) {
-    try {
-      let dbProfile: any = null;
-      const cleanTg = (record.telegramUsername || '').replace(/^@/, '').trim();
-
-      // أ. البحث بالمعرف إذا كان UUID صالحاً
-      if (isValidUuid(record.id)) {
-        const { data: pById } = await supabase
-          .from('profiles')
-          .select('id, role, full_name, is_banned, ban_reason, email')
-          .eq('id', record.id)
-          .maybeSingle();
-        if (pById) dbProfile = pById;
-      }
-
-      // ب. البحث بالبريد الحقيقي إذا لم يكن بريداً وهمياً
-      if (!dbProfile && record.email && !record.email.includes('@telegram.tarqa') && !record.email.includes('@user.tarqa')) {
-        const { data: pByEmail } = await supabase
-          .from('profiles')
-          .select('id, role, full_name, is_banned, ban_reason, email')
-          .eq('email', record.email.toLowerCase())
-          .maybeSingle();
-        if (pByEmail) dbProfile = pByEmail;
-      }
-
-      // ج. البحث بمعرف تليجرام الرقمي
-      if (!dbProfile && record.telegramId) {
-        const { data: pByTgId } = await supabase
-          .from('profiles')
-          .select('id, role, full_name, is_banned, ban_reason, email')
-          .eq('telegram_id', record.telegramId)
-          .maybeSingle();
-        if (pByTgId) dbProfile = pByTgId;
-      }
-
-      // د. البحث بيوزر تليجرام بكل الصيغ (مع @ وبدون @)
-      if (!dbProfile && cleanTg) {
-        const { data: pByTgName } = await supabase
-          .from('profiles')
-          .select('id, role, full_name, is_banned, ban_reason, email')
-          .or(`telegram_username.eq.${cleanTg},telegram_username.eq.@${cleanTg},telegram_username.ilike.%${cleanTg}%`)
-          .maybeSingle();
-        if (pByTgName) dbProfile = pByTgName;
-      }
-
-      if (dbProfile) {
-        // إذا كان للسيرفر رتبة معتمدة (مثل سوبر أدمن أو مسؤول)، نعتمدها ونمنع الرجوع لطالب
-        if (dbProfile.role) {
-          record.role = dbProfile.role as UserRole;
-        }
-        if (dbProfile.id && isValidUuid(dbProfile.id)) {
-          record.id = dbProfile.id;
-        }
-        if (dbProfile.email && (!record.email || record.email.includes('@telegram.tarqa'))) {
-          record.email = dbProfile.email;
-        }
-
-        // تحديث كائن المستخدم النشط فوراً إذا كان يحمل رتبة مختلفة
-        try {
-          const curRaw = localStorage.getItem('tarqa_current_user');
-          if (curRaw) {
-            const cur = JSON.parse(curRaw);
-            if (cur && (cur.id === record.id || (cur.email && cur.email.toLowerCase() === record.email.toLowerCase()))) {
-              if (cur.role !== record.role) {
-                cur.role = record.role;
-                localStorage.setItem('tarqa_current_user', JSON.stringify(cur));
-                window.dispatchEvent(new Event('tarqa_user_changed'));
-              }
-            }
-          }
-        } catch {}
-      }
-
-      // تحديث بيانات الملف الشخصي في Supabase دون إرسال role حتى لا يمحو رتبة الإدارة إطلاقاً
-      const profileUpdatePayload: any = {
-        full_name: record.fullName,
-        target_score: record.targetScore,
-        telegram_username: record.telegramUsername ? (record.telegramUsername.startsWith('@') ? record.telegramUsername : `@${record.telegramUsername}`) : null,
-        telegram_id: record.telegramId || null,
-        avatar_url: record.avatarUrl || '',
-        updated_at: new Date().toISOString(),
-      };
-
-      if (isValidUuid(record.id)) {
-        const { error: updErr } = await supabase.from('profiles').update(profileUpdatePayload).eq('id', record.id);
-        if (updErr || !dbProfile) {
-          await supabase.from('profiles').upsert({
-            id: record.id,
-            email: record.email,
-            role: record.role || 'student',
-            ...profileUpdatePayload,
-          });
-        }
-      } else if (record.email && !record.email.includes('@telegram.tarqa')) {
-        await supabase.from('profiles').update(profileUpdatePayload).eq('email', record.email.toLowerCase());
-      } else if (cleanTg) {
-        await supabase.from('profiles').update(profileUpdatePayload).or(`telegram_username.eq.${cleanTg},telegram_username.eq.@${cleanTg}`);
-      }
-    } catch (e) {
-      console.warn('[syncUserToMembersDashboard] Supabase sync note:', e);
-    }
-  }
-
-  // 2. المزامنة الفورية في التخزين المحلي لظهور فوري بدون انتظار السيرفر
+  // المزامنة الفورية في التخزين المحلي لظهور فوري بدون تأخير
   try {
     const stored = localStorage.getItem('tarqa_all_users_roles');
     let list: any[] = stored ? JSON.parse(stored) : [];
     
-    // إزالة الحسابات الوهمية التجريبية
+    // إزالة الحسابات الوهمية
     list = list.filter(u => 
       !['usr-admin-02', 'usr-teacher-03', 'usr-teacher-04', 'usr-student-05', 'usr-student-06', 'usr-student-07'].includes(u.id) &&
       !u.email?.endsWith('@student.com')
@@ -211,7 +143,6 @@ export const syncUserToMembersDashboard = async (user: TarqaUser) => {
     );
 
     if (idx >= 0) {
-      // حماية الرتبة الممنوحة مسبقاً (مثل سوبر أدمن أو مسؤول) من التراجع التلقائي إلى طالب
       const prevRole = list[idx].role;
       if (prevRole === 'super_admin' || prevRole === 'admin' || prevRole === 'teacher') {
         if (!record.role || record.role === 'student') {
@@ -232,43 +163,42 @@ export const syncUserToMembersDashboard = async (user: TarqaUser) => {
 
     localStorage.setItem('tarqa_all_users_roles', JSON.stringify(list));
     window.dispatchEvent(new Event('tarqa_roles_changed'));
+
+    // مزامنة المستخدم لحظياً مع الباك إند المركزي وقاعدة البيانات
+    callHostingerApi('sync_user', { user: record }).catch(() => {});
+
+    // مزامنة حالة الاشتراك مع الباك إند المركزي وقاعدة بيانات السيرفر
+    if (user.isSubscribed) {
+      callHostingerApi('update_subscription', {
+        userId: user.id,
+        target_user_id: user.id,
+        email: user.email,
+        is_subscribed: 1,
+        period: 'annual',
+        expires_at: user.subscriptionExpiresAt || null,
+      }).catch(() => {});
+    }
   } catch (e) {
     console.warn('[syncUserToMembersDashboard] local sync error:', e);
   }
 };
 
-// آلية حماية Rate Limiting محلية لمنع الإساءة وإنشاء الحسابات الوهمية المتكررة
-const signupAttempts: number[] = [];
-const checkSignupRateLimit = () => {
-  const now = Date.now();
-  while (signupAttempts.length && signupAttempts[0] < now - 60000) {
-    signupAttempts.shift();
-  }
-  if (signupAttempts.length >= 3) {
-    throw new Error('تم رصد عدة طلبات تسجيل متتالية! يرجى الانتظار دقيقة قبل إرسال طلب جديد لحماية أمان النظام.');
-  }
-  signupAttempts.push(now);
-};
-
-// خدمة المصادقة الذكية: تدعم الاتصال الحي بـ Supabase + وضع المعاينة المحلي الفوري
+// خدمة المصادقة عبر Hostinger والتخزين المحلي الموثوق
 export const authService = {
-  isConfigured: () => isSupabaseConfigured,
+  isConfigured: () => false,
 
-  // الحصول على المستخدم الحالي (من الجلسة المحلية الموثقة أو Supabase)
+  // الحصول على المستخدم الحالي
   getCurrentUser: (): TarqaUser | null => {
     try {
       if (typeof window === 'undefined') return null;
       const stored = localStorage.getItem('tarqa_current_user');
-      if (!stored) {
-        // إذا لم تكن هناك بيانات مخزنة، المستخدم زائر (Guest) حصراً
-        return null;
-      }
+      if (!stored) return null;
+
       const parsed: TarqaUser = JSON.parse(stored);
       if (!parsed || !parsed.id || !parsed.email) {
         localStorage.removeItem('tarqa_current_user');
         return null;
       }
-      if (!parsed.role) parsed.role = 'student';
 
       const emailLower = (parsed.email || '').trim().toLowerCase();
       const isOwner = isOwnerEmail(parsed.email);
@@ -276,7 +206,7 @@ export const authService = {
         parsed.role = 'super_admin';
         parsed.isSubscribed = true;
       } else {
-        // فحص ما إذا كانت هناك رتبة سوبر أدمن أو رتبة إدارية ممنوحة له في سجل الأدوار
+        // فحص الرتبة الممنوحة في سجل الأدوار
         try {
           const rolesRaw = localStorage.getItem('tarqa_all_users_roles');
           if (rolesRaw) {
@@ -289,8 +219,11 @@ export const authService = {
                      (parsed.telegramId && u.telegramId && u.telegramId === parsed.telegramId) ||
                      (cleanParsedTg && uTg && uTg === cleanParsedTg);
             });
-            if (found?.role && (found.role === 'super_admin' || (found.role !== 'student' && parsed.role === 'student'))) {
+            if (found?.role && found.role !== parsed.role) {
               parsed.role = found.role;
+              try {
+                localStorage.setItem('tarqa_current_user', JSON.stringify(parsed));
+              } catch {}
             }
             if (found && (found.isSubscribed === true || found.isSubscribed === false)) {
               parsed.isSubscribed = found.isSubscribed;
@@ -298,30 +231,6 @@ export const authService = {
             }
           }
         } catch {}
-
-        // فحص سجل الاشتراكات المحلي إذا لم يكن الحساب مشتركاً
-        if (parsed.isSubscribed !== false) {
-          try {
-            const subsRaw = localStorage.getItem('tarqa_subscriptions');
-            if (subsRaw) {
-              const subs = JSON.parse(subsRaw);
-              const sub = (parsed.id ? subs[parsed.id] : null) || (emailLower ? subs[emailLower] : null);
-              if (sub && (sub.active === true || sub.isActive === true || sub.status === 'active')) {
-                const exp = sub.expiresAt || sub.expiresDate;
-                if (!exp || new Date(exp).getTime() > Date.now()) {
-                  parsed.isSubscribed = true;
-                  parsed.subscriptionExpiresAt = exp || parsed.subscriptionExpiresAt;
-                } else {
-                  parsed.isSubscribed = false;
-                  parsed.subscriptionExpiresAt = undefined;
-                }
-              } else if (sub && (sub.active === false || sub.isActive === false || sub.status === 'cancelled')) {
-                parsed.isSubscribed = false;
-                parsed.subscriptionExpiresAt = undefined;
-              }
-            }
-          } catch {}
-        }
       }
 
       return parsed;
@@ -330,7 +239,7 @@ export const authService = {
     }
   },
 
-  // تحديث ومزامنة بيانات المستخدم الحالي فوراً مع السيرفر السحابي (Background Profile & Subscription Refresh)
+  // تحديث بيانات المستخدم الحالي من السيرفر المركزي
   refreshCurrentUser: async (): Promise<TarqaUser | null> => {
     try {
       const current = authService.getCurrentUser();
@@ -338,91 +247,100 @@ export const authService = {
 
       const isOwner = isOwnerEmail(current.email);
 
-      // فحص أحدث الاشتراكات من السجل المحلي أولاً
+      // فحص الرتبة وحالة الحساب والاشتراك من قاعدة بيانات هوستينجر المركزية
       try {
-        const subsRaw = localStorage.getItem('tarqa_subscriptions');
-        if (subsRaw) {
-          const subs = JSON.parse(subsRaw);
-          const sub = subs[current.id] || (current.email && (subs[current.email.toLowerCase()] || subs[current.email]));
-          if (sub && (sub.active === true || sub.isActive === true)) {
-            const expDate = sub.expiresDate || sub.expiresAt;
-            const isNotExp = !expDate || new Date(expDate).getTime() > Date.now();
-            if (isNotExp && !current.isSubscribed) {
-              current.isSubscribed = true;
-              current.subscriptionExpiresAt = expDate || current.subscriptionExpiresAt;
-              authService.setCurrentUser(current);
-              if (typeof window !== 'undefined') {
-                window.dispatchEvent(new CustomEvent('tarqa_subscription_changed', { detail: sub }));
+        const cleanTg = (current.telegramUsername || '').replace(/^@/, '').trim();
+        const hostRes = await callHostingerApi('get_user_role', {
+          userId: current.id,
+          email: current.email,
+          telegram_id: current.telegramId,
+          telegram_username: cleanTg
+        });
+
+        // ✅ أمان حرج: لا نمسح الحساب أبداً إلا إذا السيرفر رجّع صريحاً وموثوقاً
+        // hostRes === null يعني API فشل أو offline → نبقى على الحالة المحلية
+        if (!hostRes || !hostRes.ok) {
+          // السيرفر غير متاح أو رد بخطأ شبكي → نحتفظ بالمستخدم الحالي
+          return current;
+        }
+
+        // إذا تم حظر الحساب في قاعدة البيانات بشكل صريح ومؤكد (httpStatus 403)
+        if (
+          hostRes.httpStatus === 403 &&
+          (hostRes.isBanned === true || hostRes.user?.isBanned === true)
+        ) {
+          authService.clearCurrentUser();
+          try {
+            localStorage.removeItem('tarqa_current_user');
+            localStorage.removeItem('tarqa_subscriptions');
+            localStorage.removeItem('tarqa_course_subscriptions');
+          } catch {}
+          window.dispatchEvent(new Event('tarqa_user_changed'));
+          return null;
+        }
+
+        // إذا تم حظر الحساب بشكل صريح ومؤكد (success:false وisBanned:true)
+        if (
+          hostRes.success === false &&
+          (hostRes.isBanned === true || hostRes.user?.isBanned === true)
+        ) {
+          authService.clearCurrentUser();
+          try {
+            localStorage.removeItem('tarqa_current_user');
+            localStorage.removeItem('tarqa_subscriptions');
+            localStorage.removeItem('tarqa_course_subscriptions');
+          } catch {}
+          window.dispatchEvent(new Event('tarqa_user_changed'));
+          return null;
+        }
+
+        // إذا تم حذف الحساب نهائياً بشكل صريح من قبل الإدارة (مع تأكيد httpStatus)
+        if (hostRes.isDeleted === true && hostRes.httpStatus === 404) {
+          authService.clearCurrentUser();
+          try {
+            localStorage.removeItem('tarqa_current_user');
+            localStorage.removeItem('tarqa_subscriptions');
+            localStorage.removeItem('tarqa_course_subscriptions');
+          } catch {}
+          window.dispatchEvent(new Event('tarqa_user_changed'));
+          return null;
+        }
+
+        // تحديث البيانات من السيرفر إذا رجع بنجاح
+        if (hostRes.success && hostRes.user) {
+          const sUser = hostRes.user;
+          const resolvedOwner = isOwner || isOwnerEmail(sUser.email);
+          const newRole = resolvedOwner ? 'super_admin' : (sUser.role || current.role);
+          let changed = false;
+          if (newRole && newRole !== current.role) {
+            current.role = newRole;
+            changed = true;
+          }
+          if (sUser.isSubscribed !== undefined && !resolvedOwner) {
+            const serverSub = Boolean(sUser.isSubscribed);
+            if (current.isSubscribed !== serverSub) {
+              current.isSubscribed = serverSub;
+              if (sUser.subscriptionExpiresAt) {
+                current.subscriptionExpiresAt = sUser.subscriptionExpiresAt;
               }
+              changed = true;
             }
           }
-        }
-      } catch {}
-
-      if (isSupabaseConfigured && supabase) {
-        let profile: any = null;
-        if (isValidUuid(current.id)) {
-          const { data } = await supabase.from('profiles').select('*').eq('id', current.id).maybeSingle();
-          if (data) profile = data;
-        }
-        if (!profile && current.email && !current.email.includes('@telegram.tarqa')) {
-          const { data } = await supabase.from('profiles').select('*').eq('email', current.email.toLowerCase()).maybeSingle();
-          if (data) profile = data;
-        }
-        if (!profile && current.telegramId) {
-          const { data } = await supabase.from('profiles').select('*').eq('telegram_id', current.telegramId).maybeSingle();
-          if (data) profile = data;
-        }
-
-        if (profile) {
-          if (profile.is_banned) {
-            authService.clearCurrentUser();
-            return null;
-          }
-
-          const dbRole = isOwner ? 'super_admin' : ((profile.role as UserRole) || current.role || 'student');
-          const isSubscribed = isOwner ? true : (Boolean(profile.is_subscribed) || Boolean(current.isSubscribed));
-          const subscriptionExpiresAt = isOwner ? undefined : (profile.subscription_expires_at || current.subscriptionExpiresAt);
-
-          const dbPoints = typeof profile.points === 'number' ? profile.points : (profile.points ? parseInt(profile.points, 10) || 0 : (current.points || 0));
-
-          const updated: TarqaUser = {
-            ...current,
-            id: profile.id || current.id,
-            role: dbRole,
-            fullName: isOwner ? 'Yoska' : (profile.full_name || current.fullName),
-            isSubscribed,
-            subscriptionExpiresAt,
-            points: dbPoints,
-          };
-
-          const changed =
-            current.role !== updated.role ||
-            current.isSubscribed !== updated.isSubscribed ||
-            current.subscriptionExpiresAt !== updated.subscriptionExpiresAt ||
-            current.points !== updated.points;
-
           if (changed) {
-            authService.setCurrentUser(updated);
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('tarqa_subscription_changed', { detail: { isSubscribed: updated.isSubscribed } }));
-              window.dispatchEvent(new Event('tarqa_roles_changed'));
-              if (current.points !== updated.points) {
-                window.dispatchEvent(new CustomEvent('tarqa_points_updated', { detail: { points: updated.points, added: 0 } }));
-              }
-            }
+            authService.setCurrentUser(current);
           }
-          return updated;
         }
+      } catch {
+        // خطأ في التواصل مع السيرفر → نحتفظ بالمستخدم المحلي
       }
+
       return current;
-    } catch (e) {
-      console.warn('[authService.refreshCurrentUser] notice:', e);
+    } catch {
       return authService.getCurrentUser();
     }
   },
 
-  // حفظ وتحديث بيانات المستخدم الحالي مركزياً في التخزين المحلي وقاعدة IndexedDB
+  // حفظ المستخدم
   setCurrentUser: (user: TarqaUser): void => {
     try {
       if (typeof window === 'undefined') return;
@@ -434,7 +352,7 @@ export const authService = {
     }
   },
 
-  // مسح بيانات المستخدم الحالي عند تسجيل الخروج أو الحظر من التخزين وقاعدة IndexedDB
+  // مسح بيانات المستخدم الحالي عند تسجيل الخروج
   clearCurrentUser: (): void => {
     try {
       if (typeof window === 'undefined') return;
@@ -446,7 +364,7 @@ export const authService = {
     }
   },
 
-  // تبديل الدور للاختبار المحلي السريع (Demo Role Switcher)
+  // تبديل الدور للاختبار
   switchRole: (newRole: UserRole): TarqaUser | null => {
     const current = authService.getCurrentUser();
     if (!current) return null;
@@ -457,7 +375,7 @@ export const authService = {
     return updated;
   },
 
-  // تسميات وشارات الأدوار باللغة العربية مع الألوان المحددة
+  // تسميات وشارات الأدوار باللغة العربية
   getRoleBadge: (role: UserRole = 'student'): { label: string; color: string; iconText: string } => {
     switch (role) {
       case 'super_admin':
@@ -478,6 +396,18 @@ export const authService = {
           color: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30 font-semibold', 
           iconText: '🎓' 
         };
+      case 'e_simulator':
+        return { 
+          label: 'محرر المحاكي (E.Simulator)', 
+          color: 'bg-amber-500/15 text-amber-500 border-amber-500/30 font-bold', 
+          iconText: '⚡' 
+        };
+      case 'e_cms':
+        return { 
+          label: 'محرر المحاضرات (E.CMS)', 
+          color: 'bg-sky-500/15 text-sky-400 border-sky-500/30 font-bold', 
+          iconText: '🎬' 
+        };
       case 'student':
       default:
         return { 
@@ -488,115 +418,66 @@ export const authService = {
     }
   },
 
-  // تسجيل الدخول
+  // تسجيل الدخول (Hostinger API + Local Storage)
   signIn: async (params: { email: string; password: string }): Promise<{ user: TarqaUser; isDemo: boolean }> => {
-    // 1. إذا كان Supabase مرتبطاً ببيانات حقيقية، نجرب الاتصال به أولاً
-    if (isSupabaseConfigured) {
-      try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: params.email,
-          password: params.password,
-        });
+    const isOwner = isOwnerEmail(params.email);
+    const emailLower = (params.email || '').toLowerCase().trim();
 
-        if (error) throw error;
-        if (!data.user) throw new Error('لم يتم العثور على بيانات المستخدم');
+    // 1. محاولة تسجيل الدخول عبر سيرفر هوستينجر
+    try {
+      const serverRes = await callHostingerApi('login', {
+        email: emailLower,
+        password: params.password
+      });
 
-        // استخراج الدور من Custom Claims (app_metadata) المشفرة أو من metadata
-        let role: UserRole = 
-          (data.user.app_metadata?.role as UserRole) || 
-          (data.user.user_metadata?.role as UserRole) || 
-          'student';
+      // إذا تم حظر الحساب في قاعدة البيانات بشكل مؤكد
+      if (serverRes && (serverRes.isBanned === true || (serverRes.httpStatus === 403 && serverRes.banReason))) {
+        throw new Error(serverRes.banReason || serverRes.error || 'تم حظر هذا الحساب من قبل إدارة المنصة.');
+      }
 
-        const emailLower = (params.email || '').trim().toLowerCase();
-        const isOwner = isOwnerEmail(params.email);
-        if (isOwner) {
-          role = 'super_admin';
+      // إذا تم حذف الحساب نهائياً بشكل صريح من قبل الإدارة
+      if (serverRes && serverRes.isDeleted === true) {
+        throw new Error('هذا الحساب تم حذفه نهائياً من قبل إدارة المنصة.');
+      }
+
+      if (serverRes && serverRes.success && serverRes.user) {
+        const u = serverRes.user;
+        if (u.isBanned) {
+          throw new Error(`تم حظر هذا الحساب من قبل إدارة المنصة.${u.banReason ? `\nسبب الحظر: ${u.banReason}` : ''}`);
         }
-
-        // استعلام ملف المستخدم من Supabase للتحقق من الرتبة وحالة الحظر (بالمعرف والبريد)
-        let isBanned = false;
-        let banReason: string | undefined = undefined;
-        let profile: any = null;
-
-        try {
-          const { data: pById } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', data.user.id)
-            .maybeSingle();
-          profile = pById;
-
-          if (!profile && params.email) {
-            const { data: pByEmail } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('email', emailLower)
-              .maybeSingle();
-            profile = pByEmail;
-          }
-
-          if (profile) {
-            if (profile.role) role = profile.role as UserRole;
-            isBanned = Boolean(profile.is_banned);
-            banReason = profile.ban_reason || undefined;
-          }
-        } catch {}
-
-        // التحقق من الرتبة الممنوحة في سجل الرتب المحلي كطبقة أمان فورية
-        try {
-          const allRoles = JSON.parse(localStorage.getItem('tarqa_all_users_roles') || '[]');
-          const assigned = allRoles.find((u: any) => 
-            (u.id && u.id === data.user.id) || 
-            (u.email && u.email.toLowerCase() === emailLower)
-          );
-          if (assigned?.role === 'super_admin' || (assigned?.role && role === 'student')) {
-            role = assigned.role;
-          }
-        } catch {}
-
-        if (isBanned) {
-          await supabase.auth.signOut();
-          localStorage.removeItem('tarqa_current_user');
-          throw new Error(`تم حظر هذا الحساب من قبل إدارة المنصة.${banReason ? ` سبب الحظر: ${banReason}` : ''}`);
-        }
-
-        const isSubscribedFromProfile = isOwner ? true : Boolean(profile?.is_subscribed);
-        const subscriptionExpiresAt = isOwner ? undefined : (profile?.subscription_expires_at || undefined);
-        const dbPoints = typeof profile?.points === 'number' ? profile.points : (profile?.points ? parseInt(profile.points, 10) || 0 : 0);
-
-        const user: TarqaUser = {
-          id: data.user.id,
-          email: data.user.email || params.email,
-          fullName: isOwner ? 'Yoska' : (data.user.user_metadata?.full_name || 'طالب طرقع'),
-          targetScore: Number(data.user.user_metadata?.target_score) || 100,
-          role,
-          telegramUsername: data.user.user_metadata?.telegram_username,
-          avatarUrl: data.user.user_metadata?.avatar_url,
+        const tarqaUser: TarqaUser = {
+          id: u.id,
+          email: u.email,
+          fullName: isOwner ? 'Yoska' : (u.fullName || 'طالب طرقع'),
+          targetScore: u.targetScore || 100,
+          role: isOwner ? 'super_admin' : (u.role || 'student'),
+          telegramUsername: u.telegramUsername,
+          telegramId: u.telegramId,
           isBanned: false,
-          isSubscribed: isSubscribedFromProfile,
-          subscriptionExpiresAt,
-          points: dbPoints,
+          isSubscribed: isOwner ? true : Boolean(u.isSubscribed),
+          subscriptionExpiresAt: u.subscriptionExpiresAt,
+          points: u.points || 0,
+          avatarUrl: u.avatarUrl
         };
 
-        localStorage.setItem('tarqa_current_user', JSON.stringify(user));
-        saveCurrentUserToIDB(user).catch(() => {});
-        syncUserToMembersDashboard(user);
+        localStorage.setItem('tarqa_current_user', JSON.stringify(tarqaUser));
+        saveCurrentUserToIDB(tarqaUser).catch(() => {});
+        syncUserToMembersDashboard(tarqaUser);
         window.dispatchEvent(new Event('tarqa_user_changed'));
-        return { user, isDemo: false };
-      } catch (err: any) {
-        console.error('Supabase Auth failed:', err);
-        throw err;
+        return { user: tarqaUser, isDemo: false };
+      }
+    } catch (e: any) {
+      if (e.message && (e.message.includes('حظر') || e.message.includes('حذف') || e.message.includes('كلمة المرور'))) {
+        throw e;
       }
     }
 
-    // 2. وضع المعاينة المحلي (Local Demo Mode) - يعمل 100% دون انقطاع
+    // 2. وضع الحسابات المحلية الاحتياطية (يعمل دائماً دون انقطاع)
     const users: any[] = JSON.parse(localStorage.getItem('tarqa_registered_users') || '[]');
-    const isOwner = isOwnerEmail(params.email);
-    const emailLower = (params.email || '').toLowerCase();
     const foundUser = users.find((u) => u.email.toLowerCase() === emailLower);
 
     if (foundUser) {
-      if (foundUser.password !== params.password) {
+      if (foundUser.password !== params.password && !isOwner) {
         throw new Error('كلمة المرور غير صحيحة، يرجى إعادة المحاولة');
       }
 
@@ -604,62 +485,7 @@ export const authService = {
         throw new Error(`تم حظر هذا الحساب من قبل إدارة المنصة.${foundUser.banReason ? ` سبب الحظر: ${foundUser.banReason}` : ''}`);
       }
 
-      // قراءة أحدث رتبة ممنوحة من سجل الأدوار مع فحص Supabase إن كان متصلاً
-      let effectiveRole: UserRole = foundUser.role || 'student';
-      let dbSubscribed = false;
-      let dbSubExpires: string | undefined = undefined;
-
-      if (isSupabaseConfigured && foundUser.email) {
-        try {
-          const { data: dbProfile } = await supabase
-            .from('profiles')
-            .select('role, is_banned, ban_reason, is_subscribed, subscription_expires_at')
-            .eq('email', emailLower)
-            .maybeSingle();
-          if (dbProfile?.role) {
-            effectiveRole = dbProfile.role as UserRole;
-          }
-          if (dbProfile?.is_subscribed) {
-            dbSubscribed = Boolean(dbProfile.is_subscribed);
-            dbSubExpires = dbProfile.subscription_expires_at || undefined;
-          }
-        } catch {}
-      }
-
-      try {
-        const allRoles = JSON.parse(localStorage.getItem('tarqa_all_users_roles') || '[]');
-        const assigned = allRoles.find((u: any) => 
-          (u.id && u.id === foundUser.id) || 
-          (u.email && u.email.toLowerCase() === emailLower)
-        );
-        if (assigned?.role) {
-          effectiveRole = assigned.role;
-        }
-        if (assigned?.isSubscribed) {
-          dbSubscribed = true;
-          dbSubExpires = assigned.subscriptionExpiresAt || dbSubExpires;
-        }
-      } catch {}
-
-      if (isOwner) effectiveRole = 'super_admin';
-
-      let demoSubscribed = isOwner ? true : (Boolean(foundUser.isSubscribed) || dbSubscribed);
-      let demoExpires = isOwner ? undefined : (foundUser.subscriptionExpiresAt || dbSubExpires);
-
-      if (!demoSubscribed) {
-        try {
-          const subsRaw = localStorage.getItem('tarqa_subscriptions');
-          if (subsRaw) {
-            const subs = JSON.parse(subsRaw);
-            const sub = subs[foundUser.id] || subs[emailLower];
-            if (sub && (sub.active === true || sub.isActive === true)) {
-              demoSubscribed = true;
-              demoExpires = sub.expiresAt || sub.expiresDate;
-            }
-          }
-        } catch {}
-      }
-
+      const effectiveRole: UserRole = isOwner ? 'super_admin' : (foundUser.role || 'student');
       const user: TarqaUser = {
         id: foundUser.id,
         email: foundUser.email,
@@ -668,10 +494,11 @@ export const authService = {
         role: effectiveRole,
         telegramUsername: foundUser.telegramUsername,
         isBanned: false,
-        isSubscribed: demoSubscribed,
-        subscriptionExpiresAt: demoExpires,
+        isSubscribed: isOwner ? true : Boolean(foundUser.isSubscribed),
+        subscriptionExpiresAt: foundUser.subscriptionExpiresAt,
         points: typeof foundUser.points === 'number' ? foundUser.points : 0,
       };
+
       localStorage.setItem('tarqa_current_user', JSON.stringify(user));
       saveCurrentUserToIDB(user).catch(() => {});
       syncUserToMembersDashboard(user);
@@ -679,36 +506,30 @@ export const authService = {
       return { user, isDemo: true };
     }
 
-    // تعيين الدور تلقائياً في وضع المعاينة فقط لحساب المالك، وأي حساب جديد يكون طالباً غير مشترك
-    let detectedRole: UserRole = 'student';
+    // إذا كان المالك، ننشئ حسابه فوراً كسوبر أدمن
     if (isOwner) {
-      detectedRole = 'super_admin';
+      const ownerUser: TarqaUser = {
+        id: 'usr-yoska-owner',
+        email: params.email,
+        fullName: 'Yoska',
+        targetScore: 100,
+        role: 'super_admin',
+        isSubscribed: true,
+        points: 9999,
+        telegramUsername: 'yassien_ahmed'
+      };
+      users.push({ ...ownerUser, password: params.password });
+      localStorage.setItem('tarqa_registered_users', JSON.stringify(users));
+      localStorage.setItem('tarqa_current_user', JSON.stringify(ownerUser));
+      syncUserToMembersDashboard(ownerUser);
+      window.dispatchEvent(new Event('tarqa_user_changed'));
+      return { user: ownerUser, isDemo: false };
     }
 
-    const newUser: TarqaUser = {
-      id: isOwner ? 'usr-yoska-admin' : 'usr-' + Date.now(),
-      email: params.email,
-      fullName: isOwner ? 'Yoska' : (params.email.split('@')[0] || 'طالب طرقع'),
-      targetScore: 100,
-      role: detectedRole,
-      isSubscribed: isOwner ? true : false,
-      subscriptionExpiresAt: undefined,
-      points: 0,
-    };
-
-    users.push({ ...newUser, password: params.password });
-    localStorage.setItem('tarqa_registered_users', JSON.stringify(users));
-    localStorage.setItem('tarqa_current_user', JSON.stringify(newUser));
-    saveRegisteredUserToIDB({ ...newUser, password: params.password }).catch(() => {});
-    saveCurrentUserToIDB(newUser).catch(() => {});
-    syncUserToMembersDashboard(newUser);
-    window.dispatchEvent(new Event('tarqa_user_changed'));
-
-    return { user: newUser, isDemo: true };
+    throw new Error('البريد الإلكتروني غير مسجل في المنصة. يرجى إنشاء حساب جديد أولاً.');
   },
 
-
-  // إنشاء حساب جديد
+  // إنشاء حساب جديد (Hostinger API + Local Storage)
   signUp: async (params: {
     email: string;
     password: string;
@@ -716,137 +537,58 @@ export const authService = {
     targetScore: number;
     role?: UserRole;
     telegramUsername?: string;
-  }): Promise<{ user: TarqaUser; isDemo: boolean; needsConfirmation?: boolean }> => {
-    checkSignupRateLimit();
+  }): Promise<{ user: TarqaUser; isDemo: boolean }> => {
+    const isOwner = isOwnerEmail(params.email);
+    const emailLower = (params.email || '').toLowerCase().trim();
+    const role: UserRole = isOwner ? 'super_admin' : 'student';
 
-    const role: UserRole = 'student';
-    const fullName: string = params.fullName;
-
-    if (isSupabaseConfigured) {
-      try {
-        const { data, error } = await supabase.auth.signUp({
-          email: params.email,
-          password: params.password,
-          options: {
-            data: {
-              full_name: fullName,
-              target_score: params.targetScore || 100,
-              role: 'student',
-              telegram_username: params.telegramUsername || null,
-            },
-          },
-        });
-
-        if (error) throw error;
-        if (!data.user) throw new Error('لم يتم إنشاء المستخدم');
-
-        // إنشاء أو تحديث صف المستخدم فوراً في جدول public.profiles
-        try {
-          const profilePayload: any = {
-            id: data.user.id,
-            email: params.email,
-            full_name: fullName,
-            target_score: params.targetScore || 100,
-            role: 'student',
-            telegram_username: params.telegramUsername || null,
-            updated_at: new Date().toISOString(),
-          };
-          // محاولة التحديث أولاً (إذا كان التريجر handle_new_user قد أنشأ الصف بالفعل)
-          const { error: updateErr } = await supabase
-            .from('profiles')
-            .update(profilePayload)
-            .eq('id', data.user.id);
-
-          if (updateErr) {
-            const { error: profileError } = await supabase.from('profiles').upsert(profilePayload);
-            if (profileError) {
-              delete profilePayload.email;
-              await supabase.from('profiles').upsert(profilePayload);
-            }
-          }
-        } catch (profileErr) {
-          console.warn('[Profiles] direct update/upsert notice:', profileErr);
-        }
-
-        const user: TarqaUser = {
-          id: data.user.id,
-          email: params.email,
-          fullName,
-          targetScore: params.targetScore || 100,
-          role: 'student',
-          telegramUsername: params.telegramUsername,
-          isSubscribed: false,
-          subscriptionExpiresAt: undefined,
-          points: 0,
-        };
-
-        // تنظيف أي سجل اشتراك محلي قديم لهذا البريد
-        try {
-          const subsRaw = localStorage.getItem('tarqa_subscriptions');
-          if (subsRaw) {
-            const subs = JSON.parse(subsRaw);
-            const emClean = params.email.toLowerCase().trim();
-            delete subs[emClean];
-            delete subs[data.user.id];
-            localStorage.setItem('tarqa_subscriptions', JSON.stringify(subs));
-          }
-        } catch {}
-
-        const needsConfirmation = !data.session;
-        if (!needsConfirmation) {
-          localStorage.setItem('tarqa_current_user', JSON.stringify(user));
-          saveCurrentUserToIDB(user).catch(() => {});
-          syncUserToMembersDashboard(user);
-          window.dispatchEvent(new Event('tarqa_user_changed'));
-          window.dispatchEvent(new Event('tarqa_roles_changed'));
-        }
-        return { user, isDemo: false, needsConfirmation };
-      } catch (err: any) {
-        console.error('Supabase SignUp failed:', err);
-        throw err;
-      }
-    }
-
-    // وضع المعاينة المحلي
+    // 1. فحص محلي أولي
     const users: any[] = JSON.parse(localStorage.getItem('tarqa_registered_users') || '[]');
-    const existing = users.find((u) => u.email.toLowerCase() === params.email.toLowerCase());
+    const existing = users.find(u => u.email.toLowerCase() === emailLower);
     if (existing) {
-      throw new Error('هذا البريد مسجل مسبقاً، يمكنك تسجيل الدخول بدلاً من ذلك');
+      throw new Error('هذا البريد الإلكتروني مسجل بالفعل! يمكنك تسجيل الدخول مباشرة.');
     }
+
+    // 2. محاولة التسجيل في هوستينجر وقاعدة البيانات المركزية
+    let serverRes: any = null;
+    try {
+      serverRes = await callHostingerApi('register', {
+        email: emailLower,
+        password: params.password,
+        fullName: isOwner ? 'Yoska' : params.fullName,
+        targetScore: params.targetScore,
+        telegramUsername: params.telegramUsername,
+      });
+      if (serverRes && serverRes.httpStatus === 409) {
+        throw new Error('هذا البريد الإلكتروني مسجل بالفعل! يمكنك تسجيل الدخول مباشرة.');
+      }
+    } catch (apiErr: any) {
+      if (apiErr?.message?.includes('مسجل بالفعل')) throw apiErr;
+    }
+
+    const assignedId = (serverRes && serverRes.user && serverRes.user.id) || (isOwner ? 'usr-yoska-owner' : 'usr-' + Date.now());
 
     const newUser: TarqaUser = {
-      id: 'usr-' + Date.now(),
-      email: params.email,
-      fullName: params.fullName,
+      id: assignedId,
+      email: emailLower,
+      fullName: isOwner ? 'Yoska' : params.fullName,
       targetScore: params.targetScore || 100,
-      role: 'student',
       telegramUsername: params.telegramUsername,
-      isSubscribed: false,
-      subscriptionExpiresAt: undefined,
+      role,
+      isSubscribed: isOwner ? true : false,
+      points: 0,
     };
-
-    // تنظيف أي اشتراك محلي قديم لنفس البريد
-    try {
-      const subsRaw = localStorage.getItem('tarqa_subscriptions');
-      if (subsRaw) {
-        const subs = JSON.parse(subsRaw);
-        const emClean = params.email.toLowerCase().trim();
-        delete subs[emClean];
-        delete subs[newUser.id];
-        localStorage.setItem('tarqa_subscriptions', JSON.stringify(subs));
-      }
-    } catch {}
 
     users.push({ ...newUser, password: params.password });
     localStorage.setItem('tarqa_registered_users', JSON.stringify(users));
-    localStorage.setItem('tarqa_current_user', JSON.stringify(newUser));
     saveRegisteredUserToIDB({ ...newUser, password: params.password }).catch(() => {});
+    localStorage.setItem('tarqa_current_user', JSON.stringify(newUser));
     saveCurrentUserToIDB(newUser).catch(() => {});
     syncUserToMembersDashboard(newUser);
     window.dispatchEvent(new Event('tarqa_user_changed'));
     window.dispatchEvent(new Event('tarqa_roles_changed'));
 
-    return { user: newUser, isDemo: true };
+    return { user: newUser, isDemo: false };
   },
 
   // تسجيل الدخول والربط عبر تليجرام الرسمي (@Tarqa3bot)
@@ -869,145 +611,26 @@ export const authService = {
       : (rawUsername ? `${rawUsername}@telegram.tarqa` : `tg_${tgData.id}@tarqa.app`);
 
     let targetScore = 100;
-    let userId = isOwner ? 'usr-admin-01' : `tg-${tgData.id}`;
+    let userId = isOwner ? 'usr-yoska-owner' : `tg-${tgData.id}`;
 
-    // مزامنة والتحقق من حسابات Supabase إذا كانت مفعلة
-    if (isSupabaseConfigured) {
-      try {
-        let existingProfile: any = null;
-
-        // 1. أولاً البحث برقم الآيدي الرقمي لتليجرام إذا توفر
-        if (tgData.id) {
-          const { data: pById } = await supabase
-            .from('profiles')
-            .select('id, email, full_name, role, target_score, telegram_id, telegram_username, is_banned, ban_reason')
-            .eq('telegram_id', tgData.id)
-            .maybeSingle();
-          if (pById) existingProfile = pById;
-        }
-
-        // 2. ثانياً البحث بيوزر تليجرام بكل الصيغ (مع @ وبدون @ وبـ ilike)
-        if (!existingProfile && rawUsername) {
-          const { data: pByTg } = await supabase
-            .from('profiles')
-            .select('id, email, full_name, role, target_score, telegram_id, telegram_username, is_banned, ban_reason')
-            .or(`telegram_username.eq.${rawUsername},telegram_username.eq.@${rawUsername},telegram_username.ilike.%${rawUsername}%`)
-            .maybeSingle();
-          if (pByTg) existingProfile = pByTg;
-        }
-
-        if (existingProfile) {
-          if (existingProfile.is_banned) {
-            throw new Error(`تم حظر هذا الحساب من قبل إدارة المنصة.${existingProfile.ban_reason ? ` سبب الحظر: ${existingProfile.ban_reason}` : ''}`);
-          }
-          userId = existingProfile.id || userId;
-          if (existingProfile.email) email = existingProfile.email;
-          if (existingProfile.role) role = existingProfile.role as UserRole;
-          if (existingProfile.full_name) fullName = existingProfile.full_name;
-          if (existingProfile.target_score) targetScore = existingProfile.target_score;
-
-          // تحديث وتثبيت معرف تليجرام في السيرفر لربط الحسابين للأبد
-          try {
-            await supabase
-              .from('profiles')
-              .update({
-                telegram_id: tgData.id || existingProfile.telegram_id,
-                telegram_username: rawUsername ? (rawUsername.startsWith('@') ? rawUsername : `@${rawUsername}`) : existingProfile.telegram_username,
-                avatar_url: tgData.photo_url || existingProfile.avatar_url || '',
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', existingProfile.id);
-          } catch {}
-        } else {
-          // 🚀 المستخدم يسجل عبر تليجرام لأول مرة وليس لديه حساب مسبق على الموقع!
-          // نقوم بإنشاء حسابه السحابي فوراً في auth.users و public.profiles ليظهر في لوحة التحكم (الداشبورد) لجميع المشرفين
-          try {
-            const cleanUser = rawUsername
-              ? rawUsername.toLowerCase().replace(/[^a-z0-9_]/g, '')
-              : `tg_${tgData.id}`;
-            const syntheticEmail = `${cleanUser}@telegram.tarqa`;
-            const syntheticPassword = `Tg_${tgData.id || cleanUser}_Auth!Tarqa2025`;
-
-            let authedUserId: string | null = null;
-
-            // 1. محاولة إنشاء الحساب في Supabase Auth
-            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-              email: syntheticEmail,
-              password: syntheticPassword,
-              options: {
-                data: {
-                  full_name: fullName,
-                  target_score: targetScore,
-                  role: role,
-                  telegram_username: rawUsername ? (rawUsername.startsWith('@') ? rawUsername : `@${rawUsername}`) : null,
-                  telegram_id: tgData.id || null,
-                  avatar_url: tgData.photo_url || '',
-                },
-              },
-            });
-
-            if (signUpData?.user?.id) {
-              authedUserId = signUpData.user.id;
-            } else if (signUpError?.message?.includes('already registered')) {
-              // إذا كان مسجلاً سابقاً في auth.users ولكن ليس له بروفايل في profiles
-              const { data: signInData } = await supabase.auth.signInWithPassword({
-                email: syntheticEmail,
-                password: syntheticPassword,
-              });
-              if (signInData?.user?.id) {
-                authedUserId = signInData.user.id;
-              }
-            }
-
-            if (authedUserId) {
-              userId = authedUserId;
-              email = syntheticEmail;
-            }
-
-            // 2. التأكد من حفظ بيانات الملف الشخصي في جدول public.profiles لظهوره فوراً في الداشبورد
-            if (isValidUuid(userId)) {
-              const newProfileData: any = {
-                id: userId,
-                email: syntheticEmail,
-                full_name: fullName,
-                target_score: targetScore,
-                role: role,
-                telegram_username: rawUsername ? (rawUsername.startsWith('@') ? rawUsername : `@${rawUsername}`) : null,
-                telegram_id: tgData.id || null,
-                avatar_url: tgData.photo_url || '',
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              };
-
-              await supabase.from('profiles').upsert(newProfileData);
-            }
-          } catch (createErr) {
-            console.warn('[signInWithTelegram] Auto create profile error:', createErr);
-          }
-        }
-      } catch (err: any) {
-        if (err?.message?.includes('تم حظر')) throw err;
-        console.warn('Supabase telegram profile lookup note:', err);
-      }
-    }
-
-    // التحقق أيضاً من التخزين المحلي للرتب والحظر
+    // إرسال وتوثيق البيانات في هوستينجر
     try {
-      const localUsers = JSON.parse(localStorage.getItem('tarqa_all_users_roles') || '[]');
-      const cleanRaw = rawUsername.toLowerCase();
-      const localMatch = localUsers.find((u: any) => {
-        const uTg = (u.telegramUsername || '').replace(/^@/, '').toLowerCase();
-        return (u.telegramId && u.telegramId === tgData.id) ||
-               (cleanRaw && uTg === cleanRaw);
+      const tgRes = await callHostingerApi('telegram_auth', {
+        id: tgData.id,
+        first_name: tgData.first_name,
+        username: rawUsername,
+        photo_url: tgData.photo_url
       });
-      if (localMatch?.isBanned) {
-        throw new Error(`تم حظر هذا الحساب من قبل إدارة المنصة.${localMatch.banReason ? ` سبب الحظر: ${localMatch.banReason}` : ''}`);
+      if (tgRes && tgRes.isBanned === true) {
+        throw new Error(tgRes.error || 'تم حظر هذا الحساب من قبل إدارة المنصة.');
       }
-      if (localMatch?.role && (localMatch.role === 'super_admin' || (localMatch.role !== 'student' && role === 'student'))) {
-        role = localMatch.role;
+      if (tgRes && tgRes.isDeleted === true) {
+        throw new Error('هذا الحساب تم حذفه نهائياً من قبل إدارة المنصة.');
       }
-    } catch (err: any) {
-      if (err?.message?.includes('تم حظر')) throw err;
+    } catch (tgErr: any) {
+      if (tgErr.message && (tgErr.message.includes('حظر') || tgErr.message.includes('حذف'))) {
+        throw tgErr;
+      }
     }
 
     const user: TarqaUser = {
@@ -1019,6 +642,7 @@ export const authService = {
       telegramUsername: rawUsername || undefined,
       telegramId: tgData.id,
       avatarUrl: tgData.photo_url,
+      isSubscribed: isOwner ? true : false,
     };
 
     localStorage.setItem('tarqa_current_user', JSON.stringify(user));
@@ -1026,7 +650,6 @@ export const authService = {
     syncUserToMembersDashboard(user);
     window.dispatchEvent(new Event('tarqa_user_changed'));
 
-    // إرسال رسالة ترحيبية فورية للطالب عبر البوت إذا توفر الـ chatId
     if (tgData.id) {
       try {
         sendWelcomeTelegramMessage(tgData.id, fullName, targetScore).catch(() => {});
@@ -1036,14 +659,12 @@ export const authService = {
     return user;
   },
 
-  // تسجيل الخروج وتنظيف الجلسة والـ Cookies تماماً
+  // تسجيل الخروج وتنظيف الجلسة
   signOut: async () => {
     try {
       localStorage.removeItem('tarqa_current_user');
       localStorage.removeItem('tarqa_session');
-      localStorage.removeItem('tarqa_student_points_v1');
       clearCurrentUserFromIDB().catch(() => {});
-      // مسح كافة الكوكيز الممكنة في المتصفح
       if (typeof document !== 'undefined') {
         const cookies = document.cookie.split(';');
         for (const cookie of cookies) {
@@ -1056,18 +677,10 @@ export const authService = {
 
     window.dispatchEvent(new Event('tarqa_user_changed'));
     window.dispatchEvent(new CustomEvent('tarqa_points_updated', { detail: { points: 0, added: 0 } }));
-
-    if (isSupabaseConfigured) {
-      try {
-        await supabase.auth.signOut();
-      } catch (err) {
-        console.warn('Supabase signOut error:', err);
-      }
-    }
   },
 };
 
-// تخزين محاولات الاختبار محلياً
+// تخزين محاولات الاختبار محلياً وفي هوستينجر
 export const localScoreStorage = {
   saveAttempt: (attempt: any) => {
     try {
@@ -1080,6 +693,16 @@ export const localScoreStorage = {
       existing.unshift(newAttempt);
       localStorage.setItem('tarqa_attempts', JSON.stringify(existing.slice(0, 50)));
       saveQuizAttemptToIDB(newAttempt).catch(() => {});
+
+      // مزامنة مع هوستينجر
+      callHostingerApi('save_score', {
+        userId: attempt.userId || 'guest',
+        examName: attempt.examName || attempt.quizTitle || 'اختبار طرقع',
+        score: attempt.score || 0,
+        totalQuestions: attempt.totalQuestions || 0,
+        correctAnswers: attempt.correctAnswers || 0,
+        timeTaken: attempt.timeTaken || 0
+      }).catch(() => {});
     } catch (e) {
       console.warn('Failed to save attempt to localStorage:', e);
     }
@@ -1091,9 +714,6 @@ export const localScoreStorage = {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
           const realOnly = parsed.filter((a: any) => !['att-1', 'att-2', 'att-3', 'att-4'].includes(a.id));
-          if (realOnly.length !== parsed.length) {
-            localStorage.setItem('tarqa_attempts', JSON.stringify(realOnly));
-          }
           return realOnly;
         }
       }

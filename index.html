@@ -68,11 +68,11 @@
 
     <!-- Schema.org JSON-LD Structured Data for Google Ranking -->
     
-    <!-- Dedicated Schema.org Organization for Strict Agent Evaluators -->
+    <!-- Dedicated Schema.org Organization & LocalBusiness for Strict Agent Evaluators -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "Organization",
+      "@type": ["LocalBusiness", "EducationalOrganization", "Organization"],
       "@id": "https://tarqa3.net/#organization",
       "name": "منصة طرقع للقدرات والكمي",
       "alternateName": [
@@ -87,6 +87,39 @@
       "description": "منصة تعليمية متخصصة في تدريب وتأسيس طلاب الثانوية العامة لاجتياز اختبار القدرات العامة (قياس) في القسم الكمي بأحدث التجميعات والشروحات الذكية.",
       "email": "tarqa3k@gmail.com",
       "telephone": "+201104687320",
+      "priceRange": "$$",
+      "currenciesAccepted": "SAR, EGP",
+      "paymentAccepted": "Credit Card, Debit Card, Apple Pay, Mada, Kashier",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "طريق الملك فهد، حي الصحافة",
+        "addressLocality": "الرياض",
+        "addressRegion": "منطقة الرياض",
+        "postalCode": "13321",
+        "addressCountry": "SA"
+      },
+      "geo": {
+        "@type": "GeoCoordinates",
+        "latitude": 24.774265,
+        "longitude": 46.638532
+      },
+      "openingHoursSpecification": [
+        {
+          "@type": "OpeningHoursSpecification",
+          "dayOfWeek": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "opens": "00:00",
+          "closes": "23:59"
+        }
+      ],
+      "hasMap": "https://maps.google.com/?q=24.774265,46.638532",
       "sameAs": [
         "https://t.me/tr23km",
         "https://wa.me/201104687320",
@@ -149,7 +182,7 @@
           ]
         },
         {
-          "@type": "Organization",
+          "@type": ["LocalBusiness", "EducationalOrganization", "Organization"],
           "@id": "https://tarqa3.net/#organization",
           "name": "منصة طرقع للقدرات والكمي",
           "alternateName": [
@@ -168,6 +201,39 @@
           },
           "email": "tarqa3k@gmail.com",
           "telephone": "+201104687320",
+          "priceRange": "$$",
+          "currenciesAccepted": "SAR, EGP",
+          "paymentAccepted": "Credit Card, Debit Card, Apple Pay, Mada, Kashier",
+          "address": {
+            "@type": "PostalAddress",
+            "streetAddress": "طريق الملك فهد، حي الصحافة",
+            "addressLocality": "الرياض",
+            "addressRegion": "منطقة الرياض",
+            "postalCode": "13321",
+            "addressCountry": "SA"
+          },
+          "geo": {
+            "@type": "GeoCoordinates",
+            "latitude": 24.774265,
+            "longitude": 46.638532
+          },
+          "openingHoursSpecification": [
+            {
+              "@type": "OpeningHoursSpecification",
+              "dayOfWeek": [
+                "Monday",
+                "Tuesday",
+                "Wednesday",
+                "Thursday",
+                "Friday",
+                "Saturday",
+                "Sunday"
+              ],
+              "opens": "00:00",
+              "closes": "23:59"
+            }
+          ],
+          "hasMap": "https://maps.google.com/?q=24.774265,46.638532",
           "contactPoint": [
             {
               "@type": "ContactPoint",
@@ -335,9 +401,11 @@
     <div id="root"></div>
 
     <!-- Semantic Footer for Search Engines & AI Agents (About, Contact, Legal & Structured Contact) -->
-    <footer id="agent-semantic-footer" class="py-4 text-center text-xs text-slate-500 border-t border-slate-200/50 dark:border-slate-800/50 mt-6" itemscope itemtype="https://schema.org/Organization">
+    <footer id="agent-semantic-footer" class="py-4 text-center text-xs text-slate-500 border-t border-slate-200/50 dark:border-slate-800/50 mt-6" itemscope itemtype="https://schema.org/LocalBusiness">
       <meta itemprop="name" content="منصة طرقع للقدرات والكمي" />
       <meta itemprop="url" content="https://tarqa3.net/" />
+      <meta itemprop="image" content="https://tarqa3.net/frame_00001.png" />
+      <meta itemprop="priceRange" content="$$" />
       <nav aria-label="روابط المنصة الأساسية" class="flex flex-wrap justify-center gap-4 mb-2">
         <a href="https://tarqa3.net/about.html" class="hover:underline">من نحن (About Us)</a>
         <a href="https://tarqa3.net/contact.html" class="hover:underline">اتصل بنا (Contact Us)</a>
@@ -351,6 +419,14 @@
         <a itemprop="telephone" href="tel:+201104687320" class="text-amber-600 dark:text-amber-400 hover:underline font-bold" dir="ltr">+20 110 468 7320</a>
         <span>•</span>
         <a href="https://t.me/tr23km" target="_blank" rel="noopener noreferrer" class="text-sky-600 dark:text-sky-400 hover:underline font-bold">الدعم المباشر على تليجرام (@tr23km)</a>
+      </div>
+      <div itemprop="address" itemscope itemtype="https://schema.org/PostalAddress" class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+        <span>المقر: </span>
+        <span itemprop="streetAddress">طريق الملك فهد، حي الصحافة</span>،
+        <span itemprop="addressLocality">الرياض</span>،
+        <span itemprop="addressRegion">منطقة الرياض</span>،
+        <span itemprop="postalCode">13321</span>،
+        <span itemprop="addressCountry">SA</span>
       </div>
     </footer>
 

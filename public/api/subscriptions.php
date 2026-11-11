@@ -64,6 +64,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $data = readSubscriptionsData($subsFile);
     $allSubs = $data['subscriptions'] ?? [];
 
+    // مزامنة أي مشتري مسجل في فواتير الدفع المعتمدة
+    $rcptFile = $baseDir . DIRECTORY_SEPARATOR . 'payment_receipts_backup.json';
+    if (file_exists($rcptFile)) {
+        $rcpts = @json_decode(@file_get_contents($rcptFile), true) ?: [];
+        foreach ($rcpts as $rc) {
+            if (($rc['payment_status'] ?? '') === 'PAID') {
+                $uid = $rc['user_id'] ?? '';
+                $uemail = strtolower($rc['user_email'] ?? '');
+                $subRec = [
+                    'userId' => $uid,
+                    'userEmail' => $uemail,
+                    'userName' => $rc['user_name'] ?? 'طالب طرقع',
+                    'planId' => 'annual_' . ($rc['course_id'] ?? 'course'),
+                    'planName' => $rc['course_title'] ?? 'باقة طرقع',
+                    'startDate' => $rc['created_at'] ?? date('c'),
+                    'expiresDate' => date('c', strtotime('+1 year', strtotime($rc['created_at'] ?? 'now'))),
+                    'expiresAt' => date('c', strtotime('+1 year', strtotime($rc['created_at'] ?? 'now'))),
+                    'isActive' => true,
+                    'active' => true,
+                    'status' => 'active',
+                ];
+                if (!empty($uid) && !isset($allSubs[$uid])) $allSubs[$uid] = $subRec;
+                if (!empty($uemail) && !isset($allSubs[$uemail])) $allSubs[$uemail] = $subRec;
+            }
+        }
+    }
+
     // إذا طُلب التحقق من مستخدم معين
     $requestedUser = isset($_GET['user']) ? trim($_GET['user']) : '';
     if (!empty($requestedUser)) {

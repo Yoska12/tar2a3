@@ -58,7 +58,7 @@ const AVAILABLE_ICONS = [
 // قائمة الثيمات اللونية المتاحة
 const AVAILABLE_THEMES: { id: FeatureColorTheme; label: string; colorClass: string; borderClass: string }[] = [
   { id: 'amber', label: 'ذهبي طرقع', colorClass: 'bg-amber-500 text-slate-950', borderClass: 'border-amber-500/50' },
-  { id: 'indigo', label: 'نيلي محاكي', colorClass: 'bg-indigo-600 text-white', borderClass: 'border-indigo-500/50' },
+  { id: 'indigo', label: 'نيلي أنيق', colorClass: 'bg-indigo-600 text-white', borderClass: 'border-indigo-500/50' },
   { id: 'sky', label: 'سماوي تليجرام', colorClass: 'bg-sky-500 text-white', borderClass: 'border-sky-500/50' },
   { id: 'emerald', label: 'زمردي متفوق', colorClass: 'bg-emerald-500 text-white', borderClass: 'border-emerald-500/50' },
   { id: 'purple', label: 'بنفسجي ملكي', colorClass: 'bg-purple-600 text-white', borderClass: 'border-purple-500/50' },
@@ -279,7 +279,7 @@ export const FeaturesManagementTab: React.FC = () => {
             إدارة المميزات وروابط الموقع والتليجرام ⚙️
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            تحكم مطلق في كل بطاقة، العناوين، الأوصاف، الأيقونات، الألوان، وأنواع الروابط (دورات، محاكي، روابط خارجية، تليجرام، أو تبويبات داخلية) وتظهر التعديلات فورياً!
+            تحكم مطلق في كل بطاقة، العناوين، الأوصاف، الأيقونات، الألوان، وأنواع الروابط (دورات، مذكرات، روابط خارجية، تليجرام، أو تبويبات داخلية) وتظهر التعديلات فورياً!
           </p>
         </div>
 
@@ -535,8 +535,6 @@ export const FeaturesManagementTab: React.FC = () => {
                   <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
                     {feature.actionType === 'courses'
                       ? '🎓 المحاضرات'
-                      : feature.actionType === 'mock-exam'
-                      ? '⚡ محاكي قياس'
                       : feature.actionType === 'coming-soon'
                       ? '⏳ قريباً'
                       : feature.actionType === 'telegram-modal'
@@ -866,7 +864,6 @@ export const FeaturesManagementTab: React.FC = () => {
                       <option value="courses">🎓 الانتقال لصفحة المحاضرات والدورات</option>
                       <option value="url">🔗 رابط خارجي مخصص (تليجرام، يوتيوب، قناة...)</option>
                       <option value="telegram-modal">💬 فتح نافذة مجتمع تليجرام التفاعلي</option>
-                      <option value="mock-exam">⚡ محاكي الاختبارات (قريباً ⏳)</option>
                       <option value="coming-soon">⏳ مغلق مؤقتاً للتطوير / قريباً</option>
                       <option value="tab">📑 انتقال لتبويب داخلي في الموقع (Dashboard, Leaderboard...)</option>
                     </select>
@@ -989,7 +986,7 @@ export const FeaturesManagementTab: React.FC = () => {
                       value={editingFeature.comingSoonNotice || ''}
                       onChange={(e) => setEditingFeature({ ...editingFeature, comingSoonNotice: e.target.value })}
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-medium"
-                      placeholder="مثال: محاكي قياس يخضع للتطوير وسيتم إطلاقه قريباً جداً ⏳"
+                      placeholder="مثال: هذه الميزة تخضع للتطوير وسيتم إطلاقها قريباً جداً ⏳"
                     />
                   </div>
                 )}

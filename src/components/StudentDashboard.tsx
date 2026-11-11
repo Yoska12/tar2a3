@@ -8,7 +8,6 @@ import {
   Clock,
   ArrowRight,
   TrendingUp,
-  Bookmark,
   Sparkles,
   BookOpen,
   ChevronLeft,
@@ -35,11 +34,8 @@ import {
   Share2,
   Lock
 } from 'lucide-react';
-import { MathRenderer } from './MathRenderer';
 import { TarqaUser } from '../lib/supabase';
-import { Category, Question, CourseModule, CourseFileItem, InstructorInfo } from '../types';
-import { mockCategories } from '../data/mockQuestions';
-import { questionBankStorage } from '../lib/questionBankStorage';
+import { CourseModule, CourseFileItem, InstructorInfo } from '../types';
 import { getSubscriptionDetails, cancelAnnualSubscription, coursesStorage } from '../lib/subscriptionService';
 import { streakService, StreakData } from '../lib/streakService';
 import { downloadTrackingService } from '../lib/downloadTrackingService';
@@ -47,8 +43,6 @@ import { pointsService, getRankLevel, RANK_LEVELS } from '../lib/pointsService';
 
 interface StudentDashboardProps {
   currentUser: TarqaUser | null;
-  onStartMock: () => void;
-  onStartPractice: (category?: Category) => void;
   onReviewAttempt?: (attemptId: string) => void;
   onOpenAuth?: () => void;
   onNavigateCourses?: () => void;
@@ -57,8 +51,6 @@ interface StudentDashboardProps {
 
 export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   currentUser,
-  onStartMock,
-  onStartPractice,
   onOpenAuth,
   onNavigateCourses,
   onNavigateLeaderboard,
@@ -83,17 +75,6 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
   // التبويب أو المدرس المفضل
   const [preferredTeacher, setPreferredTeacher] = useState<'teacher_1' | 'teacher_2'>('teacher_1');
-
-  // الأسئلة المحفوظة في المفضلة
-  const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('tarqa_bookmarked_questions');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-  const [selectedBookmarkedQuestion, setSelectedBookmarkedQuestion] = useState<Question | null>(null);
 
   // مهام المذاكرة اليومية (Daily Study Tasks)
   const defaultTasks = [
@@ -302,9 +283,6 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   const totalWatchHours = Math.round(allLessons.reduce((acc, l) => acc + (l.durationMinutes || 0), 0) / 60) || 12;
   const completedTasksCount = dailyTasks.filter((t: any) => t.completed).length;
   const tasksProgressPercent = Math.round((completedTasksCount / dailyTasks.length) * 100);
-
-  // الأسئلة المحفوظة
-  const bookmarkedQuestions = questionBankStorage.getQuestions().filter((q) => bookmarkedIds.includes(q.id));
 
   // تحية مخصصة للوقت
   const getGreeting = () => {
@@ -871,100 +849,6 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
         </div>
       </div>
-
-      {/* ======================================================================= */}
-      {/* 4. الأسئلة المحفوظة في المفضلة (إن وجدت) */}
-      {/* ======================================================================= */}
-      {bookmarkedQuestions.length > 0 && (
-        <div className="p-6 rounded-3xl tarqa-glass-card border border-slate-200 dark:border-slate-800 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-            <div className="flex items-center gap-2">
-              <Bookmark className="w-4 h-4 text-amber-500 fill-current" />
-              <h3 className="text-base font-black text-slate-900 dark:text-white">
-                الأسئلة المحفوظة في المفضلة ({bookmarkedQuestions.length})
-              </h3>
-            </div>
-            <span className="text-xs text-slate-400 font-bold">يمكنك مراجعتها وتثبيتها في أي وقت</span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {bookmarkedQuestions.map((q, idx) => (
-              <div
-                key={q.id}
-                onClick={() => setSelectedBookmarkedQuestion(q)}
-                className="p-3.5 rounded-2xl bg-white/70 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 hover:border-amber-500/40 transition cursor-pointer flex items-center justify-between gap-3"
-              >
-                <div className="min-w-0 space-y-1">
-                  <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                    سؤال #{idx + 1}
-                  </span>
-                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
-                    {q.questionText}
-                  </p>
-                </div>
-                <ChevronLeft className="w-4 h-4 text-slate-400 shrink-0" />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* نافذة تفاصيل السؤال المحفوظ */}
-      {selectedBookmarkedQuestion && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in">
-          <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-[#151022] border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
-                <Bookmark className="w-4 h-4 text-amber-500 fill-current" />
-                <span>مراجعة السؤال المحفوظ</span>
-              </h3>
-              <button
-                onClick={() => setSelectedBookmarkedQuestion(null)}
-                className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs sm:text-sm font-bold leading-relaxed text-slate-900 dark:text-white">
-              <MathRenderer content={selectedBookmarkedQuestion.questionText} />
-            </div>
-
-            <div className="space-y-2">
-              {selectedBookmarkedQuestion.options.map((opt) => {
-                const isCorrect = opt.id === selectedBookmarkedQuestion.correctOption;
-                return (
-                  <div
-                    key={opt.id}
-                    className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between ${
-                      isCorrect
-                        ? 'bg-emerald-500/10 border-emerald-500 text-emerald-700 dark:text-emerald-300'
-                        : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
-                    }`}
-                  >
-                    <span>{opt.text}</span>
-                    {isCorrect && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />}
-                  </div>
-                );
-              })}
-            </div>
-
-            {selectedBookmarkedQuestion.explanation && (
-              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-900 dark:text-amber-200 leading-relaxed">
-                <span className="font-black block mb-1">طريقة الحل الذهني السريع:</span>
-                <MathRenderer content={selectedBookmarkedQuestion.explanation} />
-              </div>
-            )}
-
-            <button
-              onClick={() => setSelectedBookmarkedQuestion(null)}
-              className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs transition cursor-pointer"
-            >
-              إغلاق
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

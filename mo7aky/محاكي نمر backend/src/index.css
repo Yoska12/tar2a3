@@ -1,0 +1,313 @@
+/* Disable text selection and prevent horizontal overflow on mobile */
+:root {
+  --removed-body-scroll-bar-size: 0px !important;
+}
+
+html, body, html[data-scroll-locked], body[data-scroll-locked] {
+  -webkit-user-select: none;  /* Safari */
+  -moz-user-select: none;     /* Firefox */
+  -ms-user-select: none;      /* Internet Explorer/Edge */
+  user-select: none;          /* Standard syntax */
+  overflow-x: hidden !important;
+  max-width: 100vw !important;
+  width: 100% !important;
+  position: relative;
+  box-sizing: border-box;
+  padding-right: 0px !important;
+  padding-left: 0px !important;
+  margin-right: 0px !important;
+  margin-left: 0px !important;
+}
+
+#root, .App {
+  overflow-x: hidden !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  position: relative;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+img {
+  max-width: 100% !important;
+  height: auto;
+  box-sizing: border-box;
+}
+
+@keyframes fast-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-fast-pulse {
+  animation: fast-pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* ==================== AURORA & STARS & METEORS THEME ==================== */
+:root {
+  --bg-deep: #02120c;
+  --gradient-aurora: linear-gradient(135deg, #10b981 0%, #059669 50%, #047857 100%);
+  --primary-accent: #10b981;
+  --secondary-accent: #34d399;
+}
+
+body {
+  background-color: #02140d !important;
+  background: radial-gradient(ellipse at 50% 25%, #053b27 0%, #021a11 50%, #010d08 100%) !important;
+  color: #ecfdf5 !important;
+  min-height: 100vh;
+}
+
+/* Disable aurora animations during initial loading to eliminate performance lag */
+body.loading-active .aurora-container {
+  display: none !important;
+}
+
+/* Background Mesh */
+.aurora-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.aurora-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.35;
+  animation: float 25s infinite ease-in-out alternate;
+}
+
+.aurora-container .blob-1 {
+  top: -20%;
+  left: -10%;
+  width: 80vw;
+  height: 80vw;
+  background: var(--gradient-aurora);
+}
+
+.aurora-container .blob-2 {
+  bottom: -20%;
+  right: -10%;
+  width: 90vw;
+  height: 90vw;
+  background: radial-gradient(circle, #10b981, transparent 60%);
+  animation-delay: -10s;
+}
+
+@media (max-width: 480px) {
+  .aurora-blob {
+    filter: blur(60px);
+    opacity: 0.25;
+  }
+  .aurora-container .blob-1 {
+    width: 120vw;
+    height: 120vw;
+  }
+  .aurora-container .blob-2 {
+    width: 130vw;
+    height: 130vw;
+  }
+}
+
+.noise-overlay {
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E");
+  opacity: 0.4;
+}
+
+@keyframes float {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  100% {
+    transform: translate(50px, 50px) rotate(10deg);
+  }
+}
+
+
+
+/* ==================== GLASS CARDS & BENTO GRID HOVER EFFECTS ==================== */
+.aurora-card,
+.card {
+  position: relative;
+  background: rgba(6, 26, 18, 0.6) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 20px !important;
+  isolation: isolate;
+  overflow: hidden;
+  transition:
+    transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1),
+    border-color 0.4s ease,
+    box-shadow 0.4s ease !important;
+}
+
+/* Mouse-tracking radial sheen */
+.aurora-card::before,
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    700px circle at var(--mouse-x, 50%) var(--mouse-y, 0%),
+    rgba(16, 185, 129, 0.08),
+    transparent 40%
+  );
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Top accent line */
+.aurora-card::after,
+.card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 20%;
+  right: 20%;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--primary-accent, #10b981),
+    var(--secondary-accent, #34d399),
+    transparent
+  );
+  border-radius: 2px;
+  opacity: 0;
+  transition: opacity 0.4s ease, left 0.4s ease, right 0.4s ease;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ---- Hover State ---- */
+.aurora-card:hover,
+.card:hover {
+  transform: translateY(-8px) scale(1.02) !important;
+  border-color: rgba(16, 185, 129, 0.35) !important;
+  box-shadow:
+    0 20px 40px -12px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(16, 185, 129, 0.08),
+    0 0 60px -20px rgba(16, 185, 129, 0.15) !important;
+}
+
+.aurora-card:hover::before,
+.card:hover::before {
+  opacity: 1;
+}
+
+.aurora-card:hover::after,
+.card:hover::after {
+  opacity: 1;
+  left: 10%;
+  right: 10%;
+}
+
+.aurora-card-item {
+  position: relative;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.aurora-card-item::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 30%;
+  right: 30%;
+  height: 1.5px;
+  background: linear-gradient(90deg, transparent, #10b981, transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease, left 0.3s ease, right 0.3s ease;
+}
+
+.aurora-card-item:hover {
+  background: rgba(16, 185, 129, 0.12) !important;
+  border-color: rgba(16, 185, 129, 0.5) !important;
+  transform: translateY(-2px) scale(1.01) !important;
+  box-shadow: 0 8px 20px rgba(16, 185, 129, 0.2) !important;
+}
+
+.aurora-card-item:hover::after {
+  opacity: 1;
+  left: 10%;
+  right: 10%;
+}
+
+/* Card Icons */
+.card-icon,
+.aurora-icon-glow {
+  font-size: 3rem;
+  margin-bottom: 20px;
+  background: linear-gradient(135deg, var(--primary-accent, #10b981), var(--secondary-accent, #34d399));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 4px 10px rgba(16, 185, 129, 0.3));
+  transition: transform 0.3s ease, filter 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-icon svg,
+.aurora-icon-glow svg {
+  stroke: var(--primary-accent, #10b981);
+  filter: drop-shadow(0 4px 10px rgba(16, 185, 129, 0.4));
+  transition: transform 0.3s ease, filter 0.3s ease;
+}
+
+.aurora-card:hover .card-icon,
+.aurora-card:hover .aurora-icon-glow,
+.card:hover .card-icon,
+.card:hover .aurora-icon-glow {
+  transform: scale(1.1) rotate(5deg) !important;
+}
+
+.aurora-card:hover .card-icon svg,
+.aurora-card:hover .aurora-icon-glow svg,
+.card:hover .card-icon svg,
+.card:hover .aurora-icon-glow svg {
+  transform: scale(1.1) rotate(5deg) !important;
+  stroke: #10b981 !important;
+  filter: drop-shadow(0 0 15px rgba(16, 185, 129, 0.7)) !important;
+}
+
+/* Modals & Dialog Glass Style */
+.aurora-dialog-content {
+  position: relative;
+  background: rgba(6, 26, 18, 0.94) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  border: 1px solid rgba(16, 185, 129, 0.35) !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 30px rgba(16, 185, 129, 0.2) !important;
+  overflow: hidden;
+}
+
+.aurora-dialog-content::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #10b981, #34d399, transparent);
+  border-radius: 2px;
+}

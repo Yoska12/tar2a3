@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured, authService, syncUserToMembersDashboard, isValidUuid } from './supabase';
+import { supabase, isSupabaseConfigured, authService, syncUserToMembersDashboard, isValidUuid, callHostingerApi } from './supabase';
 import { isOwnerEmail } from './securityUtils';
 import { UserRole, UserWithRole, RoleChangeLog } from '../types';
 import { cancelAnnualSubscription, grantAnnualSubscription, syncSubscriptionsFromCloud } from './subscriptionService';
@@ -81,6 +81,37 @@ export const rolesService = {
             (tgIdClean && deletedList.includes(tgIdClean))
           );
         };
+
+        let hostingerUsers: UserWithRole[] = [];
+        try {
+          const hostRes = await callHostingerApi('get_users');
+          if (hostRes && hostRes.success && Array.isArray(hostRes.users)) {
+            hostingerUsers = hostRes.users
+              .filter((d: any) => !isDeletedUser(d.id, d.email, d.telegramUsername, d.telegramId))
+              .map((d: any) => {
+                const isOwner = isOwnerEmail(d.email) || d.id === 'usr-admin-01' || d.id === 'usr-yoska-owner';
+                return {
+                  id: d.id,
+                  email: d.email || '',
+                  fullName: isOwner ? (d.fullName && d.fullName !== 'طالب طرقع' ? d.fullName : 'Yoska') : (d.fullName || 'طالب طرقع'),
+                  role: isOwner ? 'super_admin' : ((d.role as UserRole) || 'student'),
+                  targetScore: d.targetScore ? Number(d.targetScore) : 100,
+                  telegramUsername: d.telegramUsername || undefined,
+                  telegramId: d.telegramId ? Number(d.telegramId) : undefined,
+                  avatarUrl: d.avatarUrl || undefined,
+                  createdAt: d.createdAt || new Date().toISOString(),
+                  lastSignInAt: d.lastSignInAt || d.createdAt,
+                  isBanned: Boolean(Number(d.isBanned)),
+                  banReason: d.banReason || undefined,
+                  isSubscribed: isOwner ? true : Boolean(d.isSubscribed === 1 || d.isSubscribed === '1' || d.isSubscribed === true || d.isSubscribed === 'true' || Number(d.isSubscribed) === 1),
+                  subscriptionExpiresAt: d.subscriptionExpiresAt || undefined,
+                  points: typeof d.points === 'number' ? d.points : (d.points ? parseInt(d.points, 10) || 0 : 0),
+                };
+              });
+          }
+        } catch (e) {
+          console.warn('Failed to fetch from Hostinger API:', e);
+        }
 
         let supabaseUsers: UserWithRole[] = [];
 
@@ -211,8 +242,8 @@ export const rolesService = {
       }
     } catch {}
 
-    // دمج قوائم المستخدمين لضمان عدم ضياع أي مستخدم وعدم تكرار نفس الشخص
-    const unifiedUsers: UserWithRole[] = [...supabaseUsers];
+    // دمج قوائم المستخدمين: قاعدة بيانات هوستينجر هي المصدر الأساسي
+    const unifiedUsers: UserWithRole[] = [...hostingerUsers, ...supabaseUsers];
 
     for (const u of localUsers) {
       if (['usr-admin-02', 'usr-teacher-03', 'usr-teacher-04', 'usr-student-05', 'usr-student-06', 'usr-student-07'].includes(u.id)) continue;
@@ -255,7 +286,12 @@ export const rolesService = {
           targetScore: ex.targetScore || u.targetScore || 100,
         };
       } else {
+        // دمج المستخدمين المسجلين والمحليين مع قائمة هوستينجر لضمان عدم اختفاء أي حساب
         unifiedUsers.push(u);
+        // مزامنة فورية في الخلفية إلى قاعدة بيانات هوستينجر ليتم حفظهم مركزياً وتظهر على كافة الأجهزة
+        try {
+          syncUserToMembersDashboard(u as any);
+        } catch {}
       }
     }
 
@@ -320,6 +356,11 @@ export const rolesService = {
           (tg ? localSubs[tg] : null) ||
           (u.telegramId ? localSubs[String(u.telegramId)] : null);
 
+        // فحص الحالة المعتمدة من قاعدة البيانات أولاً
+        const dbIsSub = Boolean((u as any).is_subscribed || (u as any).isSubscribed || u.isSubscribed);
+        const dbExp = (u as any).subscription_expires_at || (u as any).subscriptionExpiresAt || u.subscriptionExpiresAt;
+        const dbNotExp = !dbExp || new Date(dbExp).getTime() > Date.now();
+
         if (sub) {
           if (sub.active === true || sub.isActive === true || sub.status === 'active') {
             const exp = sub.expiresAt || sub.expiresDate;
@@ -327,20 +368,23 @@ export const rolesService = {
             if (isNotExpired) {
               u.isSubscribed = true;
               u.subscriptionExpiresAt = exp || u.subscriptionExpiresAt;
+            } else if (dbIsSub && dbNotExp) {
+              u.isSubscribed = true;
+              u.subscriptionExpiresAt = dbExp || u.subscriptionExpiresAt;
             } else {
               u.isSubscribed = false;
             }
           } else if (sub.active === false || sub.isActive === false || sub.status === 'cancelled') {
-            // إلغاء صريح للاشتراك يلغي أي حالة سابقة في السيرفر أو المتصفح
-            u.isSubscribed = false;
-            u.subscriptionExpiresAt = undefined;
+            if (dbIsSub && dbNotExp && (!sub.cancelledAt || new Date((u as any).created_at || (u as any).updated_at || u.lastSignInAt || 0).getTime() > new Date(sub.cancelledAt).getTime())) {
+              u.isSubscribed = true;
+              u.subscriptionExpiresAt = dbExp || u.subscriptionExpiresAt;
+            } else {
+              u.isSubscribed = false;
+              u.subscriptionExpiresAt = undefined;
+            }
           }
         } else {
           // فحص الحالة المعتمدة من قاعدة البيانات أولاً لمنع مسح الاشتراكات الحقيقية
-          const dbIsSub = Boolean((u as any).is_subscribed || u.isSubscribed);
-          const dbExp = (u as any).subscription_expires_at || u.subscriptionExpiresAt;
-          const dbNotExp = !dbExp || new Date(dbExp).getTime() > Date.now();
-
           if (dbIsSub && dbNotExp) {
             u.isSubscribed = true;
             u.subscriptionExpiresAt = dbExp || u.subscriptionExpiresAt;
@@ -522,7 +566,7 @@ export const rolesService = {
       },
       {
         tag: 'users',
-        ttlMs: 3 * 60 * 1000,
+        ttlMs: 30 * 1000, // 30 ثانية فقط لضمان التزامن السريع بين الأجهزة
         backgroundRevalidate: true,
         forceRefresh,
       }
@@ -600,7 +644,23 @@ export const rolesService = {
       };
     }
 
-    // 3. التحديث الفوري في Supabase
+    // 1. التحديث الفوري المباشر في قاعدة بيانات هوستينجر (Hostinger MySQL Backend)
+    try {
+      await callHostingerApi('update_role', {
+        target_user_id: targetUserId,
+        userId: targetUserId,
+        email: targetUser.email,
+        telegram_id: targetUser.telegramId,
+        telegram_username: targetUser.telegramUsername,
+        new_role: newRole,
+        role: newRole,
+        reason: reason || 'تعديل الصلاحية عبر لوحة إدارة المنصة',
+      });
+    } catch (err) {
+      console.warn('Hostinger role update error:', err);
+    }
+
+    // 2. التحديث الفوري في Supabase
     if (isSupabaseConfigured) {
       try {
         let supabaseTargetId: string | null = isValidUuid(targetUserId) ? targetUserId : null;
@@ -758,7 +818,23 @@ export const rolesService = {
       return { success: false, error: 'خطأ أمني: لا يمكن حظر حساب السوبر أدمن الرئيسي للمنصة.' };
     }
 
-    // 1. تحديث Supabase
+    // 1. التحديث في قاعدة بيانات هوستينجر
+    try {
+      await callHostingerApi('ban_user', {
+        target_user_id: targetUserId,
+        userId: targetUserId,
+        email: target.email,
+        telegram_id: target.telegramId,
+        telegram_username: target.telegramUsername,
+        telegramUsername: target.telegramUsername,
+        is_banned: isBanned ? 1 : 0,
+        reason: reason || 'مخالفة سياسة واستخدام المنصة',
+      });
+    } catch (err) {
+      console.warn('Hostinger ban user error:', err);
+    }
+
+    // 2. تحديث Supabase
     if (isSupabaseConfigured) {
       try {
         let supabaseTargetId: string | null = isValidUuid(targetUserId) ? targetUserId : null;
@@ -870,7 +946,21 @@ export const rolesService = {
       return { success: false, error: 'خطأ أمني: لا يمكن مسح حساب السوبر أدمن الرئيسي للمنصة.' };
     }
 
-    // 1. تسجيل المستخدم في القائمة السوداء للحسابات المحذوفة لمنع ظهوره نهائياً
+    // 1. الحذف من قاعدة بيانات هوستينجر
+    try {
+      await callHostingerApi('delete_user', {
+        target_user_id: targetUserId,
+        userId: targetUserId,
+        email: target.email,
+        telegram_id: target.telegramId,
+        telegram_username: target.telegramUsername,
+        telegramUsername: target.telegramUsername,
+      });
+    } catch (err) {
+      console.warn('Hostinger delete user error:', err);
+    }
+
+    // 2. تسجيل المستخدم في القائمة السوداء للحسابات المحذوفة لمنع ظهوره نهائياً
     markUserAsDeleted([
       target.id,
       target.email,
@@ -993,6 +1083,28 @@ export const rolesService = {
     telegramUsername?: string,
     telegramId?: number
   ) => {
+    // إخطار خادم Hostinger MySQL وقاعدة البيانات المركزية بإلغاء الاشتراك فوراً
+    try {
+      await fetch('/api/hostinger_api.php?action=cancel_user_subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          target_user_id: userId,
+          email: userEmail,
+          user_email: userEmail,
+          telegramUsername,
+          telegram_username: telegramUsername,
+          telegramId,
+          telegram_id: telegramId,
+          course_id: '',
+        }),
+        keepalive: true,
+      });
+    } catch (e) {
+      console.warn('cancel_user_subscription API error:', e);
+    }
+
     const res = await cancelAnnualSubscription(userId, userEmail, telegramUsername, telegramId);
     dbCache.invalidate('db_users_with_roles');
     invalidateUsersCache();
@@ -1000,6 +1112,7 @@ export const rolesService = {
       window.dispatchEvent(new Event('tarqa_roles_changed'));
       window.dispatchEvent(new Event('tarqa_subscription_changed'));
       window.dispatchEvent(new Event('tarqa:subscription_updated'));
+      window.dispatchEvent(new CustomEvent('tarqa_course_subscription_updated', { detail: { userId, isActive: false } }));
       window.dispatchEvent(new Event('tarqa_user_changed'));
       window.dispatchEvent(new Event('storage'));
     }
@@ -1011,6 +1124,33 @@ export const rolesService = {
     targetUser: { id: string; email?: string; fullName?: string; telegramUsername?: string; telegramId?: number },
     days: number = 365
   ) => {
+    const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+    // إخطار خادم Hostinger MySQL وقاعدة البيانات المركزية بالتفعيل فوراً
+    try {
+      await fetch('/api/hostinger_api.php?action=update_subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: targetUser.id,
+          target_user_id: targetUser.id,
+          email: targetUser.email,
+          user_email: targetUser.email,
+          telegramUsername: targetUser.telegramUsername,
+          telegram_username: targetUser.telegramUsername,
+          telegramId: targetUser.telegramId,
+          telegram_id: targetUser.telegramId,
+          is_subscribed: 1,
+          expires_at: expiresAt,
+          subscription_expires_at: expiresAt,
+          period: `days_${days}`,
+          course_id: '',
+        }),
+        keepalive: true,
+      });
+    } catch (e) {
+      console.warn('update_subscription API error:', e);
+    }
+
     const res = await grantAnnualSubscription(targetUser, days);
     dbCache.invalidate('db_users_with_roles');
     invalidateUsersCache();
@@ -1018,6 +1158,7 @@ export const rolesService = {
       window.dispatchEvent(new Event('tarqa_roles_changed'));
       window.dispatchEvent(new Event('tarqa_subscription_changed'));
       window.dispatchEvent(new Event('tarqa:subscription_updated'));
+      window.dispatchEvent(new CustomEvent('tarqa_course_subscription_updated', { detail: { userId: targetUser.id, isActive: true } }));
       window.dispatchEvent(new Event('tarqa_user_changed'));
       window.dispatchEvent(new Event('storage'));
     }

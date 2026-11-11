@@ -1,0 +1,11 @@
+packages:
+  - '.'
+
+verifyDepsBeforeRun: false
+minimumReleaseAge: 0
+
+allowBuilds:
+  '@tailwindcss/oxide': true
+  core-js: true
+  date-fns: true
+  esbuild: true

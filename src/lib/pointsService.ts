@@ -68,6 +68,10 @@ class PointsService {
   private readonly USER_POINTS_CACHE_PREFIX = 'tarqa_user_points_';
   private readonly USER_HISTORY_CACHE_PREFIX = 'tarqa_user_history_';
 
+  // كبح الطلبات المتكررة ومنع الحلقات اللانهائية
+  private ongoingFetches = new Map<string, Promise<number>>();
+  private lastFetchTime = new Map<string, number>();
+
   constructor() {
     // تنظيف ملفات الكوكيز والتخزين المحلي القديمة الخاصة بالجهاز (Device Cleanup)
     if (typeof window !== 'undefined') {
@@ -135,68 +139,90 @@ class PointsService {
     const userKey = this.getUserKey(user);
     if (!userKey) return 0;
 
-    let dbPoints: number | null = null;
-    let dbHistory: PointTransaction[] | null = null;
+    // 1. منع الطلبات المتزامنة المتكررة لنفس المستخدم
+    const existing = this.ongoingFetches.get(userKey);
+    if (existing) return existing;
 
-    // 1. محاولة الجلب من قاعدة بيانات Supabase (جدول profiles)
-    if (isSupabaseConfigured && supabase) {
+    // 2. كبح التكرار: إذا تم الجلب خلال آخر 15 ثانية، نعتمد على الكاش فوراً
+    const now = Date.now();
+    const last = this.lastFetchTime.get(userKey) || 0;
+    if (now - last < 15000) {
+      return this.getUserPoints(user);
+    }
+
+    const fetchPromise = (async () => {
       try {
-        let query = supabase.from('profiles').select('points, points_history');
-        if (isValidUuid(user.id)) {
-          query = query.eq('id', user.id);
-        } else if (user.email) {
-          query = query.ilike('email', user.email.toLowerCase().trim());
-        }
+        let dbPoints: number | null = null;
+        let dbHistory: PointTransaction[] | null = null;
 
-        const { data, error } = await query.maybeSingle();
-        if (!error && data) {
-          if (typeof data.points === 'number') {
-            dbPoints = Math.max(0, data.points);
-          } else if (data.points) {
-            dbPoints = Math.max(0, parseInt(data.points, 10) || 0);
-          }
-          if (Array.isArray(data.points_history)) {
-            dbHistory = data.points_history;
-          }
-        }
-      } catch (err) {
-        console.warn('[pointsService] Supabase points fetch notice:', err);
-      }
-    }
-
-    // 2. محاولة الجلب من الباك إند المركزي (Vercel API / Hostinger PHP) إذا لم تتوفر في Supabase
-    if (dbPoints === null && typeof window !== 'undefined') {
-      const endpoints = [
-        `/api/points?userId=${encodeURIComponent(user.id || '')}&email=${encodeURIComponent(user.email || '')}`,
-        `/api/points.php?userId=${encodeURIComponent(user.id || '')}&email=${encodeURIComponent(user.email || '')}`,
-      ];
-
-      for (const ep of endpoints) {
-        try {
-          const res = await fetch(ep, { method: 'GET', headers: { 'Accept': 'application/json' } });
-          if (res.ok) {
-            const json = await res.json();
-            if (json.success && typeof json.points === 'number') {
-              dbPoints = Math.max(0, json.points);
-              if (Array.isArray(json.history)) dbHistory = json.history;
-              break;
+        // محاولة الجلب من قاعدة بيانات Supabase إذا كانت مفعلة
+        if (isSupabaseConfigured && supabase) {
+          try {
+            let query = supabase.from('profiles').select('points, points_history');
+            if (isValidUuid(user.id)) {
+              query = query.eq('id', user.id);
+            } else if (user.email) {
+              query = query.ilike('email', user.email.toLowerCase().trim());
             }
+
+            const { data, error } = await query.maybeSingle();
+            if (!error && data) {
+              if (typeof data.points === 'number') {
+                dbPoints = Math.max(0, data.points);
+              } else if (data.points) {
+                dbPoints = Math.max(0, parseInt(data.points, 10) || 0);
+              }
+              if (Array.isArray(data.points_history)) {
+                dbHistory = data.points_history;
+              }
+            }
+          } catch (err) {
+            console.warn('[pointsService] Supabase points fetch notice:', err);
           }
-        } catch {}
-      }
-    }
+        }
 
-    // إذا تم جلب النقاط بنجاح من قاعدة البيانات، نحدث الذاكرة المربوطة بالحساب
-    if (dbPoints !== null) {
-      this.setUserCachedPoints(userKey, dbPoints);
-      if (dbHistory) {
-        this.setUserCachedHistory(userKey, dbHistory);
-      }
-      this.updateActiveUserSessionPoints(userKey, dbPoints);
-      return dbPoints;
-    }
+        // محاولة الجلب من الباك إند بهوستينجر (/api/points.php)
+        if (dbPoints === null && typeof window !== 'undefined') {
+          const endpoints = [
+            `/api/points.php?userId=${encodeURIComponent(user.id || '')}&email=${encodeURIComponent(user.email || '')}`,
+            `/api/points?userId=${encodeURIComponent(user.id || '')}&email=${encodeURIComponent(user.email || '')}`,
+          ];
 
-    return this.getUserPoints(user);
+          for (const ep of endpoints) {
+            try {
+              const res = await fetch(ep, { method: 'GET', headers: { 'Accept': 'application/json' } });
+              if (res.ok) {
+                const json = await res.json();
+                if (json.success && typeof json.points === 'number') {
+                  dbPoints = Math.max(0, json.points);
+                  if (Array.isArray(json.history)) dbHistory = json.history;
+                  break;
+                }
+              }
+            } catch {}
+          }
+        }
+
+        this.lastFetchTime.set(userKey, Date.now());
+
+        // إذا تم جلب النقاط بنجاح من قاعدة البيانات، نحدث الذاكرة المربوطة بالحساب
+        if (dbPoints !== null) {
+          this.setUserCachedPoints(userKey, dbPoints);
+          if (dbHistory) {
+            this.setUserCachedHistory(userKey, dbHistory);
+          }
+          this.updateActiveUserSessionPoints(userKey, dbPoints);
+          return dbPoints;
+        }
+
+        return this.getUserPoints(user);
+      } finally {
+        this.ongoingFetches.delete(userKey);
+      }
+    })();
+
+    this.ongoingFetches.set(userKey, fetchPromise);
+    return fetchPromise;
   }
 
   /**
@@ -220,7 +246,7 @@ class PointsService {
   }
 
   /**
-   * تحديث كائن المستخدم النشط في الجلسة المحلية بالنقاط الجديدة
+   * تحديث كائن المستخدم النشط في الجلسة المحلية بالنقاط الجديدة مع حماية من الحلقات اللانهائية
    */
   private updateActiveUserSessionPoints(userKey: string, newPoints: number): void {
     if (typeof window === 'undefined') return;
@@ -232,9 +258,12 @@ class PointsService {
           (parsed.id && parsed.id === userKey) ||
           (parsed.email && parsed.email.toLowerCase().trim() === userKey.toLowerCase().trim());
         if (match) {
-          parsed.points = newPoints;
-          localStorage.setItem('tarqa_current_user', JSON.stringify(parsed));
-          window.dispatchEvent(new Event('tarqa_user_changed'));
+          // منع إطلاق الأحداث إذا لم تتغير النقاط لمنع الحلقات اللانهائية نهائياً
+          if (parsed.points !== newPoints) {
+            parsed.points = newPoints;
+            localStorage.setItem('tarqa_current_user', JSON.stringify(parsed));
+            window.dispatchEvent(new Event('tarqa_user_changed'));
+          }
         }
       }
     } catch {}
@@ -349,27 +378,12 @@ class PointsService {
         };
 
         try {
-          const res = await fetch('/api/points', {
+          await fetch('/api/points.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
           });
-          if (!res.ok) {
-            await fetch('/api/points.php', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            });
-          }
-        } catch {
-          try {
-            await fetch('/api/points.php', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-            });
-          } catch {}
-        }
+        } catch {}
       });
     }
 
@@ -424,20 +438,12 @@ class PointsService {
     // المزامنة مع الباك إند
     if (typeof window !== 'undefined') {
       try {
-        await fetch('/api/points', {
+        await fetch('/api/points.php', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: user.id, userEmail: user.email, action: 'reset' }),
         });
-      } catch {
-        try {
-          await fetch('/api/points.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: user.id, userEmail: user.email, action: 'reset' }),
-          });
-        } catch {}
-      }
+      } catch {}
     }
 
     invalidateUsersCache();
@@ -499,20 +505,12 @@ class PointsService {
     // المزامنة مع الباك إند
     if (typeof window !== 'undefined') {
       try {
-        await fetch('/api/points', {
+        await fetch('/api/points.php', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId, userEmail: email, action: 'reset' }),
         });
-      } catch {
-        try {
-          await fetch('/api/points.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, userEmail: email, action: 'reset' }),
-          });
-        } catch {}
-      }
+      } catch {}
     }
 
     invalidateUsersCache();

@@ -13,10 +13,9 @@ import { CLOUD_LECTURES_STORE_ID, CLOUD_LECTURES_STORE_EMAIL } from './subscript
 
 export type FeatureActionType =
   | 'courses'        // الانتقال لصفحة المحاضرات والدورات
-  | 'mock-exam'      // محاكي قياس الفعلي
   | 'coming-soon'    // مغلق مؤقتاً للتطوير / قريباً مع رسالة مخصصة
   | 'telegram-modal' // فتح نافذة مجتمع تليجرام
-  | 'tab'            // انتقال لتبويب داخلي (dashboard, speed, leaderboard, roadmap, categories)
+  | 'tab'            // انتقال لتبويب داخلي (dashboard, leaderboard, roadmap, categories)
   | 'url';           // رابط مخصص (URL)
 
 export type FeatureColorTheme =
@@ -78,22 +77,20 @@ export const DEFAULT_FEATURES: PlatformFeatureItem[] = [
     order: 1
   },
   {
-    id: 'feature-exam',
-    title: 'محاكي الاختبار الفعلي',
-    description: 'محاكاة دقيقة مطابقة بنسبة 100% لاختبار قياس الحقيقي (المحوسب والورقي) بمؤقت زمني حقيقي وتصحيح تفصيلي لكافة الإجابات مع كشف نقاط القوة والضعف.',
-    badge: 'قريباً ⏳',
-    icon: 'Clock',
-    colorTheme: 'indigo',
+    id: 'feature-materials',
+    title: 'مذكرات وملخصات تأسيس PDF',
+    description: 'مذكرات تدريبية متخصصة وملخصات قوانين مركزة وخرائط ذهنية قابلة للتحميل، تدعم المذاكرة السريعة وتثبيت الأفكار الهامة.',
+    badge: 'متاح للتحميل 📄',
+    icon: 'FileText',
+    colorTheme: 'purple',
     bullets: [
-      'شاشات وتوقيت مطابق تماماً لمركز قياس',
-      'تصحيح فوري وتحليل إحصائي دقيق للدرجة',
-      'أوضاع تدريب متنوعة: محاكي، تدريب ذكي، وتحدي سرعة'
+      'مذكرات شاملة لكل باب وفصل تدريبي',
+      'ملخصات حيل وقوانين الحل الخاطف الذهني',
+      'تحميل سريع ومباشر بجودة طباعة فائقة'
     ],
-    actionType: 'coming-soon',
-    status: 'coming-soon',
-    comingSoonNotice: 'محاكي قياس الفعلي يخضع للتجهيز لعام 1446-1447 وسينطلق قريباً جداً ⏳',
-    statusNotice: 'محاكي قياس الفعلي يخضع للتجهيز لعام 1446-1447 وسينطلق قريباً جداً ⏳',
-    buttonText: 'قريباً ⏳',
+    actionType: 'courses',
+    status: 'active',
+    buttonText: 'تصفح المذكرات',
     isVisible: true,
     order: 2
   },

@@ -31,6 +31,11 @@ export const isCourseEnrollmentOpen = (courseOrModule?: { status?: CourseEnrollm
   return courseOrModule.status === 'active';
 };
 
+export const isCourseLockedOrUpcoming = (item?: { status?: CourseEnrollmentStatus } | null): boolean => {
+  if (!item || !item.status) return false;
+  return item.status === 'upcoming' || item.status === 'locked' || item.status === 'paused';
+};
+
 /**
  * الحصول على تفاصيل حالة التسجيل في الدورة (النص، اللون، إمكانية الاشتراك)
  */
@@ -44,6 +49,17 @@ export const getCourseEnrollmentInfo = (courseOrModule?: {
   const availableDate = courseOrModule?.availableDate?.trim();
 
   switch (status) {
+    case 'locked':
+      return {
+        status,
+        isOpen: false,
+        badgeText: customText || 'مغلقة / قيد التجهيز 🔒',
+        buttonText: customText || 'مغلقة 🔒',
+        badgeColor: 'rose',
+        notice: availableDate
+          ? `هذه الدورة مغلقة حالياً وقيد التجهيز، وسيتم إتاحتها بتاريخ: ${availableDate}`
+          : 'هذه الدورة مغلقة حالياً وقيد التجهيز. سيتوفر التسجيل والمحاضرات قريباً!',
+      };
     case 'paused':
       return {
         status,
@@ -59,9 +75,9 @@ export const getCourseEnrollmentInfo = (courseOrModule?: {
       return {
         status,
         isOpen: false,
-        badgeText: customText || 'متاح قريباً ⏳',
+        badgeText: customText || 'قريباً ⏳',
         buttonText: customText || 'قريباً ⏳',
-        badgeColor: 'blue',
+        badgeColor: 'amber',
         notice: availableDate
           ? `ستنطلق الدورة ويُتاح التسجيل بتاريخ: ${availableDate}`
           : 'هذه الدورة قادمة قريباً، ترقبوا موعد الانطلاق!',
@@ -86,7 +102,7 @@ export const getCourseEnrollmentInfo = (courseOrModule?: {
 export const canEditCourses = (role?: UserRole | null, email?: string | null): boolean => {
   if (isOwnerEmail(email)) return true;
   if (!role) return false;
-  return role === 'super_admin' || role === 'admin' || role === 'teacher';
+  return role === 'super_admin' || role === 'admin' || role === 'teacher' || role === 'e_cms';
 };
 
 /**
@@ -95,8 +111,8 @@ export const canEditCourses = (role?: UserRole | null, email?: string | null): b
 export const isUserSubscribed = (user?: TarqaUser | null): boolean => {
   if (!user) return false;
   
-  // المشرفون والمعلمون والمالك لديهم وصول شامل مجاني دائم
-  if (canEditCourses(user.role, user.email)) {
+  // المشرفون والمعلمون والمالك ومحررو المنصة لديهم وصول شامل مجاني دائم
+  if (canEditCourses(user.role, user.email) || user.role === 'e_simulator') {
     return true;
   }
 
@@ -120,17 +136,8 @@ export const isUserSubscribed = (user?: TarqaUser | null): boolean => {
     return false;
   }
 
-  // إذا كان الحساب غير مشترك صراحة في كائن المستخدم
+  // إذا كان الحساب غير مشترك صراحة في كائن المستخدم (بناء على قاعدة البيانات)
   if (user.isSubscribed === false) {
-    // نتأكد فقط إن كان هناك اشتراك مفعل حديثاً في userSub
-    if (userSub && (userSub.isActive === true || (userSub as any).active === true || (userSub as any).status === 'active')) {
-      const expiryDate = userSub.expiresDate || (userSub as any).expiresAt;
-      if (!expiryDate) return true;
-      const expiry = new Date(expiryDate).getTime();
-      if (!isNaN(expiry) && expiry > Date.now()) {
-        return true;
-      }
-    }
     return false;
   }
 
@@ -253,6 +260,38 @@ export async function syncSubscriptionToBackend(
     days?: number;
   }
 ): Promise<boolean> {
+  const isGrant = action === 'grant';
+  const expiresAt = isGrant
+    ? new Date(Date.now() + (payload.days || 365) * 24 * 60 * 60 * 1000).toISOString()
+    : null;
+
+  // 1. مزامنة فورية مباشرة مع جدول users و course_subscriptions في قاعدة بيانات هوستينجر MySQL
+  try {
+    await fetch(`/api/hostinger_api.php?action=${isGrant ? 'update_subscription' : 'cancel_user_subscription'}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: payload.userId,
+        target_user_id: payload.userId,
+        email: payload.userEmail,
+        user_email: payload.userEmail,
+        telegramId: payload.telegramId,
+        telegram_id: payload.telegramId,
+        telegramUsername: payload.telegramUsername,
+        telegram_username: payload.telegramUsername,
+        is_subscribed: isGrant ? 1 : 0,
+        expires_at: expiresAt,
+        subscription_expires_at: expiresAt,
+        period: isGrant ? `days_${payload.days || 365}` : 'none',
+        course_id: '',
+      }),
+      keepalive: true,
+    });
+  } catch (hErr) {
+    console.debug('[syncSubscriptionToBackend] Hostinger MySQL error:', hErr);
+  }
+
+  // 2. مزامنة مع ملف subscriptions.php وسجل الاشتراكات
   try {
     const res = await fetch('/api/subscriptions.php', {
       method: 'POST',
@@ -549,15 +588,17 @@ export const activateAnnualSubscription = async (
     }
   }
 
-  // 3. مزامنة مباشرة ومؤكدة مع خادم الباك إند (Hostinger PHP Backend)
-  syncSubscriptionToBackend('grant', {
-    userId: user.id,
-    userEmail: user.email,
-    userName: user.fullName,
-    telegramUsername: user.telegramUsername,
-    telegramId: user.telegramId,
-    days: 365,
-  }).catch(() => {});
+  // 3. مزامنة مباشرة ومؤكدة مع خادم الباك إند (Hostinger PHP Backend) - ننتظر النتيجة
+  try {
+    await syncSubscriptionToBackend('grant', {
+      userId: user.id,
+      userEmail: user.email,
+      userName: user.fullName,
+      telegramUsername: user.telegramUsername,
+      telegramId: user.telegramId,
+      days: 365,
+    });
+  } catch {}
 
   // 4. إطلاق حدث تحديث في النافذة
   if (typeof window !== 'undefined') {
@@ -700,6 +741,29 @@ export const cancelAnnualSubscription = async (
       }
     } catch {}
 
+    // تنظيف وإلغاء أي اشتراكات دورات مستقلة خاصة بالمستخدم محلياً
+    try {
+      const cSubsRaw = localStorage.getItem('tarqa_course_subscriptions');
+      if (cSubsRaw) {
+        const cSubs = JSON.parse(cSubsRaw);
+        let changed = false;
+        for (const key of Object.keys(cSubs)) {
+          const item = cSubs[key];
+          const isMatch = (userId && (item.userId === userId || key.startsWith(`${userId}_`))) ||
+                          (emailClean && (item.userEmail?.toLowerCase() === emailClean || key.startsWith(`${emailClean}_`)));
+          if (isMatch) {
+            item.isActive = false;
+            item.status = 'cancelled';
+            item.expiresAt = new Date().toISOString();
+            changed = true;
+          }
+        }
+        if (changed) {
+          localStorage.setItem('tarqa_course_subscriptions', JSON.stringify(cSubs));
+        }
+      }
+    } catch {}
+
     // تفريغ الكاش فوراً لضمان عدم عودة البيانات القديمة
     dbCache.invalidate('db_users_with_roles');
     invalidateUsersCache();
@@ -801,18 +865,21 @@ export const cancelAnnualSubscription = async (
     }
   }
 
-  // 4. مزامنة الإلغاء مع خادم الباك إند (Hostinger PHP Backend)
-  syncSubscriptionToBackend('cancel', {
-    userId,
-    userEmail: emailClean,
-    telegramUsername: tgClean,
-    telegramId,
-  }).catch(() => {});
+  // 4. مزامنة الإلغاء مع خادم الباك إند (Hostinger PHP Backend) - ننتظر النتيجة
+  try {
+    await syncSubscriptionToBackend('cancel', {
+      userId,
+      userEmail: emailClean,
+      telegramUsername: tgClean,
+      telegramId,
+    });
+  } catch {}
 
   // 5. إطلاق الأحداث لتحديث كافة واجهات الموقع فوراً
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('tarqa_subscription_changed', { detail: { userId, email: emailClean, isActive: false } }));
     window.dispatchEvent(new CustomEvent('tarqa:subscription_updated', { detail: { userId, email: emailClean, isActive: false } }));
+    window.dispatchEvent(new CustomEvent('tarqa_course_subscription_updated', { detail: { userId, isActive: false } }));
     window.dispatchEvent(new CustomEvent('tarqa_user_changed'));
     window.dispatchEvent(new CustomEvent('tarqa_roles_changed'));
     window.dispatchEvent(new Event('storage'));
@@ -1062,15 +1129,17 @@ export const grantAnnualSubscription = async (
     } catch {}
   }
 
-  // 3. مزامنة التفعيل مع خادم الباك إند (Hostinger PHP Backend)
-  syncSubscriptionToBackend('grant', {
-    userId: targetUser.id,
-    userEmail: emailClean,
-    userName: targetUser.fullName,
-    telegramUsername: tgClean,
-    telegramId: targetUser.telegramId,
-    days,
-  }).catch(() => {});
+  // 3. مزامنة التفعيل مع خادم الباك إند (Hostinger PHP Backend) - ننتظر النتيجة
+  try {
+    await syncSubscriptionToBackend('grant', {
+      userId: targetUser.id,
+      userEmail: emailClean,
+      userName: targetUser.fullName,
+      telegramUsername: tgClean,
+      telegramId: targetUser.telegramId,
+      days,
+    });
+  } catch {}
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('tarqa_subscription_changed', { detail: subRecord }));
@@ -1103,18 +1172,12 @@ export const isMockLesson = (l: any): boolean => {
   if (!l) return false;
   const id = String(l.id || '');
   const videoUrl = String(l.videoUrl || '');
-  const title = String(l.title || '');
-  // حظر وحذف أي محاضرات وهمية أو تجريبية سابقة (بما فيها فيديوهات الدلافين oceans.mp4) نهائياً
+  // حظر وحذف أي محاضرات تجريبية سابقة فقط (فيديوهات الدلافين التجريبية oceans.mp4 أو المعرفات التي تبدأ بـ mock-)
+  // لا نحظر المحاضرات الحقيقية بناء على العناوين التعليمية أو المعرفات العادية
   if (
-    MOCK_LESSON_IDS.has(id) ||
     id.startsWith('mock-') ||
     videoUrl.includes('oceans.mp4') ||
-    videoUrl.includes('vjs.zencdn.net') ||
-    title.includes('جدول الضرب') ||
-    title.includes('الحساب الذهني الخاطف') ||
-    title.includes('الكسور وتوحيد المقامات') ||
-    title.includes('التكنيك السريع للعمليات الحسابية') ||
-    title.includes('الكسور الاعتيادية والعشرية')
+    videoUrl.includes('vjs.zencdn.net')
   ) {
     return true;
   }
@@ -1134,16 +1197,16 @@ export const isMockFile = (f: any): boolean => {
 // تنظيف فوري لجميع المحاضرات والملفات الوهمية ومحاضرات الدلافين من التخزين المحلي فور تحميل الملف
 try {
   if (typeof window !== 'undefined') {
-    // إضافة محاضرات الدلافين تلقائياً إلى قائمة المحذوفات حتى لا تظهر نهائياً
+    // تنظيف قوائم المحاضرات من المحاضرات الوهمية والتجريبية (الدلافين) فقط
     const delRaw = localStorage.getItem('tarqa_deleted_lessons_v1');
-    const delList: string[] = delRaw ? JSON.parse(delRaw) : [];
-    [
-      'les-1', 'les-2', 'les-3', 'les-4', 'les-5', 'les-6', 'les-7', 'les-8',
-      'les-t2-1', 'les-t2-2', 'les-t2-3', 'les-t2-4', 'les-t2-5', 'les-t2-6', 'les-t2-7', 'les-t2-8'
-    ].forEach((id) => {
-      if (!delList.includes(id)) delList.push(id);
-    });
-    localStorage.setItem('tarqa_deleted_lessons_v1', JSON.stringify(delList));
+    if (delRaw) {
+      try {
+        const delList: string[] = JSON.parse(delRaw);
+        // إزالة معرفات الدروس العادية حتى لا تحجب أي دروس حقيقية عن غير قصد
+        const filteredDel = delList.filter((id) => id.startsWith('mock-') || id.includes('dolphin'));
+        localStorage.setItem('tarqa_deleted_lessons_v1', JSON.stringify(filteredDel));
+      } catch {}
+    }
 
     ['tarqa_custom_modules_v8', 'tarqa_custom_modules_v7'].forEach((k) => {
       const raw = localStorage.getItem(k);
@@ -1233,7 +1296,6 @@ export const coursesStorage = {
 
   // مزامنة فورية إلى السحابة (Supabase Cloud Store)
   async syncToCloud(modules?: CourseModule[], files?: CourseFileItem[], courses?: CourseItem[], banners?: AdBannerItem[]) {
-    if (!isSupabaseConfigured || !supabase) return;
     try {
       const currentMods = modules !== undefined ? modules : this.getModules();
       const currentFiles = files !== undefined ? files : this.getFiles();
@@ -1242,24 +1304,8 @@ export const coursesStorage = {
       const deletedLessonIds = this.getDeletedLessonIds();
       const deletedFileIds = this.getDeletedFileIds();
 
-      // جلب البيانات السحابية الحالية للحفاظ على الاشتراكات وسجلات التحميلات
-      let existingPayload: any = {};
-      try {
-        const { data: storeData } = await supabase
-          .from('profiles')
-          .select('ban_reason')
-          .eq('id', CLOUD_LECTURES_STORE_ID)
-          .maybeSingle();
-
-        if (storeData?.ban_reason) {
-          existingPayload = JSON.parse(storeData.ban_reason);
-          delete existingPayload.maintenanceConfig;
-        }
-      } catch {}
-
-      const payload = JSON.stringify({
-        ...existingPayload,
-        version: 4,
+      const payloadObj = {
+        version: 5,
         modules: currentMods,
         files: currentFiles,
         courses: currentCourses,
@@ -1268,52 +1314,137 @@ export const coursesStorage = {
         deletedLessonIds,
         deletedFileIds,
         updatedAt: new Date().toISOString(),
-      });
+      };
 
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          ban_reason: payload,
-          updated_at: new Date().toISOString(),
-        } as any)
-        .eq('id', CLOUD_LECTURES_STORE_ID);
+      // 1. المزامنة الفورية مع قاعدة بيانات هوستينجر (MySQL & Backend Server)
+      try {
+        await fetch('/api/hostinger_api.php?action=save_course_content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: payloadObj }),
+        });
+      } catch (e) {
+        console.warn('[coursesStorage] Hostinger sync exception:', e);
+      }
 
-      if (error) {
-        console.warn('[coursesStorage] Error syncing to cloud store by ID, trying email:', error);
-        await supabase
-          .from('profiles')
-          .update({
-            ban_reason: payload,
-            updated_at: new Date().toISOString(),
-          } as any)
-          .eq('email', CLOUD_LECTURES_STORE_EMAIL);
+      // إذا كان التطبيق يعمل محلياً (Localhost)، نرسل نسخة متزامنة إلى الخادم المباشر أيضاً
+      const isLocalhost = typeof window !== 'undefined' && (
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1'
+      );
+      if (isLocalhost) {
+        try {
+          await fetch('https://tarqa3.net/api/hostinger_api.php?action=save_course_content', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: payloadObj }),
+          });
+        } catch {}
+      }
+
+      // 2. المزامنة مع سوبابيز إذا كان مفعلاً
+      if (isSupabaseConfigured && supabase) {
+        try {
+          const payload = JSON.stringify(payloadObj);
+          await supabase
+            .from('profiles')
+            .update({
+              ban_reason: payload,
+              updated_at: new Date().toISOString(),
+            } as any)
+            .eq('id', CLOUD_LECTURES_STORE_ID);
+        } catch (e) {
+          console.warn('[coursesStorage] Supabase sync exception:', e);
+        }
       }
     } catch (e) {
       console.warn('[coursesStorage] Cloud sync exception:', e);
     }
   },
 
-  // جلب ومزامنة أحدث المحاضرات والاشتراكات من السحابة (Supabase Cloud Store)
-  async syncFromCloud(): Promise<{ modules: CourseModule[]; files: CourseFileItem[] } | null> {
-    if (!isSupabaseConfigured || !supabase) return null;
+  // جلب ومزامنة أحدث المحاضرات والاشتراكات من السحابة وقاعدة بيانات هوستينجر
+  async syncFromCloud(): Promise<{ modules: CourseModule[]; files: CourseFileItem[]; courses: CourseItem[] } | null> {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('ban_reason, updated_at')
-        .eq('id', CLOUD_LECTURES_STORE_ID)
-        .maybeSingle();
+      let parsedPayload: any = null;
 
-      let targetData = data;
-      if (error || !targetData || !targetData.ban_reason) {
-        const { data: byEmail } = await supabase
-          .from('profiles')
-          .select('ban_reason, updated_at')
-          .eq('email', CLOUD_LECTURES_STORE_EMAIL)
-          .maybeSingle();
-        targetData = byEmail;
+      // 1. الجلب المباشر من قاعدة بيانات هوستينجر
+      try {
+        const isLocalhost = typeof window !== 'undefined' && (
+          window.location.hostname === 'localhost' ||
+          window.location.hostname === '127.0.0.1'
+        );
+
+        const cacheBuster = `_t=${Date.now()}`;
+        let hostingerRes: Response | null = null;
+        try {
+          hostingerRes = await fetch(`/api/hostinger_api.php?action=get_course_content&${cacheBuster}`, {
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' }
+          });
+        } catch (e) {}
+
+        if (hostingerRes && hostingerRes.ok) {
+          try {
+            const hData = await hostingerRes.json();
+            if (hData && hData.success && hData.content) {
+              parsedPayload = hData.content;
+            }
+          } catch (e) {}
+        }
+
+        // إذا كنا على localhost ولم نجد محتوى، نجلب من الخادم المباشر tarqa3.net
+        if (!parsedPayload && isLocalhost) {
+          try {
+            const liveRes = await fetch(`https://tarqa3.net/api/hostinger_api.php?action=get_course_content&${cacheBuster}`, {
+              cache: 'no-store',
+              headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' }
+            });
+            if (liveRes.ok) {
+              const liveData = await liveRes.json();
+              if (liveData && liveData.success && liveData.content) {
+                parsedPayload = liveData.content;
+              }
+            }
+          } catch (e) {}
+        }
+      } catch (e) {
+        console.warn('[coursesStorage] Hostinger get_course_content error:', e);
       }
 
-      if (!targetData || !targetData.ban_reason) return null;
+      // 2. الجلب من سوبابيز كاحتياط في حال لم تتوفر البيانات في هوستينجر
+      if (!parsedPayload && isSupabaseConfigured && supabase) {
+        try {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('ban_reason, updated_at')
+            .eq('id', CLOUD_LECTURES_STORE_ID)
+            .maybeSingle();
+
+          let targetData = data;
+          if (error || !targetData || !targetData.ban_reason) {
+            const { data: byEmail } = await supabase
+              .from('profiles')
+              .select('ban_reason, updated_at')
+              .eq('email', CLOUD_LECTURES_STORE_EMAIL)
+              .maybeSingle();
+            targetData = byEmail;
+          }
+
+          if (targetData && targetData.ban_reason) {
+            parsedPayload = JSON.parse(targetData.ban_reason);
+          }
+        } catch (e) {}
+      }
+
+      if (!parsedPayload) {
+        // إذا كان السيرفر فارغاً حالياً ولديك محاضرات محلية (مثل موبايل الأدمن)، نرفعها فوراً للسيرفر
+        const localMods = this.getModules();
+        const localLessonCount = localMods.reduce((acc, m) => acc + (m.lessons?.length || 0), 0);
+        if (localLessonCount > 0) {
+          this.syncToCloud(localMods);
+        }
+        return null;
+      }
 
       let cloudModules: CourseModule[] | null = null;
       let cloudFiles: CourseFileItem[] | null = null;
@@ -1325,37 +1456,46 @@ export const coursesStorage = {
       let cloudSubs: Record<string, any> | null = null;
 
       try {
-        const parsed = JSON.parse(targetData.ban_reason);
-        if (Array.isArray(parsed)) {
-          cloudModules = parsed;
-        } else if (parsed && typeof parsed === 'object') {
-          if (Array.isArray(parsed.modules)) {
-            cloudModules = parsed.modules;
+        if (Array.isArray(parsedPayload)) {
+          cloudModules = parsedPayload;
+        } else if (parsedPayload && typeof parsedPayload === 'object') {
+          if (Array.isArray(parsedPayload.modules)) {
+            cloudModules = parsedPayload.modules;
           }
-          if (Array.isArray(parsed.files)) {
-            cloudFiles = parsed.files;
+          if (Array.isArray(parsedPayload.files)) {
+            cloudFiles = parsedPayload.files;
           }
-          if (Array.isArray(parsed.courses)) {
-            cloudCourses = parsed.courses;
+          if (Array.isArray(parsedPayload.courses)) {
+            cloudCourses = parsedPayload.courses;
           }
-          if (Array.isArray(parsed.adBanners)) {
-            cloudBanners = parsed.adBanners;
+          if (Array.isArray(parsedPayload.adBanners)) {
+            cloudBanners = parsedPayload.adBanners;
           }
-          if (Array.isArray(parsed.instructors)) {
-            cloudInstructors = parsed.instructors;
+          if (Array.isArray(parsedPayload.instructors)) {
+            cloudInstructors = parsedPayload.instructors;
           }
-          if (Array.isArray(parsed.deletedLessonIds)) {
-            cloudDeletedLessons = parsed.deletedLessonIds;
+          if (Array.isArray(parsedPayload.deletedLessonIds)) {
+            cloudDeletedLessons = parsedPayload.deletedLessonIds;
           }
-          if (Array.isArray(parsed.deletedFileIds)) {
-            cloudDeletedFiles = parsed.deletedFileIds;
+          if (Array.isArray(parsedPayload.deletedFileIds)) {
+            cloudDeletedFiles = parsedPayload.deletedFileIds;
           }
-          if (parsed.subscriptions && typeof parsed.subscriptions === 'object') {
-            cloudSubs = parsed.subscriptions;
+          if (parsedPayload.subscriptions && typeof parsedPayload.subscriptions === 'object') {
+            cloudSubs = parsedPayload.subscriptions;
           }
         }
       } catch (e) {
         console.warn('[coursesStorage] Cloud JSON parse error:', e);
+      }
+
+      // التحقق مما إذا كان الجهاز الحالي يحتوي على محاضرات إضافية لم تُرفع للسيرفر بعد
+      const localMods = this.getModules();
+      const localLessonCount = localMods.reduce((acc, m) => acc + (m.lessons?.length || 0), 0);
+      const cloudLessonCount = (cloudModules || []).reduce((acc: number, m: any) => acc + (m.lessons?.length || 0), 0);
+
+      if (localLessonCount > cloudLessonCount && localLessonCount > 0) {
+        this.syncToCloud(localMods);
+        cloudModules = localMods;
       }
 
       if (cloudInstructors && Array.isArray(cloudInstructors) && cloudInstructors.length > 0) {
@@ -1369,9 +1509,60 @@ export const coursesStorage = {
 
       if (cloudCourses && Array.isArray(cloudCourses) && cloudCourses.length > 0) {
         try {
-          localStorage.setItem('tarqa_custom_courses_v1', JSON.stringify(cloudCourses));
+          const pricingCache = (() => {
+            try {
+              const r = localStorage.getItem('tarqa_course_pricing_cache');
+              return r ? JSON.parse(r) : [];
+            } catch { return []; }
+          })();
+          const kashierAmount = (() => {
+            try {
+              const rk = localStorage.getItem('tarqa_kashier_settings');
+              return rk ? JSON.parse(rk).amount : null;
+            } catch { return null; }
+          })();
+
+          const preservedCourses = cloudCourses.map((c: CourseItem) => {
+            const matchPricing = Array.isArray(pricingCache) ? pricingCache.find((p: any) => p.course_id === c.id) : null;
+            let pEg = matchPricing?.price_egp ? Number(matchPricing.price_egp) : c.priceEg;
+            let pSar = matchPricing?.price_sar ? Number(matchPricing.price_sar) : c.priceSar;
+            if (c.id === 'course-foundation' && kashierAmount && Number(kashierAmount) > 10) {
+              pEg = Number(kashierAmount);
+            }
+            return {
+              ...c,
+              priceEg: pEg || c.priceEg,
+              priceSar: pSar || c.priceSar,
+            };
+          });
+
+          // دمج ذكي مع الدورات المحلية لمنع مسح أي دورة تم إنشاؤها للتو محلياً
+          const localCourses = this.getCourses();
+          const mergedCoursesMap = new Map<string, CourseItem>();
+          for (const c of preservedCourses) {
+            if (c && c.id) mergedCoursesMap.set(c.id, c);
+          }
+          let localHadExtra = false;
+          for (const c of localCourses) {
+            if (c && c.id) {
+              if (!mergedCoursesMap.has(c.id)) {
+                mergedCoursesMap.set(c.id, c);
+                localHadExtra = true;
+              } else {
+                mergedCoursesMap.set(c.id, { ...c, ...mergedCoursesMap.get(c.id) });
+              }
+            }
+          }
+          const finalMergedCourses = Array.from(mergedCoursesMap.values());
+
+          localStorage.setItem('tarqa_custom_courses_v1', JSON.stringify(finalMergedCourses));
           if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('tarqa_courses_list_changed', { detail: cloudCourses }));
+            window.dispatchEvent(new CustomEvent('tarqa_courses_list_changed', { detail: finalMergedCourses }));
+          }
+
+          // إذا كانت هناك دورة محلية جديدة لم تكن مسجلة في السحابة، نرفعها فوراً
+          if (localHadExtra) {
+            this.syncToCloud(undefined, undefined, finalMergedCourses).catch(() => {});
           }
         } catch {}
       }
@@ -1439,6 +1630,8 @@ export const coursesStorage = {
             totalDurationMinutes: lessons.reduce((sum, l) => sum + (l.durationMinutes || 0), 0),
           };
         });
+        dbCache.invalidate('db_course_modules');
+        dbCache.set('db_course_modules', cleanedModules, { tag: 'courses', ttlMs: 60 * 60 * 1000 });
         localStorage.setItem('tarqa_custom_modules_v8', JSON.stringify(cleanedModules));
         localStorage.setItem('tarqa_custom_modules_v7', JSON.stringify(cleanedModules));
         finalModules = cleanedModules;
@@ -1450,6 +1643,8 @@ export const coursesStorage = {
       let finalFiles = this.getFiles();
       if (cloudFiles && Array.isArray(cloudFiles) && cloudFiles.length > 0) {
         const cleanedFiles = cloudFiles.filter((f) => !deletedFilesSet.has(f.id) && !isMockFile(f));
+        dbCache.invalidate('db_course_files');
+        dbCache.set('db_course_files', cleanedFiles, { tag: 'courses', ttlMs: 60 * 60 * 1000 });
         localStorage.setItem('tarqa_custom_files_v2', JSON.stringify(cleanedFiles));
         localStorage.setItem('tarqa_custom_files_v1', JSON.stringify(cleanedFiles));
         finalFiles = cleanedFiles;
@@ -1461,6 +1656,7 @@ export const coursesStorage = {
       return {
         modules: finalModules,
         files: finalFiles,
+        courses: this.getCourses(),
       };
     } catch (e) {
       console.warn('[coursesStorage] syncFromCloud exception:', e);
@@ -2115,7 +2311,15 @@ export const coursesStorage = {
           const list = hasFoundation ? parsed : [DEFAULT_FOUNDATION_COURSE, ...parsed];
           return list.map((c: CourseItem) => {
             if (c.id === 'course-foundation' && (!c.priceEg || c.priceEg === 620)) {
-              return { ...c, priceEg: ANNUAL_SUBSCRIPTION_PRICE_EGP };
+              let dynamicPrice = ANNUAL_SUBSCRIPTION_PRICE_EGP;
+              try {
+                const rk = localStorage.getItem('tarqa_kashier_settings');
+                if (rk) {
+                  const ks = JSON.parse(rk);
+                  if (ks.amount && Number(ks.amount) > 10) dynamicPrice = Number(ks.amount);
+                }
+              } catch {}
+              return { ...c, priceEg: dynamicPrice };
             }
             return c;
           });
@@ -2320,14 +2524,14 @@ export async function syncSubscriptionsFromCloud(): Promise<Record<string, any>>
       } catch {}
     }
 
-    // 3. دمج ذكي: يتم دمج بيانات السحابة أولاً، ولكن أي إلغاء صريح محلياً أو سحابياً يحظى بالأولوية المطلقة
-    const merged = { ...cloudSubs, ...localSubs };
-    for (const [key, val] of Object.entries(localSubs)) {
+    // 3. دمج ذكي: بيانات السيرفر وقاعدة البيانات تحظى بالأولوية المطلقة على أي كاش قديم
+    const merged = { ...localSubs, ...cloudSubs };
+    for (const [key, val] of Object.entries(cloudSubs)) {
       if (val && ((val as any).isActive === false || (val as any).active === false || (val as any).status === 'cancelled')) {
         merged[key] = val;
       }
     }
-    for (const [key, val] of Object.entries(cloudSubs)) {
+    for (const [key, val] of Object.entries(localSubs)) {
       if (val && ((val as any).isActive === false || (val as any).active === false || (val as any).status === 'cancelled')) {
         merged[key] = val;
       }
@@ -2339,4 +2543,187 @@ export async function syncSubscriptionsFromCloud(): Promise<Record<string, any>>
     return localSubs;
   }
 }
+
+// ==============================================================================
+// نظام إدارة المشتركين المخصص لكل دورة تدريبية (Course-Specific Subscriptions)
+// ==============================================================================
+
+export interface CourseSubscriberRecord {
+  id: string;
+  userId: string;
+  userEmail?: string;
+  userName?: string;
+  courseId: string;
+  courseTitle?: string;
+  isActive: boolean;
+  startsAt: string;
+  expiresAt?: string;
+  enrolledAt: string;
+}
+
+export const courseSubscriptionsManager = {
+  // جلب كافة سجلات اشتراكات الدورات من التخزين المحلي
+  getAllCourseSubscriptions(): Record<string, CourseSubscriberRecord> {
+    try {
+      const raw = localStorage.getItem('tarqa_course_subscriptions');
+      if (raw) {
+        return JSON.parse(raw);
+      }
+    } catch {}
+    return {};
+  },
+
+  // جلب مشتركي دورة محددة
+  getSubscribersForCourse(courseId: string): CourseSubscriberRecord[] {
+    const all = this.getAllCourseSubscriptions();
+    const matched = Object.values(all).filter((rec) => rec.courseId === courseId);
+    // إزالة التكرار بنفس الـ userId
+    const uniqueMap = new Map<string, CourseSubscriberRecord>();
+    for (const m of matched) {
+      if (m.userId && !uniqueMap.has(m.userId)) {
+        uniqueMap.set(m.userId, m);
+      }
+    }
+    return Array.from(uniqueMap.values());
+  },
+
+  // التحقق مما إذا كان المستخدم مشتركاً في دورة محددة
+  isUserSubscribedToCourse(
+    user?: { id?: string; email?: string; telegramId?: number; role?: string } | null,
+    courseId?: string
+  ): boolean {
+    if (!user) return false;
+    if (!courseId) return true;
+    
+    // المالك والمشرفون والمعلمون ومحرر المحاضرات لديهم وصول شامل مجاني
+    if (isOwnerEmail(user.email)) return true;
+    const role = (user.role || '').toLowerCase().trim();
+    if (role === 'super_admin' || role === 'admin' || role === 'teacher' || role === 'e_cms') {
+      return true;
+    }
+
+    // فحص الاشتراك العام الشامل
+    if ((user as any).isSubscribed === true) {
+      return true;
+    }
+
+    const all = this.getAllCourseSubscriptions();
+    const cleanId = user.id ? user.id.toLowerCase().trim() : '';
+    const cleanEmail = user.email ? user.email.toLowerCase().trim() : '';
+    const cleanTgId = user.telegramId ? String(user.telegramId) : '';
+
+    const keysToCheck = [
+      `${courseId}_${cleanId}`,
+      `${courseId}_${cleanEmail}`,
+      `${courseId}_${cleanTgId}`
+    ];
+
+    for (const key of keysToCheck) {
+      const record = all[key];
+      if (record && record.isActive) {
+        if (!record.expiresAt) return true;
+        const notExp = new Date(record.expiresAt).getTime() > Date.now();
+        if (notExp) return true;
+      }
+    }
+
+    return false;
+  },
+
+  // تفعيل أو إلغاء اشتراك مستخدم في دورة معينة
+  async setCourseSubscription(
+    courseId: string,
+    user: { id: string; email?: string; fullName?: string; telegramUsername?: string; telegramId?: number },
+    isActive: boolean,
+    days: number = 365,
+    courseTitle?: string
+  ): Promise<{ success: boolean; record: CourseSubscriberRecord }> {
+    const all = this.getAllCourseSubscriptions();
+    const cleanId = user.id.toLowerCase().trim();
+    const cleanEmail = user.email ? user.email.toLowerCase().trim() : '';
+    const cleanTgId = user.telegramId ? String(user.telegramId) : '';
+    const expiresAt = isActive ? new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString() : undefined;
+
+    const record: CourseSubscriberRecord = {
+      id: `csub_${cleanId}_${courseId}`,
+      userId: user.id,
+      userEmail: user.email,
+      userName: user.fullName || 'طالب طرقع',
+      courseId,
+      courseTitle: courseTitle || courseId,
+      isActive,
+      startsAt: new Date().toISOString(),
+      expiresAt,
+      enrolledAt: new Date().toISOString(),
+    };
+
+    const primaryKey = `${courseId}_${cleanId}`;
+    all[primaryKey] = record;
+    all[`${cleanId}_${courseId}`] = record;
+    if (cleanEmail) {
+      all[`${courseId}_${cleanEmail}`] = record;
+      all[`${cleanEmail}_${courseId}`] = record;
+    }
+    if (cleanTgId) {
+      all[`${courseId}_${cleanTgId}`] = record;
+      all[`${cleanTgId}_${courseId}`] = record;
+    }
+
+    try {
+      localStorage.setItem('tarqa_course_subscriptions', JSON.stringify(all));
+    } catch {}
+
+    // المزامنة مع سيرفر هوستينجر
+    try {
+      await fetch(`/api/hostinger_api.php?action=update_course_subscription`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          course_id: courseId,
+          user_id: user.id,
+          email: user.email,
+          is_active: isActive ? 1 : 0,
+          expires_at: expiresAt ? expiresAt.slice(0, 19).replace('T', ' ') : null,
+        }),
+      });
+    } catch (e) {
+      console.warn('Sync course sub to Hostinger notice:', e);
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tarqa_course_subscriptions_changed', { detail: { courseId, user, isActive } }));
+      window.dispatchEvent(new Event('tarqa:subscription_updated'));
+      window.dispatchEvent(new Event('tarqa_subscription_changed'));
+    }
+
+    return { success: true, record };
+  },
+
+  // مزامنة اشتراكات الدورات من سيرفر هوستينجر
+  async syncFromHostinger(): Promise<void> {
+    try {
+      const res = await fetch('/api/hostinger_api.php?action=get_course_subscriptions');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && Array.isArray(data.subscriptions)) {
+          const current = this.getAllCourseSubscriptions();
+          for (const s of data.subscriptions) {
+            const key = `${s.course_id}_${s.user_id}`;
+            current[key] = {
+              id: s.id,
+              userId: s.user_id,
+              userEmail: s.user_email,
+              courseId: s.course_id,
+              isActive: Boolean(Number(s.is_active)),
+              startsAt: s.starts_at || new Date().toISOString(),
+              expiresAt: s.expires_at || undefined,
+              enrolledAt: s.starts_at || new Date().toISOString(),
+            };
+          }
+          localStorage.setItem('tarqa_course_subscriptions', JSON.stringify(current));
+        }
+      }
+    } catch {}
+  }
+};
 

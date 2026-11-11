@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ShieldCheck,
   Lock,
@@ -15,7 +15,7 @@ import {
   Zap
 } from 'lucide-react';
 import { TarqaUser } from '../lib/supabase';
-import { logKashierTransaction, KashierTransaction } from '../lib/kashierService';
+import { logKashierTransaction, KashierTransaction, getKashierSettings, createKashierPaymentSession } from '../lib/kashierService';
 
 export interface PricingOption {
   id: 'EGP' | 'SAR';
@@ -29,34 +29,12 @@ export interface PricingOption {
   isPopular?: boolean;
 }
 
-export const PRICING_OPTIONS: PricingOption[] = [
-  {
-    id: 'EGP',
-    currency: 'EGP',
-    amount: 1100,
-    amountStr: '1100',
-    label: 'الجنيه المصري',
-    country: 'جمهورية مصر العربية',
-    flag: '🇪🇬',
-    methods: ['فودافون كاش والمحافظ', 'ميزة (Meeza)', 'Visa', 'Mastercard'],
-    isPopular: true,
-  },
-  {
-    id: 'SAR',
-    currency: 'SAR',
-    amount: 75,
-    amountStr: '75',
-    label: 'الريال السعودي',
-    country: 'المملكة العربية السعودية ودول الخليج',
-    flag: '🇸🇦',
-    methods: ['مدى (Mada)', 'Visa', 'Mastercard'],
-    isPopular: false,
-  },
-];
-
 export interface KashierCheckoutProps {
   currentUser?: TarqaUser | null;
   defaultCurrency?: 'EGP' | 'SAR';
+  customAmount?: number;
+  customPriceEg?: number;
+  customPriceSar?: number;
   onSuccess?: (transaction: KashierTransaction) => void;
   onError?: (error: string) => void;
   className?: string;
@@ -85,6 +63,9 @@ async function computeBrowserHmacSha256(key: string, message: string): Promise<s
 export const KashierCheckout: React.FC<KashierCheckoutProps> = ({
   currentUser,
   defaultCurrency = 'EGP',
+  customAmount,
+  customPriceEg,
+  customPriceSar,
   onSuccess,
   onError,
   className = '',
@@ -92,8 +73,70 @@ export const KashierCheckout: React.FC<KashierCheckoutProps> = ({
 }) => {
   // 1. حالة اختيار الباقة والعملة الديناميكية
   const [selectedCurrency, setSelectedCurrency] = useState<'EGP' | 'SAR'>(defaultCurrency);
+
+  // قراءة الأسعار المعتمدة ديناميكياً من الإعدادات والدورات
+  const getDynamicEg = () => {
+    if (customPriceEg && customPriceEg > 0) return customPriceEg;
+    if (defaultCurrency === 'EGP' && customAmount && customAmount > 0) return customAmount;
+    try {
+      const s = getKashierSettings();
+      if (s.amount && s.amount > 10) return s.amount;
+    } catch {}
+    return 1100;
+  };
+
+  const getDynamicSar = () => {
+    if (customPriceSar && customPriceSar > 0) return customPriceSar;
+    if (defaultCurrency === 'SAR' && customAmount && customAmount > 0) return customAmount;
+    return 75;
+  };
+
+  const [dynamicEgPrice, setDynamicEgPrice] = useState<number>(getDynamicEg);
+  const [dynamicSarPrice, setDynamicSarPrice] = useState<number>(getDynamicSar);
+
+  useEffect(() => {
+    const syncPrices = () => {
+      setDynamicEgPrice(getDynamicEg());
+      setDynamicSarPrice(getDynamicSar());
+    };
+    syncPrices();
+    window.addEventListener('tarqa_kashier_settings_changed', syncPrices);
+    window.addEventListener('tarqa_course_pricing_updated', syncPrices);
+    window.addEventListener('tarqa_courses_list_changed', syncPrices);
+    return () => {
+      window.removeEventListener('tarqa_kashier_settings_changed', syncPrices);
+      window.removeEventListener('tarqa_course_pricing_updated', syncPrices);
+      window.removeEventListener('tarqa_courses_list_changed', syncPrices);
+    };
+  }, [customAmount, customPriceEg, customPriceSar, defaultCurrency]);
+
+  const pricingOptions: PricingOption[] = [
+    {
+      id: 'EGP',
+      currency: 'EGP',
+      amount: dynamicEgPrice,
+      amountStr: String(dynamicEgPrice),
+      label: 'الجنيه المصري',
+      country: 'جمهورية مصر العربية',
+      flag: '🇪🇬',
+      methods: ['فودافون كاش والمحافظ', 'ميزة (Meeza)', 'Visa', 'Mastercard'],
+      isPopular: true,
+    },
+    {
+      id: 'SAR',
+      currency: 'SAR',
+      amount: dynamicSarPrice,
+      amountStr: String(dynamicSarPrice),
+      label: 'الريال السعودي',
+      country: 'المملكة العربية السعودية ودول الخليج',
+      flag: '🇸🇦',
+      methods: ['مدى (Mada)', 'Visa', 'Mastercard'],
+      isPopular: false,
+    },
+  ];
+
   const selectedOption =
-    PRICING_OPTIONS.find((opt) => opt.currency === selectedCurrency) || PRICING_OPTIONS[0];
+    pricingOptions.find((opt) => opt.currency === selectedCurrency) || pricingOptions[0];
 
   const [loading, setLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -104,7 +147,9 @@ export const KashierCheckout: React.FC<KashierCheckoutProps> = ({
   const iframeKey =
     (import.meta as any).env?.VITE_KASHIER_IFRAME_KEY ||
     '91bdc6e4-423d-4bcb-91ef-a27485a465d1';
-  // ⚠️ Note: Secret key is kept strictly on the backend for security
+  const kashierSecretKey =
+    (import.meta as any).env?.VITE_KASHIER_SECRET_KEY ||
+    'b46424f4680afffc7f19ee0fcaa4ff68$fd7738111efb5531f2f08898775d3a3ebb735de9a628ff4acfda3cf098d91aea4a4100f86d1459c4cf06a590354d061b';
   const mode = 'live';
   const baseUrl = 'https://payments.kashier.io';
 
@@ -124,86 +169,23 @@ export const KashierCheckout: React.FC<KashierCheckoutProps> = ({
 
     try {
       const orderId = generateUniqueOrderId();
-      const amount = selectedOption.amountStr; // "1" or "75"
-      const currency = selectedOption.currency; // "EGP" or "SAR"
-      const formattedAmount = Number(selectedOption.amount).toFixed(2);
-
-      const origin =
-        typeof window !== 'undefined' && window.location.origin.startsWith('http')
-          ? window.location.origin
-          : 'https://tarqa3.net';
-
-      const redirectUrl = `${origin}/?payment=kashier_done&order=${orderId}`;
-      const webhookUrl = `${origin}/api/webhooks/kashier`;
-
-      // حساب الهاش المشفر عبر الصيغة المعيارية لكاشير
-      let hash = '';
-      const canonicalPath = `/?payment=${merchantId}.${orderId}.${amount}.${currency}`;
-
-      // 1. المحاولة أولاً عبر الباك إند API للحصول على التوقيع المشفر
-      try {
-        const hashRes = await fetch('/api/kashier/hash', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            orderId,
-            amount,
-            currency,
-            merchantId,
-          }),
-        });
-
-        if (hashRes.ok) {
-          const hashData = await hashRes.json();
-          if (hashData.hash) {
-            hash = hashData.hash;
-          }
-        }
-      } catch (backendErr) {
-        console.warn('[KashierCheckout] Backend hash endpoint error, falling back to Web Crypto:', backendErr);
-      }
-
-      // 2. استخدام Web Crypto API في المتصفح في حال تعذر الاتصال بالباك إند
-      // ملاحظة: كاشير تعتمد مفتاح الآي فريم (iframeKey / Payment API Key) لتشفير الـ HPP
-      if (!hash) {
-        hash = await computeBrowserHmacSha256(iframeKey, canonicalPath);
-      }
-
-      // تسجيل المعاملة في السجل المحلي للموقع
-      logKashierTransaction({
-        orderId,
-        userId: currentUser?.id || 'guest',
-        userName: currentUser?.fullName || 'طالب طرقع',
-        userEmail: currentUser?.email || 'student@tarqa.app',
+      const sessionRes = await createKashierPaymentSession(currentUser || null, {
         amount: selectedOption.amount,
-        currency,
-        status: 'PENDING',
-        details: `بدء توجيه العميل للدفع المباشر (${amount} ${currency}) عبر كاشير Live`,
+        currency: selectedOption.currency,
+        description: `اشتراك منصة طرقع - ${selectedOption.label}`,
       });
 
-      // 3. بناء الرابط المباشر بجميع المعاملات الإلزامية التي يطلبها كاشير في queryParamMap
-      const queryParams = new URLSearchParams({
-        merchantId,
-        order: orderId,
-        orderId: orderId,
-        amount,
-        currency,
-        mode,
-        hash,
-        merchantRedirect: redirectUrl,
-        serverWebhook: webhookUrl,
-        display: 'ar',
-        brandColor: '#f59e0b',
-      });
+      if (!sessionRes.success || !sessionRes.sessionUrl) {
+        throw new Error(sessionRes.error || 'تعذر بدء جلسة الدفع عبر كاشير');
+      }
 
-      const paymentUrl = `${baseUrl}/?${queryParams.toString()}`;
-
-      // حفظ بيانات الطلب والعميل محلياً لضمان تفعيل الحساب فور العودة
+      // حفظ بيانات الطلب والعميل محلياً للتحقق عند العودة بعد نجاح الدفع فقط
       try {
         localStorage.setItem(
           'tarqa_pending_kashier_payment',
           JSON.stringify({
-            orderId,
+            orderId: sessionRes.orderId || orderId,
+            sessionId: sessionRes.sessionId,
             amount: selectedOption.amount,
             currency: selectedOption.currency,
             userId: currentUser?.id,
@@ -216,8 +198,8 @@ export const KashierCheckout: React.FC<KashierCheckoutProps> = ({
         console.warn('LocalStorage save error:', storageErr);
       }
 
-      // 4. التوجيه الفوري لصفحة كاشير الرسمية
-      window.location.href = paymentUrl;
+      // التوجيه الفوري لصفحة كاشير الرسمية الموثقة برقم الجلسة
+      window.location.href = sessionRes.sessionUrl;
     } catch (err: any) {
       console.error('[KashierCheckout] Redirection error:', err);
       const msg = err?.message || 'تعذر بدء عملية الدفع، يرجى المحاولة مرة أخرى.';
@@ -274,7 +256,7 @@ export const KashierCheckout: React.FC<KashierCheckoutProps> = ({
         </label>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {PRICING_OPTIONS.map((opt) => {
+          {pricingOptions.map((opt: PricingOption) => {
             const isSelected = selectedCurrency === opt.currency;
             return (
               <button

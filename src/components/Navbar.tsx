@@ -20,7 +20,8 @@ import {
   Send,
   ExternalLink,
   GraduationCap,
-  CreditCard
+  CreditCard,
+  Tag
 } from 'lucide-react';
 import { TarqaUser, authService } from '../lib/supabase';
 import { pointsService } from '../lib/pointsService';
@@ -31,7 +32,7 @@ import { TELEGRAM_BOT_USERNAME, TELEGRAM_BOT_URL } from '../lib/telegram';
 interface NavbarProps {
   darkMode: boolean;
   onToggleDarkMode: () => void;
-  onSelectTab: (tab: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles' | 'leaderboard' | 'admin-kashier' | 'admin-security' | 'kashier' | 'security') => void;
+  onSelectTab: (tab: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles' | 'leaderboard' | 'admin-kashier' | 'admin-security' | 'kashier' | 'security' | 'admin-promo' | 'promo' | any) => void;
   activeTab: string;
   onOpenAuth?: (initialTab?: 'signin' | 'signup') => void;
   currentUser?: TarqaUser | null;
@@ -172,15 +173,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             <button
-              onClick={() => onSelectTab('speed')}
+              onClick={() => onSelectTab('simulator')}
               className={`px-2.5 lg:px-3.5 py-1.5 rounded-xl font-bold transition-all flex items-center gap-1.5 shrink-0 ${
-                activeTab === 'speed'
+                activeTab === 'simulator'
                   ? 'bg-amber-500 text-slate-950 shadow-sm font-black'
                   : 'text-slate-600 dark:text-slate-400 hover:text-amber-500'
               }`}
             >
-              <Zap className="w-3.5 h-3.5 fill-current" />
-              <span>تحدي 45ث ⚡</span>
+              <Sparkles className="w-3.5 h-3.5 fill-current" />
+              <span>المحاكيات 🎯</span>
             </button>
 
             <button
@@ -241,6 +242,23 @@ export const Navbar: React.FC<NavbarProps> = ({
                       <div className="flex flex-col text-start">
                         <span>بوابة كاشير والمدفوعات</span>
                         <span className="text-[10px] text-slate-400 font-normal">إعدادات الدفع والسجلات 💳</span>
+                      </div>
+                    </button>
+
+                    {/* مولّد وإدارة الكوبونات وأكواد الخصم */}
+                    <button
+                      type="button"
+                      onClick={() => { onSelectTab('admin-promo' as any); setAdminDropdownOpen(false); }}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition text-right ${
+                        activeTab === 'admin-promo' || activeTab === 'promo' ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 font-black' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
+                        <Tag className="w-4 h-4" />
+                      </div>
+                      <div className="flex flex-col text-start">
+                        <span>مولّد وإدارة الكوبونات 🎟️</span>
+                        <span className="text-[10px] text-slate-400 font-normal">توليد أكواد خصم وتحديد المستخدمين</span>
                       </div>
                     </button>
 
@@ -550,19 +568,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
 
                 <button
-                  onClick={() => handleTabClick('speed')}
+                  onClick={() => handleTabClick('simulator')}
                   className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-bold transition ${
-                    activeTab === 'speed'
+                    activeTab === 'simulator'
                       ? 'bg-amber-500 text-slate-950 font-black'
                       : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <Zap className="w-4 h-4 text-amber-500" />
-                    <span>تحدي طرقع للسرعة (45 ثانية)</span>
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    <span>المحاكيات (محاكي قياس) 🎯</span>
                   </div>
                   <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                    قريباً
+                    جديد 🎯
                   </span>
                 </button>
               </div>
@@ -585,6 +603,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <div className="flex items-center gap-2.5">
                       <CreditCard className="w-4 h-4 text-emerald-500" />
                       <span>بوابة كاشير والمدفوعات 💳</span>
+                    </div>
+                    <ChevronLeft className="w-4 h-4 opacity-50" />
+                  </button>
+
+                  <button
+                    onClick={() => handleTabClick('admin-promo' as any)}
+                    className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-bold transition ${
+                      activeTab === 'admin-promo' || activeTab === 'promo'
+                        ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 font-black'
+                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Tag className="w-4 h-4 text-amber-500" />
+                      <span>مولّد وإدارة الكوبونات 🎟️</span>
                     </div>
                     <ChevronLeft className="w-4 h-4 opacity-50" />
                   </button>

@@ -47,12 +47,12 @@ function registerWebMCPTools() {
       try {
         (navigator as any).modelContext.registerTool({
           name: 'get_platform_info',
-          description: 'معلومات تفصيلية عن منصة طرقع لتدريب القدرات العامة (القسم الكمي)',
+          description: 'معلومات تفصيلية عن منصة طرقع لدورات وتأسيس القدرات العامة (القسم الكمي)',
           inputSchema: { type: 'object', properties: {} },
           execute: async () => ({
             name: 'منصة طرقع للقدرات',
             url: 'https://tarqa3.net/',
-            description: 'أقوى منصة تدريب تفاعلية لاختبار القدرات العامة (القسم الكمي) ومحاكي قياس.',
+            description: 'أقوى منصة تدريب وشروحات تفاعلية لاختبار القدرات العامة (القسم الكمي) ودورات التأسيس الذكية.',
             support: 'https://t.me/tr23km',
             email: 'tarqa3k@gmail.com',
             phone: '+201104687320'
@@ -60,19 +60,13 @@ function registerWebMCPTools() {
         });
 
         (navigator as any).modelContext.registerTool({
-          name: 'search_questions',
-          description: 'ابحث في بنك أسئلة وتجميعات اختبار القدرات العامة (القسم الكمي)',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              query: { type: 'string', description: 'كلمة البحث أو موضوع المسألة' }
-            },
-            required: ['query']
-          },
-          execute: async (params: any) => ({
-            query: params?.query || '',
+          name: 'get_courses_info',
+          description: 'استعلام عن دورات ومحاضرات تأسيس القدرات العامة (القسم الكمي) في منصة طرقع',
+          inputSchema: { type: 'object', properties: {} },
+          execute: async () => ({
             status: 'success',
-            url: 'https://tarqa3.net/?q=' + encodeURIComponent(params?.query || '')
+            coursesUrl: 'https://tarqa3.net/#courses',
+            description: 'دورات تأسيس شاملة للقدرات الكمي مع استراتيجيات الحل الذهني السريع.'
           })
         });
       } catch (e) {

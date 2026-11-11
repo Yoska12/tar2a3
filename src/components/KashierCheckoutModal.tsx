@@ -11,6 +11,8 @@ export interface KashierCheckoutModalProps {
   currentUser: TarqaUser | null;
   onPaymentSuccess: (transaction: KashierTransaction) => void;
   customAmount?: number;
+  customPriceEg?: number;
+  customPriceSar?: number;
   customCurrency?: 'EGP' | 'SAR';
   onOpenPolicies?: (tab: 'terms' | 'privacy' | 'cookies' | 'refund') => void;
 }
@@ -21,6 +23,8 @@ export const KashierCheckoutModal: React.FC<KashierCheckoutModalProps> = ({
   currentUser,
   onPaymentSuccess,
   customAmount = 1100,
+  customPriceEg,
+  customPriceSar,
   customCurrency = 'EGP',
   onOpenPolicies,
 }) => {
@@ -31,7 +35,7 @@ export const KashierCheckoutModal: React.FC<KashierCheckoutModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/85 backdrop-blur-md animate-in fade-in overflow-y-auto">
-      <div className="relative w-full max-w-xl my-auto">
+      <div className="relative w-[95%] max-w-xl my-auto max-h-[92vh] overflow-y-auto">
         {/* شريط رأس النافذة */}
         <div className="flex justify-between items-center mb-2 px-1">
           <div className="flex items-center gap-1.5 text-xs text-slate-400">
@@ -84,6 +88,9 @@ export const KashierCheckoutModal: React.FC<KashierCheckoutModalProps> = ({
           <KashierCheckout
             currentUser={currentUser}
             defaultCurrency={customCurrency}
+            customAmount={customAmount}
+            customPriceEg={customPriceEg}
+            customPriceSar={customPriceSar}
             onSuccess={(tx) => {
               onPaymentSuccess(tx);
               onClose();
@@ -96,7 +103,7 @@ export const KashierCheckoutModal: React.FC<KashierCheckoutModalProps> = ({
         ) : (
           <InstaPayCheckout
             currentUser={currentUser}
-            amount={customAmount || 1100}
+            amount={customPriceEg || customAmount || 1100}
             currency="EGP"
             onSuccess={() => {
               // لا يتم تفعيل الاشتراك تلقائياً لاشتراكات إنستاباي؛ التفعيل يتم يدوياً عبر الدعم الفني بعد التحقق من الإيصال

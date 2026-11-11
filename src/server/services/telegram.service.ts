@@ -1,7 +1,5 @@
 import { getSupabaseAdminClient } from '../lib/db';
 import { TelegramWebhookUpdate } from '../types/telegram.types';
-import { QuizSubmissionResult } from '../types/quiz.types';
-import { mockQuestions } from '../../data/mockQuestions';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 export const TELEGRAM_BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || 'Tarqa3bot';
@@ -52,11 +50,11 @@ export class TelegramService {
       const welcome = `
 👋 <b>أهلاً بك في بوت منصة طرقع للكمي 🎯</b>
 
-هنا يمكنك متابعة درجاتك وتلقي تنبيهات الاختبارات والمسائل اليومية الذكية.
+هنا يمكنك متابعة دوراتك والاشتراك وتلقي تنبيهات الشروحات وحيل التأسيس اليومية.
 
 <b>الأوامر المتاحة:</b>
-🎯 /score - عرض آخر نتيجة ودرجتك الحالية
-⚡ /daily_question - استلام مسألة كمي سريعة للتدريب
+🎯 /score - عرض حسابك ومستواك الحالي
+⚡ /daily_question - استلام حيلة وفائدة كمي ذكية للحل السريع
 📖 /help - المساعدة وقائمة التعليمات
       `.trim();
 
@@ -69,34 +67,24 @@ export class TelegramService {
       let scoreMessage = 'لم يتم العثور على حساب مرتبط بهذا التيليجرام بعد. يرجى تسجيل الدخول في المنصة أولاً.';
 
       try {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('id, full_name, target_score')
-          .or(`telegram_chat_id.eq.${chatId},telegram_id.eq.${chatId}`)
-          .maybeSingle();
+        const fromId = msg.from?.id;
+        const fromUsername = msg.from?.username;
 
-        if (profile) {
-          const { data: lastAttempt } = await supabase
-            .from('user_quiz_attempts')
-            .select('score, correct_count, total_questions, time_spent_seconds, completed_at')
-            .eq('user_id', profile.id)
-            .order('completed_at', { ascending: false })
-            .limit(1)
+        if (fromId || fromUsername) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('full_name, target_score, role')
+            .or(`telegram_id.eq.${fromId},telegram_username.ilike.${fromUsername}`)
             .maybeSingle();
 
-          if (lastAttempt) {
+          if (profile) {
             scoreMessage = `
-📊 <b>سجل درجات الطالب: ${profile.full_name}</b>
+👤 <b>الطالب:</b> ${profile.full_name || 'طالب طرقع'}
+🎯 <b>الهدف المطلوب:</b> ${profile.target_score || 100}
+🏆 <b>الرتبة الحالية:</b> ${profile.role === 'admin' ? 'مشرف المنصة 👑' : 'طالب نخبوي 🎓'}
 
-🎯 <b>آخر نتيجة:</b> ${lastAttempt.score}%
-✅ <b>الإجابات الصحيحة:</b> ${lastAttempt.correct_count} من ${lastAttempt.total_questions}
-⏱ <b>الوقت:</b> ${Math.round(lastAttempt.time_spent_seconds / 60)} دقيقة
-🎯 <b>الدرجة المستهدفة:</b> ${profile.target_score || 100}
-
-<b>هدفنا 100 🎯</b> استمر في الطرقعة والتدريب!
+تابع شروحات التأسيس وحيل طرقع عبر الموقع لتثبيت الحل الذهني السريع!
             `.trim();
-          } else {
-            scoreMessage = `مرحباً ${profile.full_name}! لم تقم بإنهاء أي اختبار بعد. ادخل المنصة وطرقع أول اختبار الآن! 🎯`;
           }
         }
       } catch (e) {
@@ -107,27 +95,27 @@ export class TelegramService {
       return { handled: true, replyText: scoreMessage };
     }
 
-    // 3. الأمر /daily_question (مسألة كمي يومية ذكية)
-    if (command === '/daily_question') {
-      const randomQ = mockQuestions[Math.floor(Math.random() * mockQuestions.length)];
-      const optionsText = randomQ.options
-        .map((opt) => `<b>[${opt.id}]</b> ${opt.text}`)
-        .join('\n');
+    // 3. الأمر /daily_question (حيلة كمي يومية ذكية)
+    if (command === '/daily_question' || command === '/daily_tip') {
+      const tips = [
+        '📐 في المثلث القائم 30-60: الضلع المقابل للزاوية 30° يساوي نصف طول الوتر مباشرة بدون فيثاغورس!',
+        '🔢 لضرب أي عدد في 5 ذهنياً: اقسم العدد على 2 ثم ضع صفر أو حرك الفاصلة لليمين.',
+        '⚡ لحساب النسبة المئوية سريعاً: 10% تعني تحريك الفاصلة خانة لليسار، 5% هي نصف الـ 10%.',
+        '💡 في مسائل السرعة والمسافة: المسافة = السرعة × الزمن، وعند حركة جسمين في نفس الاتجاه نطرح السرعتين.',
+        '🎯 مربع أي عدد آحاده 5 (مثل 35²): اضرب العشرات في التالي (3 × 4 = 12) ثم ألحق 25 فيصبح 1225!'
+      ];
+      const selectedTip = tips[Math.floor(Math.random() * tips.length)];
 
-      const questionMsg = `
-⚡ <b>مسألة طرقع السريعة لليوم 🎯</b>
-<i>${randomQ.categoryId === 'geometry' ? '📐 هندسة' : '🔢 حساب وجبر'}</i>
+      const tipMsg = `
+⚡ <b>حيلة طرقع السريعة لليوم 🎯</b>
 
-❓ <b>السؤال:</b>
-${randomQ.questionText}
+${selectedTip}
 
-${optionsText}
-
-💡 <i>فكر وحل ذهنياً بأسرع طريقة!</i>
+💡 <i>تدرب على الحل الذهني السريع دائماً في منصة طرقع!</i>
       `.trim();
 
-      await this.sendMessage(chatId, questionMsg);
-      return { handled: true, replyText: questionMsg };
+      await this.sendMessage(chatId, tipMsg);
+      return { handled: true, replyText: tipMsg };
     }
 
     // 4. الأمر /help
@@ -135,8 +123,8 @@ ${optionsText}
       const help = `
 📚 <b>دليل بوت منصة طرقع للكمي:</b>
 
-• /score - لعرض درجاتك وتقرير إتقانك
-• /daily_question - للحصول على مسألة كمي ذكية للتدريب
+• /score - لعرض بيانات حسابك وهدفك
+• /daily_question - للحصول على حيلة كمي ذكية للحل السريع
 • /start - بدء المحادثة وتأكيد الربط
 
 <b>هدفنا 100 🎯</b>
@@ -146,43 +134,5 @@ ${optionsText}
     }
 
     return { handled: false };
-  }
-
-  /**
-   * خدمة خلفية لإرسال إشعار فوري للطالب عبر تليجرام فور تسليم الاختبار
-   */
-  static async sendQuizResultAlert(userId: string, result: QuizSubmissionResult): Promise<boolean> {
-    const supabase = getSupabaseAdminClient();
-
-    try {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('full_name, telegram_chat_id, telegram_id, target_score')
-        .eq('id', userId)
-        .maybeSingle();
-
-      const chatId = profile?.telegram_chat_id || profile?.telegram_id;
-      if (!chatId) return false;
-
-      const passed = result.score >= 80;
-      const emoji = result.score >= 90 ? '🏆' : passed ? '👏' : '💪';
-
-      const alertText = `
-${emoji} <b>تم تصحيح اختبارك في منصة طرقع للكمي!</b>
-
-👤 <b>الطالب:</b> ${profile.full_name || 'طالب طرقع'}
-🎯 <b>الدرجة المحققة:</b> <b>${result.score}%</b>
-✅ <b>الإجابات الصحيحة:</b> ${result.correctCount} من ${result.totalQuestions}
-⏱ <b>الوقت الإجمالي:</b> ${Math.round(result.timeSpentSeconds / 60)} دقيقة (${result.averageTimePerQuestion} ثانية/سؤال)
-🎯 <b>الهدف المطلوب:</b> ${profile.target_score || 100}
-
-${result.score >= 90 ? '🔥 أداء نخبوي رائع، أنت على طريق الـ 100 بإذن الله!' : 'راجع شروحات وحيل طرقع في المنصة لتثبيت الحل الذهني السريع.'}
-      `.trim();
-
-      return await this.sendMessage(chatId, alertText);
-    } catch (err) {
-      console.warn('[TelegramService] Alert dispatch failed:', err);
-      return false;
-    }
   }
 }

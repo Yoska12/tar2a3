@@ -21,18 +21,21 @@ import {
   Users,
   ExternalLink,
   Globe,
-  Wrench
+  Wrench,
+  Lock,
+  Target
 } from 'lucide-react';
 import { Navbar } from './components/Navbar';
-import { QuizInterface } from './components/QuizInterface';
-import { ResultView } from './components/ResultView';
 import { AuthModal } from './components/AuthModal';
 import { StudentDashboard } from './components/StudentDashboard';
+import { SimulatorHub } from './components/SimulatorHub';
+import { StandaloneSimulatorView, SimulatorType } from './components/StandaloneSimulatorView';
 import { LeaderboardView } from './components/LeaderboardView';
 import { AdminPanel, AdminTab } from './components/AdminPanel';
 import { ClassroomView } from './components/ClassroomView';
 import { CoursesView } from './components/CoursesView';
 import { LecturesCMS } from './components/LecturesCMS';
+import { CourseSubscribersDashboard } from './components/CourseSubscribersDashboard';
 import { SuperAdminRolesPanel } from './components/SuperAdminRolesPanel';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { LegalPoliciesModal, PolicyTab } from './components/LegalPoliciesModal';
@@ -40,16 +43,15 @@ import { CookieConsentBanner } from './components/CookieConsentBanner';
 import { ThemeTransitionOrb } from './components/ThemeTransitionOrb';
 import { OrangeGalaxyBackground } from './components/OrangeGalaxyBackground';
 import { mockFoundationModules } from './data/foundationModules';
-import { mockCategories, mockQuestions } from './data/mockQuestions';
-import { QuizSettings, QuizResult, Category, Question, CourseModule, Lesson, UserRole, CourseFileItem } from './types';
-import { localScoreStorage, authService, TarqaUser, supabase, isSupabaseConfigured, syncUserToMembersDashboard, isValidUuid, isOwnerEmail } from './lib/supabase';
-import { canAccessAdmin, isSuperAdminRole } from './lib/securityUtils';
-import { sendQuizCompletedNotification, TELEGRAM_BOT_URL, TELEGRAM_BOT_USERNAME } from './lib/telegram';
+import { CourseModule, Lesson, UserRole, CourseFileItem } from './types';
+import { localScoreStorage, authService, TarqaUser, supabase, isSupabaseConfigured, syncUserToMembersDashboard, isValidUuid, isOwnerEmail, callHostingerApi } from './lib/supabase';
+import { canAccessAdmin, isSuperAdminRole, canEditCMS, canEditSimulator } from './lib/securityUtils';
+import { TELEGRAM_BOT_URL, TELEGRAM_BOT_USERNAME } from './lib/telegram';
 import { coursesStorage, CLOUD_LECTURES_STORE_ID, CLOUD_LECTURES_STORE_EMAIL, isUserSubscribed, activateAnnualSubscription } from './lib/subscriptionService';
-import { questionBankStorage, CLOUD_QUESTIONS_STORE_ID, CLOUD_QUESTIONS_STORE_EMAIL } from './lib/questionBankStorage';
+import { courseCommerceService } from './lib/courseCommerceService';
 import { initGlobalAntiHack, logSecurityViolation } from './lib/antiHack';
 import { downloadTrackingService } from './lib/downloadTrackingService';
-import { logKashierTransaction } from './lib/kashierService';
+import { logKashierTransaction, verifyKashierPaymentSession } from './lib/kashierService';
 import { dbCache, invalidateUsersCache } from './lib/dbCache';
 import { featuresStorage, PlatformFeatureItem, TelegramCommunityGroup } from './lib/featuresStorage';
 import { MaintenanceScreen } from './components/MaintenanceScreen';
@@ -63,8 +65,8 @@ import {
 } from './lib/indexedDbService';
 
 const getInitialNavigationState = (): {
-  view: 'home' | 'courses' | 'quiz' | 'result' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles' | 'leaderboard';
-  tab: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles' | 'leaderboard';
+  view: 'home' | 'courses' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles' | 'admin-subscribers' | 'leaderboard';
+  tab: 'home' | 'courses' | 'categories' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles' | 'admin-subscribers' | 'leaderboard';
 } => {
   if (typeof window === 'undefined') {
     return { view: 'home', tab: 'home' };
@@ -72,11 +74,25 @@ const getInitialNavigationState = (): {
 
   const hash = window.location.hash.toLowerCase().replace(/^#\/?/, '');
 
+  if (hash === 'simulation') {
+    if (typeof window !== 'undefined') window.location.href = '/simulation/';
+    return { view: 'simulator' as any, tab: 'simulator' as any };
+  }
+  if (hash === 'exam' || hash === 'level-test') {
+    if (typeof window !== 'undefined') window.location.href = '/exam/';
+    return { view: 'simulator' as any, tab: 'simulator' as any };
+  }
+  if (hash === 'tiger') {
+    if (typeof window !== 'undefined') window.location.href = '/tiger/';
+    return { view: 'simulator' as any, tab: 'simulator' as any };
+  }
+  if (hash === 'simulator' || hash === 'mo7aky' || hash === 'quiz') return { view: 'simulator' as any, tab: 'simulator' as any };
   if (hash === 'courses') return { view: 'courses', tab: 'courses' };
   if (hash === 'dashboard') return { view: 'dashboard', tab: 'dashboard' };
   if (hash === 'leaderboard') return { view: 'leaderboard', tab: 'leaderboard' };
   if (hash === 'admin') return { view: 'admin', tab: 'admin' };
   if (hash === 'admin-lectures') return { view: 'admin-lectures', tab: 'admin-lectures' };
+  if (hash === 'admin-subscribers' || hash === 'subscribers') return { view: 'admin-subscribers', tab: 'admin-subscribers' };
   if (hash === 'admin-roles') return { view: 'admin-roles', tab: 'admin-roles' };
   if (hash === 'classroom') return { view: 'classroom', tab: 'courses' };
   if (hash === 'categories') return { view: 'home', tab: 'categories' };
@@ -87,7 +103,7 @@ const getInitialNavigationState = (): {
   try {
     const savedView = localStorage.getItem('tarqa_current_view') as any;
     const savedTab = localStorage.getItem('tarqa_active_tab') as any;
-    if (savedView && ['home', 'courses', 'dashboard', 'admin', 'classroom', 'admin-lectures', 'admin-roles', 'leaderboard'].includes(savedView)) {
+    if (savedView && ['home', 'courses', 'dashboard', 'admin', 'classroom', 'admin-lectures', 'admin-roles', 'admin-subscribers', 'leaderboard', 'simulator'].includes(savedView)) {
       return {
         view: savedView,
         tab: savedTab || (savedView === 'classroom' ? 'courses' : savedView),
@@ -101,9 +117,10 @@ const getInitialNavigationState = (): {
 export const App: React.FC = () => {
   // وضع الشاشة النشطة مع استرجاع تلقائي لحالة الدورات أو لوحة التحكم لمنع فقدان الصفحة عند التحديث
   const initialNav = getInitialNavigationState();
-  const [currentView, setCurrentView] = useState<'home' | 'courses' | 'quiz' | 'result' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles' | 'leaderboard'>(initialNav.view);
-  const [activeTab, setActiveTab] = useState<'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles' | 'leaderboard' | 'admin-kashier' | 'admin-security' | 'kashier' | 'security'>(initialNav.tab);
+  const [currentView, setCurrentView] = useState<'home' | 'courses' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles' | 'admin-subscribers' | 'leaderboard' | 'simulator'>((initialNav.view as any) || 'home');
+  const [activeTab, setActiveTab] = useState<any>(initialNav.tab);
   const [isTelegramCommunityModalOpen, setIsTelegramCommunityModalOpen] = useState<boolean>(false);
+  const [showSimulatorLockedModal, setShowSimulatorLockedModal] = useState<boolean>(false);
   const [featuresList, setFeaturesList] = useState<PlatformFeatureItem[]>(() => featuresStorage.getFeatures());
   const [telegramGroupsList, setTelegramGroupsList] = useState<TelegramCommunityGroup[]>(() => featuresStorage.getTelegramGroups());
   const [maintenanceConfig, setMaintenanceConfig] = useState<MaintenanceConfig>(() => maintenanceService.getConfig());
@@ -172,19 +189,14 @@ export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<TarqaUser | null>(() => {
     return authService.getCurrentUser();
   });
-  const [adminTab, setAdminTab] = useState<AdminTab>('questions');
+  const [adminTab, setAdminTab] = useState<AdminTab>('security');
 
   // دالة مركزية للتنقل بين الشاشات والتبويبات مع حفظ الحالة في IndexedDB والتخزين ومزامنة الرابط
   const navigateToView = (
-    view: 'home' | 'courses' | 'quiz' | 'result' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles' | 'leaderboard',
-    tab?: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles' | 'leaderboard' | 'admin-kashier' | 'admin-security' | 'kashier' | 'security',
+    view: 'home' | 'courses' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-subscribers' | 'admin-roles' | 'leaderboard',
+    tab?: 'home' | 'courses' | 'categories' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-subscribers' | 'admin-roles' | 'leaderboard' | 'admin-kashier' | 'admin-security' | 'kashier' | 'security',
     extra?: { moduleId?: string; lessonId?: string }
   ) => {
-    // محاكي اختبار قياس الفعلي مغلق وموقوف مؤقتاً للتطوير بكل الطرق
-    if (view === 'quiz' && quizSettings.mode === 'Mock_Exam') {
-      triggerComingSoon('محاكي اختبار قياس الفعلي');
-      return;
-    }
 
     const targetTab = tab || (view === 'classroom' ? 'courses' : (view as any));
     setCurrentView(view);
@@ -233,13 +245,21 @@ export const App: React.FC = () => {
     autoSyncLocalStorageToIndexedDB().catch(() => {});
 
     getPersistedViewState().then((persisted) => {
-      if (persisted?.currentView && persisted.currentView !== 'home' && persisted.currentView !== 'quiz') {
-        const hash = window.location.hash.toLowerCase().replace(/^#\/?/, '');
-        if (!hash || hash === persisted.currentView) {
-          setCurrentView(persisted.currentView);
-          setActiveTab(persisted.activeTab || (persisted.currentView as any));
-          if (!window.location.hash) {
-            window.history.replaceState(null, '', `#${persisted.currentView}`);
+      if (persisted?.currentView && (persisted.currentView as string) !== 'home') {
+        const validViews = ['courses', 'dashboard', 'admin', 'classroom', 'admin-lectures', 'admin-subscribers', 'admin-roles', 'leaderboard'] as const;
+        const validTabs = ['home', 'courses', 'categories', 'history', 'dashboard', 'admin', 'roadmap', 'admin-lectures', 'admin-subscribers', 'admin-roles', 'leaderboard', 'admin-kashier', 'admin-security', 'kashier', 'security'] as const;
+
+        if ((validViews as readonly string[]).includes(persisted.currentView)) {
+          const hash = window.location.hash.toLowerCase().replace(/^#\/?/, '');
+          if (!hash || hash === persisted.currentView) {
+            setCurrentView(persisted.currentView as any);
+            const targetTab = (persisted.activeTab && (validTabs as readonly string[]).includes(persisted.activeTab))
+              ? persisted.activeTab
+              : (persisted.currentView as any);
+            setActiveTab(targetTab);
+            if (!window.location.hash) {
+              window.history.replaceState(null, '', `#${persisted.currentView}`);
+            }
           }
         }
       }
@@ -270,6 +290,11 @@ export const App: React.FC = () => {
         setCurrentView('leaderboard');
         setActiveTab('leaderboard');
         persistViewState({ currentView: 'leaderboard', activeTab: 'leaderboard' }).catch(() => {});
+      } else if (hash === 'promo' || hash === 'admin-promo' || hash === 'coupons') {
+        setCurrentView('admin');
+        setActiveTab('admin-promo');
+        setAdminTab('promo');
+        persistViewState({ currentView: 'admin', activeTab: 'admin-promo' }).catch(() => {});
       } else if (hash === 'kashier' || hash === 'admin-kashier') {
         setCurrentView('admin');
         setActiveTab('admin-kashier');
@@ -283,12 +308,16 @@ export const App: React.FC = () => {
       } else if (hash === 'admin') {
         setCurrentView('admin');
         setActiveTab('admin');
-        setAdminTab('questions');
+        setAdminTab('security');
         persistViewState({ currentView: 'admin', activeTab: 'admin' }).catch(() => {});
       } else if (hash === 'admin-lectures') {
         setCurrentView('admin-lectures');
         setActiveTab('admin-lectures');
         persistViewState({ currentView: 'admin-lectures', activeTab: 'admin-lectures' }).catch(() => {});
+      } else if (hash === 'admin-subscribers' || hash === 'subscribers') {
+        setCurrentView('admin-subscribers');
+        setActiveTab('admin-subscribers');
+        persistViewState({ currentView: 'admin-subscribers', activeTab: 'admin-subscribers' }).catch(() => {});
       } else if (hash === 'admin-roles') {
         setCurrentView('admin-roles');
         setActiveTab('admin-roles');
@@ -301,10 +330,19 @@ export const App: React.FC = () => {
         setCurrentView('home');
         setActiveTab('home');
         persistViewState({ currentView: 'home', activeTab: 'home' }).catch(() => {});
-      } else if (hash === 'quiz' || hash === 'mock' || hash === 'exam') {
+      } else if (hash === 'simulation') {
+        window.location.href = '/simulation/';
+      } else if (hash === 'exam' || hash === 'level-test') {
+        window.location.href = '/exam/';
+      } else if (hash === 'tiger') {
+        window.location.href = '/tiger/';
+      } else if (hash === 'simulator' || hash === 'mo7aky' || hash === 'quiz') {
+        setCurrentView('simulator' as any);
+        setActiveTab('simulator' as any);
+        persistViewState({ currentView: 'simulator' as any, activeTab: 'simulator' as any }).catch(() => {});
+      } else if (hash === 'mock') {
         setCurrentView('home');
         setActiveTab('home');
-        triggerComingSoon('محاكي اختبار قياس الفعلي');
         window.history.replaceState(null, '', window.location.pathname);
       }
     };
@@ -340,101 +378,137 @@ export const App: React.FC = () => {
 
     const handleKashierPaymentReturn = async () => {
       try {
-        const urlParams = new URLSearchParams(window.location.search);
-        const paymentParam = urlParams.get('payment');
-        const rawStatus = urlParams.get('paymentStatus') || urlParams.get('status') || '';
-        const paymentStatus = rawStatus.toUpperCase();
-        const orderId = urlParams.get('orderId') || urlParams.get('order');
+        const href = typeof window !== 'undefined' ? window.location.href : '';
+        const search = typeof window !== 'undefined' ? window.location.search : '';
 
-        const isFromKashier = Boolean(paymentParam && paymentParam.includes('kashier')) || Boolean(orderId);
+        // 1. استخراج المعاملات بمرونة من كل أجزاء الرابط
+        const paymentParamMatch = href.match(/[?&]payment=([^&?#]+)/i);
+        const paymentParam = paymentParamMatch ? decodeURIComponent(paymentParamMatch[1]) : null;
+
+        const statusMatch = href.match(/[?&]paymentStatus=([^&?#]+)/i) || href.match(/[?&]status=([^&?#]+)/i);
+        let rawStatus = statusMatch ? decodeURIComponent(statusMatch[1]).toUpperCase() : '';
+
+        const orderMatch = href.match(/[?&]orderId=([^&?#]+)/i) || href.match(/[?&]order=([^&?#]+)/i) || href.match(/[?&]merchantOrderId=([^&?#]+)/i);
+        const orderId = orderMatch ? decodeURIComponent(orderMatch[1]) : null;
 
         let pendingPayment: any = null;
         try {
           const rawPending = localStorage.getItem('tarqa_pending_kashier_payment');
-          if (rawPending) {
-            pendingPayment = JSON.parse(rawPending);
-          }
+          if (rawPending) pendingPayment = JSON.parse(rawPending);
         } catch {}
 
-        if (!isFromKashier && !paymentStatus) return;
+        let pendingCoursePayment: any = null;
+        try {
+          const rawCoursePending = localStorage.getItem('tarqa_pending_course_payment');
+          if (rawCoursePending) pendingCoursePayment = JSON.parse(rawCoursePending);
+        } catch {}
 
-        // حالة إلغاء أو فشل الدفع أو رفض التوقيع من السيرفر
+        const isFromKashier = Boolean(paymentParam && paymentParam.includes('kashier')) || Boolean(orderId) || Boolean(statusMatch);
+
+        if (!isFromKashier && !rawStatus && !pendingCoursePayment && !pendingPayment) return;
+
+        // حالة إلغاء أو فشل صريحة
         if (
-          paymentStatus === 'FAILED' ||
-          paymentStatus === 'FAILURE' ||
-          paymentStatus === 'CANCELLED' ||
-          paymentParam === 'kashier_invalid'
+          rawStatus === 'FAILED' ||
+          rawStatus === 'FAILURE' ||
+          rawStatus === 'CANCELLED' ||
+          paymentParam === 'kashier_invalid' ||
+          paymentParam === 'kashier_cancelled'
         ) {
           setPaymentNotice({
             type: 'error',
-            title: paymentParam === 'kashier_invalid'
-              ? 'تعذر التحقق من الدفع ⚠️'
-              : 'لم تكتمل عملية الدفع',
-            message: paymentParam === 'kashier_invalid'
-              ? 'تعذر التحقق من صحة عملية الدفع. إذا تم خصم المبلغ من حسابك، تواصل مع الدعم الفني فوراً وأرسل رقم الطلب.'
-              : 'تم إلغاء عملية الدفع أو تعذر إتمامها عبر بوابة الدفع. لم يتم خصم أي مبالغ ولم يتم تفعيل الاشتراك.',
+            title: 'لم تكتمل عملية الدفع',
+            message: 'تم إلغاء عملية الدفع أو تعذر إتمامها عبر بوابة كاشير. لم يتم خصم أي مبالغ ولم يتم تفعيل أي اشتراك.',
           });
           localStorage.removeItem('tarqa_pending_kashier_payment');
+          localStorage.removeItem('tarqa_pending_course_payment');
           window.history.replaceState(null, '', window.location.pathname + '#courses');
           return;
         }
 
-        // ✅ أمان: التحقق من صحة الدفع عبر السيرفر أولاً قبل أي تفعيل
-        // يمنع هذا تزوير URL للحصول على اشتراك مجاني
-        const isReturnWithStatus =
-          paymentStatus === 'SUCCESS' ||
-          paymentStatus === 'CAPTURED' ||
-          paymentStatus === 'PAID' ||
-          paymentParam === 'kashier_done';
+        // فحص هل الحالة تدل على نجاح العملية
+        let isReturnWithStatus =
+          rawStatus === 'SUCCESS' ||
+          rawStatus === 'CAPTURED' ||
+          rawStatus === 'PAID';
 
-        if (!isReturnWithStatus && !isFromKashier) return;
-
-        // إذا عاد المستخدم من كاشير بدون حالة نجاح واضحة
-        if (isFromKashier && !isReturnWithStatus) {
-          localStorage.removeItem('tarqa_pending_kashier_payment');
-          window.history.replaceState(null, '', window.location.pathname + '#courses');
-          return;
-        }
-
-        // ✅ التحقق من السيرفر: نرسل orderId للـ webhook endpoint ليتحقق من صحة الدفع
-        let serverVerified = false;
-        if (orderId) {
+        // التحقق الآلي من كاشير عبر معرف الجلسة للتأكد من نجاح الدفع
+        const targetSessionId = pendingCoursePayment?.sessionId || pendingPayment?.sessionId;
+        if (targetSessionId && !isReturnWithStatus) {
           try {
-            const verifyRes = await fetch('/api/webhooks/kashier', {
-              method: 'GET',
-              headers: { 'Content-Type': 'application/json' },
-            });
-            // الـ GET endpoint يتحقق ويوجه – إذا وصلنا هنا بدون redirect يعني السيرفر قبله
-            // نكتفي بالتحقق أن الـ endpoint نشط وأن orderId موجود في pending
-            serverVerified = verifyRes.ok || Boolean(pendingPayment?.orderId);
-          } catch {
-            // أمان: نرفض التفعيل التلقائي إذا لم يتم التحقق المسبق عبر السيرفر (kashier_done)
-            serverVerified = paymentParam === 'kashier_done' && Boolean(pendingPayment?.orderId);
+            const vRes = await verifyKashierPaymentSession(targetSessionId);
+            if (vRes.success && (vRes.status === 'SUCCESS' || vRes.status === 'CAPTURED' || vRes.status === 'PAID')) {
+              isReturnWithStatus = true;
+              rawStatus = 'SUCCESS';
+            }
+          } catch (e) {
+            console.warn('[Kashier] verifySession check notice:', e);
           }
-        } else {
-          // بدون orderId لا نفعّل الاشتراك أبداً
-          serverVerified = false;
         }
 
-        if (!serverVerified) {
-          console.warn('[Security] Payment verification failed – no valid orderId or pending payment record.');
-          window.history.replaceState(null, '', window.location.pathname);
-          return;
+        // إذا عاد المستخدم من رابط إتمام كاشير الرسمي ولم تكن هناك حالة فشل
+        if (paymentParam === 'kashier_done' && rawStatus !== 'FAILED' && rawStatus !== 'CANCELLED') {
+          isReturnWithStatus = true;
         }
 
         if (isReturnWithStatus) {
           let userToActivate = currentUser || authService.getCurrentUser();
 
-          if (!userToActivate && pendingPayment) {
-            userToActivate = {
-              id: pendingPayment.userId || 'kashier_' + Date.now(),
-              email: pendingPayment.userEmail || '',
-              fullName: pendingPayment.userName || 'طالب طرقع',
-              role: 'student',
-            } as any;
+          if (!userToActivate) {
+            const fallback = pendingCoursePayment || pendingPayment;
+            if (fallback) {
+              userToActivate = {
+                id: fallback.userId || 'kashier_' + Date.now(),
+                email: fallback.userEmail || '',
+                fullName: fallback.userName || 'طالب طرقع',
+                role: 'student',
+              } as any;
+            }
           }
 
           if (userToActivate) {
+            // 1. تفعيل الدورة المستقلة وتوليد الإيصال بالسيرفر
+            if (pendingCoursePayment) {
+              await courseCommerceService.confirmCoursePayment({
+                order_id: orderId || pendingCoursePayment.orderId,
+                course_id: pendingCoursePayment.courseId,
+                course_title: pendingCoursePayment.courseTitle,
+                user_id: pendingCoursePayment.userId || userToActivate.id,
+                user_name: pendingCoursePayment.userName || userToActivate.fullName,
+                user_email: pendingCoursePayment.userEmail || userToActivate.email,
+                user_phone: pendingCoursePayment.userPhone,
+                currency: pendingCoursePayment.currency || 'EGP',
+                promo_code: pendingCoursePayment.promoCode,
+                payment_method: 'kashier',
+              }).catch(() => {});
+
+              // حفظ محلي فوري للاشتراك لفتح الدورة دون انتظار أي جلب إضافي
+              try {
+                const raw = localStorage.getItem('tarqa_course_subscriptions') || '{}';
+                const subs = JSON.parse(raw);
+                const uId = pendingCoursePayment.userId || userToActivate.id;
+                const cId = pendingCoursePayment.courseId;
+                const subObj = {
+                  courseId: cId,
+                  userId: uId,
+                  isActive: true,
+                  status: 'active',
+                  expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+                  enrolledAt: new Date().toISOString(),
+                };
+                subs[`${uId}_${cId}`] = subObj;
+                subs[`${cId}_${uId}`] = subObj;
+                if (userToActivate.email) {
+                  subs[`${userToActivate.email.toLowerCase()}_${cId}`] = subObj;
+                  subs[`${cId}_${userToActivate.email.toLowerCase()}`] = subObj;
+                }
+                localStorage.setItem('tarqa_course_subscriptions', JSON.stringify(subs));
+              } catch {}
+
+              localStorage.removeItem('tarqa_pending_course_payment');
+            }
+
+            // 2. تفعيل اشتراك الموقع العام للمستخدم لمدة سنة كاملة
             const res = await activateAnnualSubscription(userToActivate);
 
             const updatedUser: TarqaUser = {
@@ -446,30 +520,71 @@ export const App: React.FC = () => {
             setCurrentUser(updatedUser);
             authService.setCurrentUser(updatedUser);
 
-            // تسجيل المعاملة في السجل المالي
+            // 3. تحديث قاعدة بيانات هوستينجر المركزية وملف الاشتراكات في السيرفر فوراً
+            await callHostingerApi('update_subscription', {
+              userId: userToActivate.id,
+              target_user_id: userToActivate.id,
+              email: userToActivate.email,
+              user_email: userToActivate.email,
+              is_subscribed: 1,
+              period: 'annual',
+              expires_at: res.expiresAt ? res.expiresAt.slice(0, 19).replace('T', ' ') : null,
+            }).catch(() => {});
+
+            try {
+              await fetch('/api/subscriptions.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  action: 'grant',
+                  userId: userToActivate.id,
+                  userEmail: userToActivate.email,
+                  userName: userToActivate.fullName,
+                  days: 365,
+                }),
+              });
+            } catch {}
+
+            // توثيق إيصال الدفع العام في قاعدة البيانات إذا لم تكن دورة خاصة
+            if (!pendingCoursePayment) {
+              await courseCommerceService.confirmCoursePayment({
+                order_id: orderId || pendingPayment?.orderId || `TARQA3_${Date.now()}`,
+                course_id: 'annual_subscription',
+                course_title: 'اشتراك طرقع السنوي الشامل',
+                user_id: userToActivate.id,
+                user_name: userToActivate.fullName || 'طالب طرقع',
+                user_email: userToActivate.email,
+                currency: pendingPayment?.currency || 'EGP',
+                payment_method: 'kashier',
+              }).catch(() => {});
+            }
+
+            // 4. تسجيل المعاملة في السجل المالي
             try {
               logKashierTransaction({
                 orderId: orderId || pendingPayment?.orderId || `TARQA3_${Date.now()}`,
                 userId: userToActivate.id,
                 userName: userToActivate.fullName || 'طالب طرقع',
                 userEmail: userToActivate.email,
-                amount: pendingPayment?.amount || 1100,
-                currency: pendingPayment?.currency || 'EGP',
+                amount: pendingCoursePayment?.amount || pendingPayment?.amount || 1100,
+                currency: pendingCoursePayment?.currency || pendingPayment?.currency || 'EGP',
                 status: 'SUCCESS',
-                details: 'تم تأكيد الدفع وتفعيل الاشتراك السنوي عبر كاشير',
+                details: 'تم تأكيد الدفع وتفعيل الاشتراك بنجاح عبر كاشير',
               });
             } catch (txErr) {
               console.warn('Failed to log transaction:', txErr);
             }
 
-            // إبطال الكاش وتحديث لوحات التحكم فوراً
+            // 5. إبطال الكاش وتحديث جميع اللوحات والواجهات
             dbCache.invalidate('db_users_with_roles');
             invalidateUsersCache();
             syncUserToMembersDashboard(updatedUser).catch(() => {});
 
-            // إشعار كافة المكونات بالمتصفح بتحديث حالة الاشتراك
             window.dispatchEvent(new CustomEvent('tarqa:subscription_updated'));
             window.dispatchEvent(new CustomEvent('tarqa_subscription_changed'));
+            window.dispatchEvent(new CustomEvent('tarqa_course_subscription_updated', {
+              detail: { courseId: pendingCoursePayment?.courseId || 'course-foundation', userId: userToActivate.id, isActive: true }
+            }));
             window.dispatchEvent(new CustomEvent('tarqa_roles_changed'));
             window.dispatchEvent(new CustomEvent('tarqa_users_cache_invalidated'));
 
@@ -481,7 +596,7 @@ export const App: React.FC = () => {
             setPaymentNotice({
               type: 'success',
               title: 'تم تفعيل اشتراكك بنجاح! 🎉',
-              message: 'أهلاً بك في منصة طرقع! تم تأكيد الدفع بنجاح وتفعيل اشتراكك السنوي الشامل لمدة 365 يوماً. جميع المحاضرات والملفات مفتوحة لك الآن.',
+              message: 'أهلاً بك في منصة طرقع! تم تأكيد الدفع بنجاح وتفعيل دورتك واشتراكك بالكامل. جميع المحاضرات والملفات مفتوحة لك الآن.',
             });
 
             localStorage.removeItem('tarqa_pending_kashier_payment');
@@ -513,7 +628,7 @@ export const App: React.FC = () => {
     let profilesChannel: any = null;
 
     if (isSupabaseConfigured) {
-      supabase.auth.getSession().then(async ({ data: { session } }) => {
+      supabase.auth.getSession().then(async ({ data: { session } }: any) => {
         if (session?.user) {
           // استعلام جدول profiles للتأكد من الرتبة الحقيقية المعتمدة
           let role: UserRole = (session.user.app_metadata?.role as any) || (session.user.user_metadata?.role as any) || 'student';
@@ -591,35 +706,84 @@ export const App: React.FC = () => {
           setCurrentUser(user);
           syncUserToMembersDashboard(user);
         } else {
-          // فحص ما إذا كان هناك مستخدم مسجل محلياً (مثل تليجرام أو دخول محلي) والتحقق من رتبته في السيرفر
+          // فحص ما إذا كان هناك مستخدم مسجل محلياً والتحقق من رتبته في السيرفر وقاعدة البيانات
           const localCur = authService.getCurrentUser();
           if (localCur && (localCur.email || localCur.telegramUsername || localCur.id)) {
             try {
               let profile: any = null;
               const cleanTg = (localCur.telegramUsername || '').replace(/^@/, '').trim();
 
-              // 1. بالـ ID إذا كان UUID
-              if (localCur.id && isValidUuid(localCur.id)) {
-                const { data: pById } = await supabase.from('profiles').select('*').eq('id', localCur.id).maybeSingle();
-                if (pById) profile = pById;
+              // 1. التحقق أولاً من قاعدة بيانات هوستينجر المركزية (Hostinger MySQL Backend)
+              try {
+                const hostRes = await callHostingerApi('get_user_role', {
+                  userId: localCur.id,
+                  email: localCur.email,
+                  telegram_id: localCur.telegramId,
+                  telegram_username: cleanTg
+                });
+
+                // إذا كان الحساب محظوراً بشكل صريح في قاعدة البيانات
+                if (
+                  hostRes &&
+                  hostRes.httpStatus === 403 &&
+                  (hostRes.isBanned === true || hostRes.user?.isBanned === true)
+                ) {
+                  authService.clearCurrentUser();
+                  setCurrentUser(null);
+                  try {
+                    localStorage.removeItem('tarqa_current_user');
+                    localStorage.removeItem('tarqa_subscriptions');
+                    localStorage.removeItem('tarqa_course_subscriptions');
+                  } catch {}
+                  alert(`تم حظر هذا الحساب من قبل إدارة المنصة.${hostRes.banReason || hostRes.user?.banReason ? `\nسبب الحظر: ${hostRes.banReason || hostRes.user?.banReason}` : ''}`);
+                  return;
+                }
+
+                // إذا كان الحساب محذوفاً نهائياً بشكل صريح ومؤكد (httpStatus 404)
+                if (
+                  hostRes &&
+                  hostRes.isDeleted === true &&
+                  hostRes.httpStatus === 404
+                ) {
+                  authService.clearCurrentUser();
+                  setCurrentUser(null);
+                  try {
+                    localStorage.removeItem('tarqa_current_user');
+                    localStorage.removeItem('tarqa_subscriptions');
+                    localStorage.removeItem('tarqa_course_subscriptions');
+                  } catch {}
+                  alert('تم حذف هذا الحساب نهائياً من قبل إدارة المنصة.');
+                  return;
+                }
+
+                if (hostRes && hostRes.success && hostRes.user) {
+                  profile = hostRes.user;
+                }
+              } catch (e) {
+                console.warn('Hostinger role verification fallback:', e);
               }
 
-              // 2. بالبريد الحقيقي إذا لم يكن بريد تليجرام وهمي
-              if (!profile && localCur.email && !localCur.email.includes('@telegram.tarqa') && !localCur.email.includes('@user.tarqa')) {
-                const { data: pByEmail } = await supabase.from('profiles').select('*').eq('email', localCur.email.toLowerCase()).maybeSingle();
-                if (pByEmail) profile = pByEmail;
-              }
+              // 2. فحص Supabase كاحتياطي ثانوي فقط إذا كان مهيأ ولم نجد ملف هوستينجر
+              if (!profile && isSupabaseConfigured) {
+                if (localCur.id && isValidUuid(localCur.id)) {
+                  const { data: pById } = await supabase.from('profiles').select('*').eq('id', localCur.id).maybeSingle();
+                  if (pById) profile = pById;
+                }
 
-              // 3. بمعرف تليجرام الرقمي
-              if (!profile && localCur.telegramId) {
-                const { data: pByTgId } = await supabase.from('profiles').select('*').eq('telegram_id', localCur.telegramId).maybeSingle();
-                if (pByTgId) profile = pByTgId;
-              }
+                if (!profile && localCur.email && !localCur.email.includes('@telegram.tarqa') && !localCur.email.includes('@user.tarqa')) {
+                  const { data: pByEmail } = await supabase.from('profiles').select('*').eq('email', localCur.email.toLowerCase()).maybeSingle();
+                  if (pByEmail) profile = pByEmail;
+                }
 
-              // 4. بيوزر تليجرام بكل الصيغ
-              if (!profile && cleanTg) {
-                const { data: pByTgName } = await supabase.from('profiles').select('*').or(`telegram_username.eq.${cleanTg},telegram_username.eq.@${cleanTg},telegram_username.ilike.%${cleanTg}%`).maybeSingle();
-                if (pByTgName) profile = pByTgName;
+                if (!profile && localCur.telegramId) {
+                  const { data: pByTgId } = await supabase.from('profiles').select('*').eq('telegram_id', localCur.telegramId).maybeSingle();
+                  if (pByTgId) profile = pByTgId;
+                }
+
+                if (!profile && cleanTg) {
+                  const { data: pByTgName } = await supabase.from('profiles').select('*').or(`telegram_username.eq.${cleanTg},telegram_username.eq.@${cleanTg},telegram_username.ilike.%${cleanTg}%`).maybeSingle();
+                  if (pByTgName) profile = pByTgName;
+                }
               }
 
               if (profile) {
@@ -627,26 +791,38 @@ export const App: React.FC = () => {
                 const dbRole = (profile.role as UserRole) || 'student';
                 const roleFromDb: UserRole = isOwner ? 'super_admin' : dbRole;
 
-                if (!isOwner && (localCur.role === 'super_admin' || localCur.role === 'admin') && dbRole === 'student') {
-                  logSecurityViolation('role_tampering', 'تم رصد محاولة تزييف رتبة مدير في المتصفح وإرجاع الحساب إلى رتبة طالب');
-                }
+                const isSubscribedFromDb = isOwner ? true : (profile.isSubscribed === false ? false : Boolean(profile.isSubscribed || profile.is_subscribed));
 
                 const updatedUser: TarqaUser = {
                   ...localCur,
                   id: profile.id || localCur.id,
                   role: roleFromDb,
-                  fullName: isOwner ? 'Yoska' : (profile.full_name || localCur.fullName),
+                  fullName: isOwner ? 'Yoska' : (profile.fullName || profile.full_name || localCur.fullName),
                   email: (profile.email && !profile.email.includes('@telegram.tarqa')) ? profile.email : localCur.email,
-                  isBanned: Boolean(profile.is_banned),
-                  isSubscribed: isOwner ? true : (profile.is_subscribed === false ? false : (Boolean(profile.is_subscribed) || Boolean(localCur.isSubscribed))),
-                  subscriptionExpiresAt: isOwner ? undefined : (profile.subscription_expires_at || localCur.subscriptionExpiresAt),
+                  isBanned: Boolean(profile.isBanned || profile.is_banned),
+                  isSubscribed: isSubscribedFromDb,
+                  subscriptionExpiresAt: isOwner ? undefined : (profile.subscriptionExpiresAt || profile.subscription_expires_at),
                 };
 
                 if (!isOwner) {
-                  updatedUser.isSubscribed = isUserSubscribed(updatedUser);
+                  if (!isSubscribedFromDb) {
+                    updatedUser.isSubscribed = false;
+                    try {
+                      const rawSubs = localStorage.getItem('tarqa_subscriptions');
+                      if (rawSubs) {
+                        const subs = JSON.parse(rawSubs);
+                        if (localCur.id) delete subs[localCur.id];
+                        if (localCur.email) delete subs[localCur.email.toLowerCase().trim()];
+                        localStorage.setItem('tarqa_subscriptions', JSON.stringify(subs));
+                      }
+                      localStorage.removeItem('tarqa_course_subscriptions');
+                    } catch {}
+                  } else {
+                    updatedUser.isSubscribed = isUserSubscribed(updatedUser);
+                  }
                 }
 
-                if (profile.is_banned) {
+                if (profile.isBanned || profile.is_banned) {
                   authService.clearCurrentUser();
                   setCurrentUser(null);
                   alert('تم حظر هذا الحساب من قبل إدارة المنصة.');
@@ -666,8 +842,8 @@ export const App: React.FC = () => {
             if (!isOwner && (localCur.role === 'super_admin' || localCur.role === 'admin')) {
               localCur.role = 'student';
               localStorage.setItem('tarqa_current_user', JSON.stringify(localCur));
-              logSecurityViolation('role_tampering', 'محاولة انتحال صلاحيات إدارية دون توثيق سحابي معتمد');
             }
+            authService.setCurrentUser(localCur);
             setCurrentUser(localCur);
           } else {
             setCurrentUser(null);
@@ -676,7 +852,7 @@ export const App: React.FC = () => {
         }
       });
 
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: any, session: any) => {
         if (session?.user) {
           let role: UserRole = (session.user.app_metadata?.role as any) || (session.user.user_metadata?.role as any) || 'student';
           let fullName = session.user.user_metadata?.full_name || 'طالب طرقع';
@@ -757,32 +933,6 @@ export const App: React.FC = () => {
               if (!updated) return;
 
               // مزامنة فورية لمخزن بنك الأسئلة السحابي لجميع الطلاب فور حدوث أي تعديل أو حذف
-              if (
-                updated.id === CLOUD_QUESTIONS_STORE_ID ||
-                (updated.email && updated.email.toLowerCase() === CLOUD_QUESTIONS_STORE_EMAIL)
-              ) {
-                if (updated.ban_reason) {
-                  try {
-                    const parsed = JSON.parse(updated.ban_reason);
-                    if (Array.isArray(parsed)) {
-                      localStorage.setItem('tarqa_custom_questions_v1', JSON.stringify(parsed));
-                      setAllQuestions([...parsed]);
-                    } else if (parsed && typeof parsed === 'object') {
-                      if (Array.isArray(parsed.questions)) {
-                        localStorage.setItem('tarqa_custom_questions_v1', JSON.stringify(parsed.questions));
-                        setAllQuestions([...parsed.questions]);
-                      }
-                      if (Array.isArray(parsed.quizzes)) {
-                        localStorage.setItem('tarqa_custom_quizzes_v1', JSON.stringify(parsed.quizzes));
-                        setCustomQuizzes([...parsed.quizzes]);
-                      }
-                    }
-                  } catch (e) {
-                    console.warn('[App] Realtime parse cloud questions error:', e);
-                  }
-                }
-                return;
-              }
 
               // مزامنة فورية لمخزن المحاضرات السحابي لجميع الطلاب والزوار فور حدوث أي تعديل أو حذف
               if (
@@ -937,7 +1087,11 @@ export const App: React.FC = () => {
 
     const handleFocusSync = () => {
       authService.refreshCurrentUser().then((u) => {
-        if (u) setCurrentUser({ ...u });
+        if (u) {
+          setCurrentUser({ ...u });
+        } else if (authService.getCurrentUser() === null) {
+          setCurrentUser(null);
+        }
       }).catch(() => {});
       coursesStorage.syncFromCloud().catch(() => {});
       downloadTrackingService.syncDownloadsFromCloud().catch(() => {});
@@ -956,18 +1110,25 @@ export const App: React.FC = () => {
     window.addEventListener('focus', handleFocusSync);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
+    // مزامنة دورية كل 20 ثانية لضمان رصد أي حظر أو حذف أو إلغاء اشتراك فوري
+    const syncInterval = setInterval(() => {
+      coursesStorage.syncFromCloud().catch(() => {});
+      authService.refreshCurrentUser().then((u) => {
+        if (!u && authService.getCurrentUser() === null) {
+          setCurrentUser(null);
+        }
+      }).catch(() => {});
+    }, 20000);
+
     return () => {
       window.removeEventListener('tarqa_user_changed', handleUserOrRoleChanged);
       window.removeEventListener('tarqa_subscription_changed', handleUserOrRoleChanged);
       window.removeEventListener('tarqa_roles_changed', handleUserOrRoleChanged);
       window.removeEventListener('focus', handleFocusSync);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(syncInterval);
     };
   }, []);
-
-  // قائمة الأسئلة والاختبارات القابلة للإدارة والتحديث والمزامنة السحابية الفورية
-  const [allQuestions, setAllQuestions] = useState<Question[]>(() => questionBankStorage.getQuestions());
-  const [customQuizzes, setCustomQuizzes] = useState<any[]>(() => questionBankStorage.getQuizzes());
 
   // إعدادات الوضع الليلي / النهاري (يحترم تفضيل نظام التشغيل افتراضياً)
   const [darkMode, setDarkMode] = useState<boolean>(() => {
@@ -988,19 +1149,6 @@ export const App: React.FC = () => {
       localStorage.setItem('tarqa_theme', 'light');
     }
   }, [darkMode]);
-
-  // حالة الاختبار الحالي
-  const [activeQuestions, setActiveQuestions] = useState<Question[]>(() => {
-    const q = questionBankStorage.getQuestions();
-    return (q && q.length > 0) ? q : mockQuestions;
-  });
-  const [quizSettings, setQuizSettings] = useState<QuizSettings>({
-    mode: 'Mock_Exam',
-    timeLimitSeconds: 600,
-    allowInstantExplanation: false,
-  });
-  const [quizTitle, setQuizTitle] = useState<string>('اختبار محاكي قياس للكمي');
-  const [lastResult, setLastResult] = useState<QuizResult | null>(null);
 
   // الاستماع لتحديثات المحاضرات والدورات فورياً
   useEffect(() => {
@@ -1081,24 +1229,6 @@ export const App: React.FC = () => {
     return () => clearInterval(maintenanceInterval);
   }, []);
 
-  // الاستماع لتحديثات بنك الأسئلة والاختبارات فورياً
-  useEffect(() => {
-    const handleQuestionsChanged = (e: any) => {
-      const newQuestions = e.detail || questionBankStorage.getQuestions();
-      setAllQuestions([...newQuestions]);
-    };
-    const handleQuizzesChanged = (e: any) => {
-      const newQuizzes = e.detail || questionBankStorage.getQuizzes();
-      setCustomQuizzes([...newQuizzes]);
-    };
-    window.addEventListener('tarqa_questions_changed', handleQuestionsChanged);
-    window.addEventListener('tarqa_quizzes_changed', handleQuizzesChanged);
-    return () => {
-      window.removeEventListener('tarqa_questions_changed', handleQuestionsChanged);
-      window.removeEventListener('tarqa_quizzes_changed', handleQuizzesChanged);
-    };
-  }, []);
-
   // الاستماع لحدث فتح نافذة الدخول/التسجيل من أي مكان في التطبيق
   useEffect(() => {
     const handleOpenAuth = (e: any) => {
@@ -1107,18 +1237,6 @@ export const App: React.FC = () => {
     };
     window.addEventListener('tarqa_open_auth', handleOpenAuth);
     return () => window.removeEventListener('tarqa_open_auth', handleOpenAuth);
-  }, []);
-
-  // مزامنة فورية صامتة عند بدء تشغيل الموقع لجلب أحدث بنك أسئلة واختبارات تم تعديلها أو إضافتها سحابياً
-  useEffect(() => {
-    questionBankStorage.syncFromCloud().then((cloudData) => {
-      if (cloudData?.questions && cloudData.questions.length > 0) {
-        setAllQuestions([...cloudData.questions]);
-      }
-      if (cloudData?.quizzes && cloudData.quizzes.length > 0) {
-        setCustomQuizzes([...cloudData.quizzes]);
-      }
-    });
   }, []);
 
   // حالة أنيميشن الدائرة عند تبديل الثيم
@@ -1161,41 +1279,6 @@ export const App: React.FC = () => {
     }, 4000);
   };
 
-  // بدء اختبار محاكي قياس الفعلي (مغلق مؤقتاً للتطوير والتجهيز)
-  const startMockExam = () => {
-    triggerComingSoon('محاكي الاختبار الفعلي');
-  };
-
-  // بدء وضع التدريب الفوري الذكي (مغلق مؤقتاً للتطوير والتجهيز)
-  const startPracticeMode = (_category?: Category) => {
-    triggerComingSoon('محاكي الاختبارات والتدريب الذكي');
-  };
-
-  // بدء تحدي طرقع للسرعة (مغلق مؤقتاً للتطوير والتجهيز)
-  const startSpeedChallenge = () => {
-    triggerComingSoon('تحدي طرقع للسرعة ومحاكي التدريب');
-  };
-
-  // إنهاء الاختبار واستقبال النتيجة
-  const handleQuizFinish = (result: QuizResult) => {
-    setLastResult(result);
-    localScoreStorage.saveAttempt(result);
-
-    // إرسال إشعار فوري عبر بوت تليجرام @Tarqa3bot إذا كان حساب الطالب مربوطاً
-    if (currentUser?.telegramId) {
-      sendQuizCompletedNotification(
-        currentUser.telegramId,
-        currentUser.fullName,
-        quizTitle || 'اختبار كمي - منصة طرقع',
-        result.percentageScore,
-        result.totalQuestions,
-        result.totalTimeSeconds
-      ).catch(() => {});
-    }
-
-    setCurrentView('result');
-  };
-
   // فتح غرفة المحاضرة مع حفظ الدرس والموديول في IndexedDB
   const openLessonClassroom = (mod: CourseModule, lesson: Lesson) => {
     setActiveModule(mod);
@@ -1218,19 +1301,36 @@ export const App: React.FC = () => {
   };
 
   // دالة موحدة للتنقل بين التبويبات والشاشات مع حفظ الحالة في IndexedDB والتخزين
-  const handleTabSelect = (tab: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles' | 'leaderboard' | 'admin-kashier' | 'admin-security' | 'kashier' | 'security') => {
+  const handleTabSelect = (tab: any) => {
     if (tab === 'courses') {
       navigateToView('courses', 'courses');
     } else if (tab === 'leaderboard') {
       navigateToView('leaderboard', 'leaderboard');
-    } else if (tab === 'speed') {
-      startSpeedChallenge();
+    } else if (tab === 'simulation') {
+      window.location.href = '/simulation/';
+    } else if (tab === 'exam') {
+      window.location.href = '/exam/';
+    } else if (tab === 'tiger') {
+      window.location.href = '/tiger/';
+    } else if (tab === ('simulator' as any) || (tab as any) === 'mo7aky') {
+      setCurrentView('simulator' as any);
+      setActiveTab('simulator' as any);
+      window.history.replaceState(null, '', '#simulator');
+      persistViewState({ currentView: 'simulator' as any, activeTab: 'simulator' as any }).catch(() => {});
     } else if (tab === 'dashboard') {
       if (!currentUser) {
         setAuthInitialTab('signin');
         setIsAuthOpen(true);
       } else {
         navigateToView('dashboard', 'dashboard');
+      }
+    } else if (tab === 'admin-promo' || tab === 'promo') {
+      if (!currentUser || !canAccessAdmin(currentUser)) {
+        setAuthInitialTab('signin');
+        setIsAuthOpen(true);
+      } else {
+        setAdminTab('promo');
+        navigateToView('admin', 'admin-promo' as any);
       }
     } else if (tab === 'admin-kashier' || tab === 'kashier') {
       if (!currentUser || !canAccessAdmin(currentUser)) {
@@ -1253,15 +1353,22 @@ export const App: React.FC = () => {
         setAuthInitialTab('signin');
         setIsAuthOpen(true);
       } else {
-        setAdminTab('questions');
+        setAdminTab('security');
         navigateToView('admin', 'admin');
       }
     } else if (tab === 'admin-lectures') {
-      if (!currentUser || !canAccessAdmin(currentUser)) {
+      if (!currentUser || !canEditCMS(currentUser)) {
         setAuthInitialTab('signin');
         setIsAuthOpen(true);
       } else {
         navigateToView('admin-lectures', 'admin-lectures');
+      }
+    } else if (tab === 'admin-subscribers') {
+      if (!currentUser || !canEditCMS(currentUser)) {
+        setAuthInitialTab('signin');
+        setIsAuthOpen(true);
+      } else {
+        navigateToView('admin-subscribers', 'admin-subscribers');
       }
     } else if (tab === 'admin-roles') {
       if (!currentUser || !isSuperAdminRole(currentUser)) {
@@ -1430,53 +1537,12 @@ export const App: React.FC = () => {
       />
 
       {/* ======================================================================= */}
-      {/* 1. عرض شاشة الاختبار (حجب شامل لمحاكي الاختبارات والتدريب لجميع الأوضاع) */}
-      {/* ======================================================================= */}
-      {currentView === 'quiz' && (
-        <main className="min-h-[75vh] flex items-center justify-center p-4 font-cairo" dir="rtl">
-          <div className="max-w-md w-full p-8 rounded-3xl bg-white dark:bg-slate-900 border border-amber-500/30 shadow-2xl text-center space-y-6">
-            <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-500/15 text-amber-500 flex items-center justify-center text-3xl">
-              ⏳
-            </div>
-            <span className="text-xs font-black px-3 py-1 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 inline-block">
-              قريباً جداً ⏳
-            </span>
-            <h2 className="text-2xl font-black text-slate-900 dark:text-white">
-              محاكي الاختبارات والتدريب
-            </h2>
-            <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-              محاكي الاختبارات والتدريب مغلق حالياً لأعمال التطوير الشامل والتحديثات ليتوافق تماماً مع أحدث معايير اختبارات قياس والحل الذهني السريع. ترقبوا الإطلاق قريباً بإذن الله!
-            </p>
-            <button
-              onClick={() => navigateToView('home', 'home')}
-              className="w-full py-3.5 px-6 rounded-2xl font-black text-sm bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 shadow-lg shadow-amber-500/25 transition cursor-pointer"
-            >
-              الرجوع للصفحة الرئيسية 🏠
-            </button>
-          </div>
-        </main>
-      )}
-
-      {/* ======================================================================= */}
-      {/* 2. عرض شاشة النتيجة والتحليل */}
-      {/* ======================================================================= */}
-      {currentView === 'result' && lastResult && (
-        <ResultView
-          result={lastResult}
-          onRetake={() => setCurrentView('quiz')}
-          onHome={() => navigateToView('home', 'home')}
-        />
-      )}
-
-      {/* ======================================================================= */}
       {/* 3. لوحة تحكم الطالب (Student Dashboard) */}
       {/* ======================================================================= */}
       {currentView === 'dashboard' && (
-        <main className="flex-1 w-full pb-24 md:pb-8">
+        <main className="flex-1 w-full pb-24 lg:pb-8">
           <StudentDashboard
             currentUser={currentUser}
-            onStartMock={startMockExam}
-            onStartPractice={(cat) => startPracticeMode(cat)}
             onOpenAuth={() => setIsAuthOpen(true)}
             onNavigateCourses={() => navigateToView('courses', 'courses')}
             onNavigateLeaderboard={() => navigateToView('leaderboard', 'leaderboard')}
@@ -1561,7 +1627,7 @@ export const App: React.FC = () => {
       {/* 3.5. لوحة المتصدرين ونظام النقاط (Leaderboard & XP Hall of Fame) */}
       {/* ======================================================================= */}
       {currentView === 'leaderboard' && (
-        <main className="flex-1 w-full pb-24 md:pb-8">
+        <main className="flex-1 w-full pb-24 lg:pb-8">
           <LeaderboardView
             currentUser={currentUser}
             onOpenAuth={() => setIsAuthOpen(true)}
@@ -1575,44 +1641,14 @@ export const App: React.FC = () => {
       {/* 4. لوحة تحكم الإدارة وبنك الأسئلة (Admin & Content Management Panel) */}
       {/* ======================================================================= */}
       {currentView === 'admin' && (
-        <main className="flex-1 w-full pb-24 md:pb-8">
+        <main className="flex-1 w-full pb-24 lg:pb-8">
           {canAccessAdmin(currentUser) ? (
             <AdminPanel
-              questions={allQuestions}
-              categories={mockCategories}
-              quizzes={customQuizzes}
               initialTab={adminTab}
               onTabChange={(tab) => {
                 setAdminTab(tab);
-                const targetTab = tab === 'kashier' ? 'admin-kashier' : tab === 'security' ? 'admin-security' : 'admin';
+                const targetTab = tab === 'kashier' ? 'admin-kashier' : tab === 'security' ? 'admin-security' : tab === 'promo' ? 'admin-promo' : 'admin';
                 setActiveTab(targetTab as any);
-              }}
-              onAddQuestion={(newQ) => {
-                const updated = questionBankStorage.addQuestion(newQ);
-                setAllQuestions([...updated]);
-              }}
-              onUpdateQuestion={(updated) => {
-                const updatedList = questionBankStorage.updateQuestion(updated);
-                setAllQuestions([...updatedList]);
-              }}
-              onDeleteQuestion={(id) => {
-                const updated = questionBankStorage.deleteQuestion(id);
-                setAllQuestions([...updated]);
-              }}
-              onResetDefaultQuestions={() => {
-                const reset = questionBankStorage.resetToDefault();
-                setAllQuestions([...reset]);
-              }}
-              onSyncCloud={async () => {
-                await questionBankStorage.syncToCloud(allQuestions, customQuizzes);
-              }}
-              onCreateQuiz={(quizData) => {
-                const updated = questionBankStorage.saveQuiz(quizData);
-                setCustomQuizzes([...updated]);
-              }}
-              onDeleteQuiz={(quizId) => {
-                const updated = questionBankStorage.deleteQuiz(quizId);
-                setCustomQuizzes([...updated]);
               }}
             />
           ) : (
@@ -1628,7 +1664,7 @@ export const App: React.FC = () => {
                   لوحة الإدارة مخصصة للمشرفين والمعلمين فقط
                 </h3>
                 <p className="text-slate-500 text-sm max-w-md mx-auto leading-relaxed">
-                  حسابك الحالي مسجل بدور <strong className="text-amber-500">[{currentUser?.role === 'student' ? 'طالب' : 'غير مسجل'}]</strong>، ولا يمتلك صلاحية الوصول لإدارة بنك الأسئلة أو قوالب الاختبارات.
+                  حسابك الحالي مسجل بدور <strong className="text-amber-500">[{currentUser?.role === 'student' ? 'طالب' : 'غير مسجل'}]</strong>، ولا يمتلك صلاحية الوصول للوحة الإدارة والتحكم.
                 </p>
               </div>
 
@@ -1662,8 +1698,8 @@ export const App: React.FC = () => {
       {/* 5. لوحة تحكم المحاضرات والمذكرات المستقلة (Lectures CMS) */}
       {/* ======================================================================= */}
       {currentView === 'admin-lectures' && (
-        <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-8 pb-24 md:pb-8">
-          {canAccessAdmin(currentUser) ? (
+        <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-8 pb-24 lg:pb-8">
+          {(canAccessAdmin(currentUser) || canEditCMS(currentUser)) ? (
             <LecturesCMS
               modules={modules}
               files={courseFiles}
@@ -1697,7 +1733,14 @@ export const App: React.FC = () => {
                 setCourseFiles([...coursesStorage.getFiles()]);
               }}
               onSyncCloud={async () => {
-                coursesStorage.syncToCloud(modules, courseFiles);
+                await coursesStorage.syncToCloud(modules, courseFiles);
+                const cloudData = await coursesStorage.syncFromCloud();
+                if (cloudData?.modules && Array.isArray(cloudData.modules)) {
+                  setModules([...cloudData.modules]);
+                }
+                if (cloudData?.files && Array.isArray(cloudData.files)) {
+                  setCourseFiles([...cloudData.files]);
+                }
               }}
               onAddFile={(newFile) => {
                 const updated = coursesStorage.addFile(newFile);
@@ -1747,7 +1790,40 @@ export const App: React.FC = () => {
                 منطقة محظورة: إدارة المحاضرات
               </h3>
               <p className="text-xs text-slate-400">
-                هذه اللوحة مخصصة فقط للمشرفين والمعلمين لإدارة الفيديوهات والمذكرات.
+                هذه اللوحة مخصصة فقط للمشرفين والمعلمين ومحرري المحتوى (E.CMS).
+              </p>
+              <button
+                onClick={() => {
+                  navigateToView('home', 'home');
+                }}
+                className="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs"
+              >
+                العودة للرئيسية
+              </button>
+            </div>
+          )}
+        </main>
+      )}
+
+      {/* ======================================================================= */}
+      {/* 5.2. لوحة مشتركي الدورات التدريبية المخصصة (Course Subscribers Dashboard) */}
+      {/* ======================================================================= */}
+      {currentView === 'admin-subscribers' && (
+        <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-8 pb-24 lg:pb-8">
+          {(canAccessAdmin(currentUser) || canEditCMS(currentUser)) ? (
+            <CourseSubscribersDashboard
+              onBack={() => navigateToView('admin-lectures', 'admin-lectures')}
+            />
+          ) : (
+            <div className="max-w-2xl mx-auto my-12 p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-xl text-center space-y-4">
+              <div className="w-16 h-16 rounded-2xl bg-rose-500/10 text-rose-500 border border-rose-500/20 flex items-center justify-center mx-auto text-3xl">
+                👥
+              </div>
+              <h3 className="text-xl font-black text-slate-900 dark:text-white">
+                منطقة محظورة: مشتركو الدورات
+              </h3>
+              <p className="text-xs text-slate-400">
+                هذه اللوحة مخصصة فقط للمسؤولين والمعلمين ومحرري الدورات التدريبية (E.CMS).
               </p>
               <button
                 onClick={() => {
@@ -1766,7 +1842,7 @@ export const App: React.FC = () => {
       {/* 5.5. لوحة إدارة الرتب والصلاحيات (Admin Roles Panel) */}
       {/* ======================================================================= */}
       {currentView === 'admin-roles' && (
-        <main className="flex-1 w-full pb-24 md:pb-8">
+        <main className="flex-1 w-full pb-24 lg:pb-8">
           {isSuperAdminRole(currentUser) ? (
             <SuperAdminRolesPanel
               currentUser={currentUser}
@@ -1807,14 +1883,13 @@ export const App: React.FC = () => {
       {/* 6. غرفة المحاضرة ومشغل الفيديو والمذكرات (Classroom UI) */}
       {/* ======================================================================= */}
       {currentView === 'classroom' && (
-        <main className="flex-1 w-full pb-24 md:pb-8">
+        <main className="flex-1 w-full pb-24 lg:pb-8">
           <ClassroomView
             currentModule={activeModule || modules[0] || mockFoundationModules[0]}
             currentLesson={activeLesson || activeModule?.lessons?.[0] || modules.flatMap((m) => m.lessons || [])[0] || mockFoundationModules[0]?.lessons?.[0]}
             currentUser={currentUser}
             onSelectLesson={(lesson) => setActiveLesson(lesson)}
             onCompleteLesson={handleCompleteLesson}
-            onStartQuiz={() => startMockExam()}
             onBackToRoadmap={() => {
               navigateToView('courses', 'courses');
             }}
@@ -1830,7 +1905,7 @@ export const App: React.FC = () => {
       {/* 6.5. صفحة الدورات التدريبية المستقلة (Dedicated Courses Page) */}
       {/* ======================================================================= */}
       {currentView === 'courses' && (
-        <main className="flex-1 w-full pb-24 md:pb-8">
+        <main className="flex-1 w-full pb-24 lg:pb-8">
           <CoursesView
             currentUser={currentUser}
             onOpenClassroom={(module, lesson) => {
@@ -1845,15 +1920,301 @@ export const App: React.FC = () => {
               setAuthInitialTab('signin');
               setIsAuthOpen(true);
             }}
+            onOpenPolicies={handleOpenPolicies}
           />
         </main>
+      )}
+
+            {/* ======================================================================= */}
+      {/* 6.6. مركز محاكي قياس وتحديد المستوى (Dedicated Simulator Hub Page) */}
+      {/* ======================================================================= */}
+      {currentView === 'simulator' && (
+        <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 pt-3 sm:pt-4 pb-24 lg:pb-8 flex flex-col gap-4 font-cairo" dir="rtl">
+          {/* عنوان الصفحة المدمج مع شارة الحالة */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl">
+            <div className="text-right space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs font-black">
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>منظومة المحاكيات</span>
+                </span>
+                {canAccessAdmin(currentUser) ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/40 text-purple-300 text-xs font-black">
+                    🛡️ متاح للمسؤولين فقط
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-slate-800 text-slate-300 text-xs font-bold">
+                    قريباً للطلاب ⏳
+                  </span>
+                )}
+              </div>
+              <h2 className="text-xl sm:text-2xl font-black text-white">اختر المحاكي المطلوب</h2>
+              <p className="text-xs text-slate-400">
+                {canAccessAdmin(currentUser)
+                  ? 'بصفتك مسؤولاً، يمكنك الدخول لأي محاكي وتجربته وتعديل بنك الأسئلة الخاص به بحرية.'
+                  : 'المحاكيات تحت التحديث الشامل وإعادة الهيكلة وستتوفر قريباً لجميع الطلاب.'}
+              </p>
+            </div>
+
+            {canAccessAdmin(currentUser) && (
+              <a
+                href="/simulation/?questions=true&admin=true"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs transition flex items-center gap-2 shadow-lg shadow-purple-500/20 shrink-0 cursor-pointer"
+              >
+                <FileText className="w-4 h-4" />
+                <span>إدارة وبنك أسئلة المحاكي 📝</span>
+              </a>
+            )}
+          </div>
+
+          {/* شبكة كروت المحاكيات الثلاثة بتصميم عصري فخم */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            
+            {/* 1. كرت تحديد المستوى (البرتقالي) */}
+            <div className="relative group overflow-hidden rounded-3xl border-2 border-amber-500/30 hover:border-amber-400/80 bg-gradient-to-b from-[#1a150b] via-[#141008] to-[#080d1a] p-5 sm:p-6 flex flex-col justify-between gap-5 transition-all duration-300 hover:shadow-2xl hover:shadow-amber-500/15 hover:-translate-y-1">
+              <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-amber-400 to-transparent pointer-events-none" />
+              
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    {canAccessAdmin(currentUser) ? '🛡️ مفتوح للمسؤول' : 'تشخيص ذكي • قريباً ⏳'}
+                  </span>
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center group-hover:scale-110 transition-transform shadow-inner shadow-amber-500/20">
+                    <Target className="w-6 h-6 text-amber-400" />
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="font-black text-lg text-white group-hover:text-amber-300 transition-colors">
+                    تحديد المستوى
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                    اختبار تشخيصي دقيق لتحديد مستواك الحقيقي في القدرات واكتشاف نقاط القوة والضعف.
+                  </p>
+                </div>
+
+                {/* مميزات المحاكي */}
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] font-bold text-slate-300">🧠 تشخيص فوري</span>
+                  <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] font-bold text-slate-300">⚡ مجاني 100%</span>
+                  <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] font-bold text-slate-300">📈 خطة مذاكرة</span>
+                </div>
+              </div>
+
+              {/* أزرار الإجراء */}
+              <div className="pt-3 border-t border-slate-800 flex flex-col gap-2">
+                {canAccessAdmin(currentUser) ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <a
+                      href="/exam/?admin=true"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition text-center flex items-center justify-center gap-1 shadow-md shadow-amber-500/20 cursor-pointer"
+                    >
+                      <Target className="w-3.5 h-3.5" />
+                      <span>دخول كمسؤول</span>
+                    </a>
+                    <a
+                      href="/exam/?questions=true&admin=true"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/30 font-bold text-xs transition text-center flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>تعديل الأسئلة</span>
+                    </a>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowSimulatorLockedModal(true)}
+                    className="w-full py-2.5 px-3 rounded-xl bg-slate-800/90 text-amber-400 border border-amber-500/30 font-bold text-xs transition flex items-center justify-between cursor-pointer hover:bg-slate-800"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>مقفول للطلاب - قريباً ⏳</span>
+                    </span>
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 2. كرت محاكي الطرقعة الشامل (الأزرق) */}
+            <div className="relative group overflow-hidden rounded-3xl border-2 border-sky-500/30 hover:border-sky-400/80 bg-gradient-to-b from-[#101a2e] via-[#0c1424] to-[#080d1a] p-5 sm:p-6 flex flex-col justify-between gap-5 transition-all duration-300 hover:shadow-2xl hover:shadow-sky-500/15 hover:-translate-y-1">
+              <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-sky-400 to-transparent pointer-events-none" />
+              
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black px-2.5 py-1 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                    {canAccessAdmin(currentUser) ? '🛡️ مفتوح للمسؤول' : 'الأكثر طلباً • قريباً ⏳'}
+                  </span>
+                  <div className="w-12 h-12 rounded-2xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center group-hover:scale-110 transition-transform shadow-inner shadow-sky-500/20">
+                    <Zap className="w-6 h-6 text-sky-400 fill-sky-400/20" />
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="font-black text-lg text-white group-hover:text-sky-300 transition-colors">
+                    محاكي الطرقعة الشامل
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                    واجهة قياس محوسب أصلية، تدريب كمي ولفظي موقوت، وحساب دقيق للنسبة المئوية مع حفظ النتائج.
+                  </p>
+                </div>
+
+                {/* مميزات المحاكي */}
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] font-bold text-slate-300">⏱️ توقيت حقيقي</span>
+                  <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] font-bold text-slate-300">📊 كمي ولفظي</span>
+                  <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] font-bold text-slate-300">💾 حفظ الدرجات</span>
+                </div>
+              </div>
+
+              {/* أزرار الإجراء */}
+              <div className="pt-3 border-t border-slate-800 flex flex-col gap-2">
+                {canAccessAdmin(currentUser) ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <a
+                      href="/simulation/?admin=true"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-2.5 px-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-black text-xs transition text-center flex items-center justify-center gap-1 shadow-md shadow-sky-500/20 cursor-pointer"
+                    >
+                      <Zap className="w-3.5 h-3.5 fill-current" />
+                      <span>دخول كمسؤول</span>
+                    </a>
+                    <a
+                      href="/simulation/?questions=true&admin=true"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-400 border border-sky-500/30 font-bold text-xs transition text-center flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>تعديل الأسئلة</span>
+                    </a>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowSimulatorLockedModal(true)}
+                    className="w-full py-2.5 px-3 rounded-xl bg-slate-800/90 text-sky-400 border border-sky-500/30 font-bold text-xs transition flex items-center justify-between cursor-pointer hover:bg-slate-800"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>مقفول للطلاب - قريباً ⏳</span>
+                    </span>
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 3. كرت محاكي وتجميعات نمر */}
+            <div className="relative group overflow-hidden rounded-3xl border-2 border-emerald-500/30 hover:border-emerald-400/80 bg-gradient-to-b from-[#0f1f1d] via-[#0c1619] to-[#080d1a] p-5 sm:p-6 flex flex-col justify-between gap-5 transition-all duration-300 hover:shadow-2xl hover:shadow-emerald-500/15 hover:-translate-y-1">
+              <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-emerald-400 to-transparent pointer-events-none" />
+              
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-black px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    {canAccessAdmin(currentUser) ? '🛡️ مفتوح للمسؤول' : 'تجميعات نمر • قريباً ⏳'}
+                  </span>
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center group-hover:scale-110 transition-transform shadow-inner shadow-emerald-500/20 text-2xl">
+                    🐅
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="font-black text-lg text-white group-hover:text-emerald-300 transition-colors">
+                    محاكي واختبارات نمر
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                    تدريب مكثف على أحدث صيغ النماذج المقفلة وأسئلة قياس الأكثر تكراراً لعام 1446-1447.
+                  </p>
+                </div>
+
+                {/* مميزات المحاكي */}
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] font-bold text-slate-300">🐅 نماذج نمر</span>
+                  <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] font-bold text-slate-300">🔥 الأكثر تكراراً</span>
+                  <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] font-bold text-slate-300">⭐ 1446-1447</span>
+                </div>
+              </div>
+
+              {/* أزرار الإجراء */}
+              <div className="pt-3 border-t border-slate-800 flex flex-col gap-2">
+                {canAccessAdmin(currentUser) ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <a
+                      href="/tiger/?admin=true"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition text-center flex items-center justify-center gap-1 shadow-md shadow-emerald-500/20 cursor-pointer"
+                    >
+                      <span>دخول كمسؤول</span>
+                      <span>🐅</span>
+                    </a>
+                    <a
+                      href="/tiger/?questions=true&admin=true"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 font-bold text-xs transition text-center flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>تعديل الأسئلة</span>
+                    </a>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowSimulatorLockedModal(true)}
+                    className="w-full py-2.5 px-3 rounded-xl bg-slate-800/90 text-emerald-400 border border-emerald-500/30 font-bold text-xs transition flex items-center justify-between cursor-pointer hover:bg-slate-800"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>مقفول للطلاب - قريباً ⏳</span>
+                    </span>
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+          </div>
+        </main>
+      )}
+
+      {/* مودال إشعار قفل المحاكي (Coming Soon Modal) */}
+      {showSimulatorLockedModal && (
+        <div className="fixed inset-0 z-[999999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 font-cairo" dir="rtl">
+          <div className="bg-[#0b101e] border-2 border-amber-500/50 rounded-3xl p-6 sm:p-8 max-w-md w-full text-center flex flex-col items-center gap-5 shadow-2xl shadow-amber-500/20 animate-in fade-in zoom-in duration-200">
+            <div className="w-16 h-16 rounded-2xl bg-amber-500/15 border border-amber-500/40 flex items-center justify-center text-3xl">
+              ⏳
+            </div>
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-black">
+                <Lock className="w-3.5 h-3.5" />
+                <span>المحاكي مقفول حالياً</span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black text-white">سيتوفر قريباً جداً!</h3>
+              <p className="text-sm text-slate-300 leading-relaxed">
+                نقوم حالياً بتطوير منظومة المحاكيات الثلاثة ودمج أحدث بنوك الأسئلة والنماذج الرسمية لعام 1446-1447 لضمان تجربة قياس دقيقة وسلسة وسنعلن عن الإطلاق قريباً!
+              </p>
+            </div>
+            <button
+              onClick={() => setShowSimulatorLockedModal(false)}
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-sm transition shadow-lg shadow-amber-500/25 cursor-pointer"
+            >
+              حسناً، فهمت
+            </button>
+          </div>
+        </div>
       )}
 
       {/* ======================================================================= */}
       {/* 7. الصفحة الرئيسية (Clean, Minimalist & Spacious) */}
       {/* ======================================================================= */}
       {currentView === 'home' && (
-        <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-10 sm:py-16 flex flex-col gap-12 sm:gap-16 pb-24 md:pb-12">
+        <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-10 sm:py-16 flex flex-col gap-12 sm:gap-16 pb-24 lg:pb-12">
 
           {/* قسم الهيرو (Hero Section) حر بدون صندوق حابس مع بقاء العناصر في نفس مكانها */}
           <section className="relative py-2 sm:py-6 text-center sm:text-start">
@@ -1868,7 +2229,7 @@ export const App: React.FC = () => {
                 </h1>
 
                 <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 max-w-xl leading-relaxed">
-                  بيئة تدريب تحاكي اختبارات قياس الواقعية، مع شروحات "طرقع" للحل الذهني السريع بدون معادلات معقدة.
+                  منصة تأسيس وشروحات ذكية لقدرات الكمي مع استراتيجيات "طرقع" للحل الذهني السريع بدون معادلات معقدة.
                 </p>
 
                 {/* أزرار الإجراءات الرئيسية الواضحة */}
@@ -1880,16 +2241,19 @@ export const App: React.FC = () => {
                     <GraduationCap className="w-5 h-5" />
                     <span>تصفح الدورات والتأسيس 🎓</span>
                   </button>
-
                   <button
-                    onClick={startMockExam}
+                    onClick={() => handleTabSelect('simulator')}
+                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl font-black text-sm bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 hover:from-sky-600 hover:to-blue-700 text-white shadow-lg shadow-sky-500/25 transition-all transform hover:-translate-y-0.5 active:scale-98 cursor-pointer group"
+                  >
+                    <Zap className="w-4 h-4 fill-current text-amber-300 group-hover:scale-110 transition-transform" />
+                    <span>محاكي قياس وتحديد المستوى ⚡</span>
+                  </button>
+                  <button
+                    onClick={() => handleTabSelect('leaderboard')}
                     className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl font-bold text-sm bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 shadow-sm transition-all active:scale-98 cursor-pointer group relative"
                   >
-                    <Clock className="w-4 h-4 text-amber-500 group-hover:rotate-12 transition-transform" />
-                    <span>محاكي الاختبار الفعلي ⏱️</span>
-                    <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                      قريباً ⏳
-                    </span>
+                    <Users className="w-4 h-4 text-amber-500 group-hover:scale-110 transition-transform" />
+                    <span>لوحة الأبطال والمتصدرين 🏆</span>
                   </button>
                 </div>
               </div>
@@ -1931,8 +2295,166 @@ export const App: React.FC = () => {
             </div>
           )}
 
+                    {/* ======================================================================= */}
+          {/* قسم محاكي قياس التفاعلي والاختبارات (Interactive Simulator Section) */}
           {/* ======================================================================= */}
-          {/* مميزات وأقسام المنصة الأساسية (محاضرات تدريب، محاكي الاختبار، مجتمع تليجرام) */}
+          <section className="relative overflow-hidden rounded-3xl p-6 sm:p-8 bg-gradient-to-br from-slate-900/90 via-[#0b1220]/95 to-slate-950/90 border border-amber-500/30 shadow-2xl backdrop-blur-2xl">
+            {/* زخرفة خلفية */}
+            <div className="absolute top-0 right-0 w-72 h-72 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-72 h-72 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-amber-400 to-transparent pointer-events-none" />
+
+            <div className="relative z-10 flex flex-col gap-6">
+              
+              {/* الرأس */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs font-black">
+                    <Zap className="w-3.5 h-3.5 fill-current" />
+                    <span>محاكي قياس الذكي • مباشر وسريع</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-black text-white">
+                    جرّب بيئة اختبار قياس الحقيقية قبل دخول الاختبار 🎯
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-300 max-w-2xl font-medium">
+                    واجهة مطابقة بنسبة 100% لاختبار قياس المحوسب، توقيت دقيق، أسئلة كمي ولفظي معتمدة، وحفظ مباشر لدرجاتك وسجل اختباراتك.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    if (!canAccessAdmin(currentUser)) {
+                      setShowSimulatorLockedModal(true);
+                    } else {
+                      handleTabSelect('simulator');
+                    }
+                  }}
+                  className="self-start sm:self-center flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 transition-all hover:scale-105 active:scale-95 shrink-0 cursor-pointer"
+                >
+                  <span>{canAccessAdmin(currentUser) ? 'دخول إدارة المحاكي 🛡️' : 'المحاكي (قريباً ⏳)'}</span>
+                  <ArrowRight className="w-4 h-4 rotate-180" />
+                </button>
+              </div>
+
+              {/* بطاقات المحاكي الثلاث */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                
+                {/* 1. محاكي الطرقعة الشامل */}
+                <div
+                  onClick={() => {
+                    if (!canAccessAdmin(currentUser)) {
+                      setShowSimulatorLockedModal(true);
+                    } else {
+                      handleTabSelect('simulator');
+                    }
+                  }}
+                  className="group relative cursor-pointer p-5 rounded-2xl bg-white/5 hover:bg-white/10 border border-sky-500/30 hover:border-sky-400/80 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-sky-500/10 flex flex-col justify-between gap-4"
+                >
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="w-10 h-10 rounded-xl bg-sky-500/20 border border-sky-500/40 text-sky-400 flex items-center justify-center font-black text-lg group-hover:scale-110 transition-transform">
+                        ⚡
+                      </span>
+                      <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                        {canAccessAdmin(currentUser) ? 'الأكثر طلباً' : 'قريباً ⏳'}
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="font-black text-base text-white group-hover:text-sky-300 transition-colors">
+                        محاكي الطرقعة الشامل
+                      </h4>
+                      <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                        نفس واجهة قياس المحوسب تماماً، أقسام موقوتة، وحساب تلقائي للنسبة المئوية مع حفظ النتائج.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-white/5 text-xs font-bold text-sky-400">
+                    <span>{canAccessAdmin(currentUser) ? 'دخول كمسؤول 🛡️' : 'مقفول للطلاب - قريباً ⏳'}</span>
+                    <ArrowRight className="w-3.5 h-3.5 rotate-180 group-hover:translate-x-1 transition-transform" />
+                  </div>
+                </div>
+
+                {/* 2. اختبار تحديد المستوى */}
+                <div
+                  onClick={() => {
+                    if (!canAccessAdmin(currentUser)) {
+                      setShowSimulatorLockedModal(true);
+                    } else {
+                      handleTabSelect('simulator');
+                    }
+                  }}
+                  className="group relative cursor-pointer p-5 rounded-2xl bg-white/5 hover:bg-white/10 border border-amber-500/30 hover:border-amber-400/80 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-amber-500/10 flex flex-col justify-between gap-4"
+                >
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center font-black text-lg group-hover:scale-110 transition-transform">
+                        🎯
+                      </span>
+                      <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        {canAccessAdmin(currentUser) ? 'مجاني 100%' : 'قريباً ⏳'}
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="font-black text-base text-white group-hover:text-amber-300 transition-colors">
+                        اختبار تحديد المستوى السريع
+                      </h4>
+                      <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                        30 سؤالاً منتقاة بعناية لتقييم مستواك في الكمي واللفظي واقتراح خطة المذاكرة الأنسب لك.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-white/5 text-xs font-bold text-amber-400">
+                    <span>{canAccessAdmin(currentUser) ? 'دخول كمسؤول 🛡️' : 'مقفول للطلاب - قريباً ⏳'}</span>
+                    <ArrowRight className="w-3.5 h-3.5 rotate-180 group-hover:translate-x-1 transition-transform" />
+                  </div>
+                </div>
+
+                {/* 3. تجميعات نمر النموذجية */}
+                <div
+                  onClick={() => {
+                    if (!canAccessAdmin(currentUser)) {
+                      setShowSimulatorLockedModal(true);
+                    } else {
+                      handleTabSelect('simulator');
+                    }
+                  }}
+                  className="group relative cursor-pointer p-5 rounded-2xl bg-white/5 hover:bg-white/10 border border-emerald-500/30 hover:border-emerald-400/80 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-emerald-500/10 flex flex-col justify-between gap-4"
+                >
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center font-black text-lg group-hover:scale-110 transition-transform">
+                        🐅
+                      </span>
+                      <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        {canAccessAdmin(currentUser) ? 'نماذج جديدة' : 'قريباً ⏳'}
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="font-black text-base text-white group-hover:text-emerald-300 transition-colors">
+                        تجميعات واختبارات نمر
+                      </h4>
+                      <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                        تدريب مكثف على أحدث صيغ الأسئلة والنماذج المقفلة المتكررة في قياس مؤخراً.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-white/5 text-xs font-bold text-emerald-400">
+                    <span>{canAccessAdmin(currentUser) ? 'دخول كمسؤول 🛡️' : 'مقفول للطلاب - قريباً ⏳'}</span>
+                    <ArrowRight className="w-3.5 h-3.5 rotate-180 group-hover:translate-x-1 transition-transform" />
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+          </section>
+
+{/* ======================================================================= */}
+          {/* مميزات وأقسام المنصة الأساسية (محاضرات تأسيس، مذكرات وملخصات، مجتمع تليجرام) */}
           {/* ======================================================================= */}
           <section className="flex flex-col gap-6">
             <div className="text-center sm:text-start flex flex-col sm:flex-row sm:items-end justify-between gap-3">
@@ -2044,8 +2566,6 @@ export const App: React.FC = () => {
 
                   if (feature.actionType === 'courses') {
                     handleTabSelect('courses');
-                  } else if (feature.actionType === 'mock-exam') {
-                    triggerComingSoon(feature.comingSoonNotice || 'محاكي الاختبارات والتدريب الفعلي قريباً جداً ⏳');
                   } else if (feature.actionType === 'coming-soon') {
                     triggerComingSoon(feature.comingSoonNotice || feature.title || 'هذه الميزة قيد التجهيز والتطوير حالياً');
                   } else if (feature.actionType === 'telegram-modal') {
@@ -2302,16 +2822,14 @@ export const App: React.FC = () => {
         </div>
       </footer>
 
-      {currentView !== 'quiz' && (
-        <MobileBottomNav
+              <MobileBottomNav
           activeTab={activeTab}
           onSelectTab={handleTabSelect}
           onOpenMenu={() => setIsMobileMenuOpen(true)}
           currentUser={currentUser}
         />
-      )}
 
-      {/* إشعار تفاعلي لميزات "قريباً" */}
+      /* إشعار تفاعلي لميزات "قريباً" */
       {comingSoonNotice && (
         <div className="fixed bottom-20 md:bottom-8 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-5 duration-300 max-w-md w-[92%] sm:w-auto">
           <div className="flex items-center gap-3.5 p-4 rounded-2xl bg-slate-950/95 text-white border-2 border-amber-500/70 shadow-2xl shadow-amber-500/20 backdrop-blur-xl">

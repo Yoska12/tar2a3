@@ -1,65 +1,4 @@
-export type OptionId = 'A' | 'B' | 'C' | 'D';
-export type UserRole = 'student' | 'teacher' | 'admin' | 'super_admin';
-
-export interface Option {
-  id: OptionId;
-  text: string;
-  image?: string;
-}
-
-export type Difficulty = 'Easy' | 'Medium' | 'Hard';
-
-export interface Category {
-  id: string;
-  title: string;
-  slug: string;
-  description: string;
-  icon: string;
-  badgeColor?: string;
-  questionsCount?: number;
-}
-
-export interface Question {
-  id: string;
-  categoryId: string;
-  categoryTitle?: string;
-  topicId?: string;
-  topicTitle?: string;
-  questionText: string; // يدعم نصوص KaTeX مثل $x^2 + 5$
-  questionImageUrl?: string;
-  svgDiagram?: string; // رسم هندسي SVG اختياري عالي الدقة
-  options: Option[];
-  correctOption: OptionId;
-  explanation: string; // شرح "طريقة طرقع الذكية"
-  explanationImageUrl?: string;
-  difficulty: Difficulty;
-  source?: string;
-}
-
-export type QuizMode = 'Mock_Exam' | 'Practice_Mode' | 'Speed_Challenge';
-
-export interface QuizSettings {
-  mode: QuizMode;
-  timeLimitSeconds: number; // 0 means no time limit
-  allowInstantExplanation: boolean;
-  categoryFilter?: string;
-}
-
-export interface QuizResult {
-  totalQuestions: number;
-  correctAnswers: number;
-  wrongAnswers: number;
-  unanswered: number;
-  percentageScore: number;
-  totalTimeSeconds: number;
-  categoryPerformance: Record<string, { total: number; correct: number }>;
-  detailedAnswers: {
-    question: Question;
-    userAnswer?: OptionId;
-    isCorrect: boolean;
-    timeSpentSeconds: number;
-  }[];
-}
+export type UserRole = 'student' | 'teacher' | 'admin' | 'super_admin' | 'e_simulator' | 'e_cms';
 
 // ==============================================================================
 // أنواع نظام تأسيس القدرات والمحاضرات والمذكرات (Lectures & Foundation System)
@@ -111,7 +50,7 @@ export interface Lesson {
   teacherName?: string;
 }
 
-export type CourseEnrollmentStatus = 'active' | 'paused' | 'upcoming';
+export type CourseEnrollmentStatus = 'active' | 'paused' | 'upcoming' | 'locked';
 
 export interface CourseModule {
   id: string;
@@ -181,7 +120,9 @@ export interface CourseSubscription {
   userId: string;
   userEmail?: string;
   userName?: string;
-  planId: 'annual_75';
+  courseId?: string;
+  courseTitle?: string;
+  planId: string;
   planName: string;
   priceSAR: number;
   startDate: string;

@@ -4,8 +4,13 @@
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# 1. خيارات السيرفر الأساسية (Server Options)
+# 1. خيارات السيرفر الأساسية ونقطة الدخول (Server Options & DirectoryIndex)
 # ------------------------------------------------------------------------------
+DirectoryIndex index.html index.php
+
+<IfModule mod_dir.c>
+  DirectoryIndex index.html index.php
+</IfModule>
 <IfModule mod_negotiation.c>
   Options -MultiViews
 </IfModule>
@@ -148,7 +153,7 @@ ErrorDocument 404 /404.php
 # ------------------------------------------------------------------------------
 # 7. حماية الملفات الحساسة وبيانات الاعتماد (Protect Sensitive Files)
 # ------------------------------------------------------------------------------
-<FilesMatch "^(\.env|\.git|\.htaccess|\.config|package\.json|package-lock\.json|tsconfig\.json|vite\.config\.ts|\.sql)$">
+<FilesMatch "(^\.env|^\.git|package\.json|package-lock\.json|tsconfig\.json|vite\.config\.ts|\.sql)$">
   <IfModule mod_authz_core.c>
     Require all denied
   </IfModule>
@@ -159,7 +164,7 @@ ErrorDocument 404 /404.php
 </FilesMatch>
 
 # ------------------------------------------------------------------------------
-# 8. إعادة توجيه الروابط وتوجيه وكلاء الذكاء الاصطناعي ورمز 404 الحقيقي (Routing & Real 404s)
+# 8. إعادة توجيه الروابط وتوجيه وكلاء الذكاء الاصطناعي (SPA Routing)
 # ------------------------------------------------------------------------------
 <IfModule mod_rewrite.c>
   RewriteEngine On
@@ -169,10 +174,7 @@ ErrorDocument 404 /404.php
   RewriteCond %{REQUEST_METHOD} OPTIONS
   RewriteRule ^(.*)$ $1 [R=204,L]
 
-  # ب. تحويل الاتصال تلقائياً إلى بروتوكول HTTPS الآمن وتوحيد النطاق لـ tarqa3.net
-  RewriteCond %{HTTP_HOST} ^www\.tarqa3\.net$ [NC]
-  RewriteRule ^(.*)$ https://tarqa3.net/$1 [L,R=301]
-
+  # ب. تحويل الاتصال تلقائياً إلى بروتوكول HTTPS الآمن
   RewriteCond %{HTTPS} off
   RewriteCond %{HTTP:X-Forwarded-Proto} !https [NC]
   RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
@@ -187,9 +189,16 @@ ErrorDocument 404 /404.php
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
 
-  # هـ. استثناء مسارات الـ API ومجلد التخزين المباشر ومجلد .well-known والملفات النصية للوكلاء
+  # هـ. استثناء مسارات الـ API والمحاكيات ومجلد التخزين المباشر ومجلد .well-known
+  RewriteRule ^api/shared-questions/?$ api/shared-questions.php [L,QSA]
+  RewriteRule ^api/points/?$ api/points.php [L,QSA]
+  RewriteRule ^api/subscriptions/?$ api/subscriptions.php [L,QSA]
+  RewriteRule ^api/hostinger_api/?$ api/hostinger_api.php [L,QSA]
   RewriteRule ^api/ - [L]
   RewriteRule ^uploads/ - [L]
+  RewriteRule ^simulation/ - [L]
+  RewriteRule ^exam/ - [L]
+  RewriteRule ^tiger/ - [L]
   RewriteRule ^\.well-known/ - [L]
   RewriteRule ^llms\.txt$ - [L]
   RewriteRule ^llms-full\.txt$ - [L]
@@ -197,16 +206,12 @@ ErrorDocument 404 /404.php
   RewriteRule ^robots\.txt$ - [L]
   RewriteRule ^sitemap\.xml$ - [L]
 
-  # و. توجيه المسارات المعتمدة لتطبيق الصفحة الواحدة (SPA Routes) إلى index.html
-  RewriteRule ^(courses|quiz|leaderboard|dashboard|classroom|admin|admin-lectures|admin-roles|result|about|contact|terms|privacy|cookies|refund|login|signin|signup|register|categories|roadmap|kashier|security|admin-kashier|admin-security)/?$ index.html [L]
+  # و. توجيه المسارات المعروفة للتطبيق التفاعلي (SPA Routes) فقط إلى index.html
+  RewriteRule ^(courses|quiz|simulator|dashboard|leaderboard|admin|classroom|login|signin|signup|register|categories|roadmap|about|contact|terms|privacy)/?$ index.html [L]
+  RewriteRule ^$ index.html [L]
 
-  # ز. أي مسار غير موجود على السيرفر وغير معتمد كتطبيق يُرجع كود 404 حقيقي مع صفحة الخطأ
-  <IfModule mod_php.c>
-    RewriteRule ^.*$ 404.php [L]
-  </IfModule>
-  <IfModule !mod_php.c>
-    RewriteRule ^.*$ 404.html [R=404,L]
-  </IfModule>
+  # ز. إرجاع رمز 404 فعلي ومباشر لأي رابط غير موجود (Agent-Ready Real 404)
+  RewriteRule ^ 404.php [L]
 </IfModule>
 
 # ------------------------------------------------------------------------------

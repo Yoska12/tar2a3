@@ -75,9 +75,21 @@ export default async function handler(req, res) {
       });
     }
 
+    const amountNum = parseFloat(kashierPayload.amount || 1100);
+    const formattedAmount = isNaN(amountNum) ? '1100.00' : amountNum.toFixed(2);
+    const orderId = kashierPayload.order || `TARQA3_${Date.now()}`;
+    const customerEmail = (kashierPayload.customer && kashierPayload.customer.email) || 'student@tarqa.app';
+    const customerRef = (kashierPayload.customer && kashierPayload.customer.reference) || `user_${Date.now()}`;
+
     const finalPayload = {
       ...kashierPayload,
+      amount: formattedAmount,
+      order: orderId,
       merchantId,
+      customer: {
+        email: customerEmail,
+        reference: customerRef,
+      },
     };
 
     const kashierResponse = await fetch(endpoint, {
@@ -93,13 +105,21 @@ export default async function handler(req, res) {
     const data = await kashierResponse.json();
 
     if (!kashierResponse.ok) {
-      return res.status(kashierResponse.status).json({
-        error: 'Kashier API rejected request',
-        details: data,
+      console.error('[Kashier] API error:', data);
+      return res.status(kashierResponse.status || 400).json({
+        success: false,
+        error: data.message || 'Kashier session creation failed',
+        data,
       });
     }
 
-    return res.status(200).json(data);
+    return res.status(200).json({
+      success: true,
+      sessionUrl: data.sessionUrl,
+      sessionId: data._id,
+      orderId: orderId,
+      data,
+    });
   } catch (error) {
     console.error('Error creating Kashier session:', error);
     return res.status(500).json({

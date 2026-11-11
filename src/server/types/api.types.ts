@@ -12,8 +12,4 @@ export interface ApiResponse<T = any> {
   };
 }
 
-export type OptionKey = 'A' | 'B' | 'C' | 'D';
-export type QuestionDifficulty = 'Easy' | 'Medium' | 'Hard';
-export type QuizType = 'Diagnostic' | 'Topic_Practice' | 'Full_Mock' | 'Speed_Challenge';
 export type UserRole = 'student' | 'teacher' | 'admin';
-

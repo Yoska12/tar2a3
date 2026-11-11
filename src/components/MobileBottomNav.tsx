@@ -1,10 +1,9 @@
-import React from 'react';
-import { BookOpen, Layers, Zap, LayoutDashboard, Menu, ShieldCheck, GraduationCap } from 'lucide-react';
+import { BookOpen, Layers, Zap, LayoutDashboard, Menu, ShieldCheck, GraduationCap, Trophy } from 'lucide-react';
 import { TarqaUser } from '../lib/supabase';
 
 interface MobileBottomNavProps {
   activeTab: string;
-  onSelectTab: (tab: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles' | 'leaderboard') => void;
+  onSelectTab: (tab: any) => void;
   onOpenMenu: () => void;
   currentUser?: TarqaUser | null;
 }
@@ -52,19 +51,16 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           <span className="text-[10px] leading-tight">الدورات</span>
         </button>
 
-        {/* 3. تحدي طرقع (الزر الأوسط البارز) */}
+        {/* 3. لوحة المتصدرين والأبطال */}
         <button
           type="button"
-          onClick={() => onSelectTab('speed')}
+          onClick={() => onSelectTab('leaderboard')}
           className="flex flex-col items-center justify-center -mt-3.5 group relative"
         >
           <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-400 text-slate-950 flex items-center justify-center shadow-lg shadow-amber-500/30 group-active:scale-95 transition-transform relative">
-            <Zap className="w-5 h-5 fill-current" />
-            <span className="absolute -top-1 -right-1 text-[8px] font-black bg-slate-900 text-amber-400 px-1 py-0.2 rounded-full border border-amber-400">
-              قريباً
-            </span>
+            <Trophy className="w-5 h-5" />
           </div>
-          <span className="text-[10px] font-black text-amber-600 dark:text-amber-400 mt-1">تحدي 45ث</span>
+          <span className="text-[10px] font-black text-amber-600 dark:text-amber-400 mt-1">المتصدرون</span>
         </button>
 
         {/* 4. لوحة الطالب */}

@@ -11,7 +11,7 @@ export interface PlatformFeatureConfig {
   icon: 'GraduationCap' | 'Clock' | 'Users' | 'Zap' | 'BookOpen' | 'FileText' | 'Flame' | 'Sparkles' | 'MessageSquare';
   colorTheme: 'amber' | 'indigo' | 'sky' | 'emerald' | 'purple' | 'rose';
   bullets: string[];
-  actionType: 'courses' | 'mock-exam' | 'telegram-modal' | 'url' | 'coming-soon';
+  actionType: 'courses' | 'telegram-modal' | 'url' | 'coming-soon';
   actionUrl?: string; // إذا كان actionType هو url ضع الرابط هنا
   buttonText: string;
 }
@@ -43,19 +43,19 @@ export const PLATFORM_FEATURES_CONFIG: PlatformFeatureConfig[] = [
     buttonText: 'دخول المحاضرات'
   },
   {
-    id: 'feature-exam',
-    title: 'محاكي الاختبار الفعلي',
-    description: 'محاكاة دقيقة مطابقة بنسبة 100% لاختبار قياس الحقيقي (المحوسب والورقي) بمؤقت زمني حقيقي وتصحيح تفصيلي لكافة الإجابات مع كشف نقاط القوة والضعف.',
-    badge: 'قريباً ⏳',
-    icon: 'Clock',
-    colorTheme: 'indigo',
+    id: 'feature-materials',
+    title: 'مذكرات وملخصات تأسيس PDF',
+    description: 'مذكرات تدريبية متخصصة وملخصات قوانين مركزة وخرائط ذهنية قابلة للتحميل، تدعم المذاكرة السريعة وتثبيت الأفكار الهامة.',
+    badge: 'متاح للتحميل 📄',
+    icon: 'FileText',
+    colorTheme: 'purple',
     bullets: [
-      'شاشات وتوقيت مطابق تماماً لمركز قياس',
-      'تصحيح فوري وتحليل إحصائي دقيق للدرجة',
-      'أوضاع تدريب متنوعة: محاكي، تدريب ذكي، وتحدي سرعة'
+      'مذكرات شاملة لكل باب وفصل تدريبي',
+      'ملخصات حيل وقوانين الحل الخاطف الذهني',
+      'تحميل سريع ومباشر بجودة طباعة فائقة'
     ],
-    actionType: 'coming-soon',
-    buttonText: 'قريباً ⏳'
+    actionType: 'courses',
+    buttonText: 'تصفح المذكرات'
   },
   {
     id: 'feature-telegram',

@@ -34,7 +34,9 @@ import {
   FileDown,
   FolderDown,
   FileText,
-  RotateCcw
+  RotateCcw,
+  Zap,
+  Video
 } from 'lucide-react';
 import { UserRole, UserWithRole, RoleChangeLog, StudentDownloadedFile } from '../types';
 import { rolesService } from '../lib/rolesService';
@@ -145,10 +147,10 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
     window.addEventListener('tarqa_kashier_tx_logged', handleDataChanged);
     window.addEventListener('storage', handleDataChanged);
 
-    // تحديث دوري تلقائي خفيف كل 3.5 ثوانٍ في الخلفية لضمان ظهور أي عضو يسجل جديداً فوراً
+    // تحديث دوري تلقائي كل 30 ثانية في الخلفية لضمان التزامن بين الأجهزة
     const pollInterval = setInterval(() => {
       loadData(true);
-    }, 3500);
+    }, 30000);
 
     // اشتراك في الوقت الحقيقي عبر Supabase Realtime لأي تسجيل جديد أو تعديل في جدول profiles
     let channel: any = null;
@@ -203,6 +205,8 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
       superAdmin: users.filter((u) => u.role === 'super_admin').length,
       admin: users.filter((u) => u.role === 'admin').length,
       teacher: users.filter((u) => u.role === 'teacher').length,
+      eSimulator: users.filter((u) => u.role === 'e_simulator').length,
+      eCms: users.filter((u) => u.role === 'e_cms').length,
       student: users.filter((u) => u.role === 'student').length,
       banned: users.filter((u) => u.isBanned).length,
       subscribed: users.filter((u) => u.isSubscribed).length,
@@ -414,6 +418,20 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-500/15 text-blue-600 dark:text-blue-300 border border-blue-500/35 shadow-sm shadow-blue-500/10">
             <GraduationCap className="w-3.5 h-3.5 text-blue-500" />
             <span>معلم معتمد 🎓</span>
+          </span>
+        );
+      case 'e_simulator':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/15 text-amber-500 border border-amber-500/35 shadow-sm shadow-amber-500/10">
+            <Zap className="w-3.5 h-3.5 text-amber-400" />
+            <span>محرر المحاكي ⚡ (E.Simulator)</span>
+          </span>
+        );
+      case 'e_cms':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-sky-500/15 text-sky-500 border border-sky-500/35 shadow-sm shadow-sky-500/10">
+            <Video className="w-3.5 h-3.5 text-sky-400" />
+            <span>محرر المحاضرات 🎬 (E.CMS)</span>
           </span>
         );
       case 'student':
@@ -887,6 +905,54 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
           </div>
         </div>
 
+        {/* محررو المحاكي E.Simulator */}
+        <div 
+          onClick={() => setSelectedRoleFilter('e_simulator')}
+          className={`p-4 rounded-3xl transition-all duration-300 cursor-pointer backdrop-blur-md border ${
+            selectedRoleFilter === 'e_simulator'
+              ? 'bg-amber-500/15 border-amber-500/50 shadow-lg shadow-amber-500/10 scale-[1.02]'
+              : 'bg-white/80 dark:bg-[#0c1324]/80 border-slate-200/80 dark:border-slate-800/80 hover:-translate-y-1 hover:shadow-md'
+          }`}
+        >
+          <div className="flex items-center justify-between text-amber-500 mb-2.5">
+            <span className="text-xs font-bold">محررو المحاكي</span>
+            <div className="w-7 h-7 rounded-xl bg-amber-500/15 flex items-center justify-center">
+              <Zap className="w-4 h-4 text-amber-500" />
+            </div>
+          </div>
+          <div className="text-2xl sm:text-3xl font-black text-amber-600 dark:text-amber-400">
+            {stats.eSimulator}
+          </div>
+          <div className="text-[10px] text-amber-500/80 mt-1 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            <span>أسئلة المحاكي فقط</span>
+          </div>
+        </div>
+
+        {/* محررو المحاضرات E.CMS */}
+        <div 
+          onClick={() => setSelectedRoleFilter('e_cms')}
+          className={`p-4 rounded-3xl transition-all duration-300 cursor-pointer backdrop-blur-md border ${
+            selectedRoleFilter === 'e_cms'
+              ? 'bg-sky-500/15 border-sky-500/50 shadow-lg shadow-sky-500/10 scale-[1.02]'
+              : 'bg-white/80 dark:bg-[#0c1324]/80 border-slate-200/80 dark:border-slate-800/80 hover:-translate-y-1 hover:shadow-md'
+          }`}
+        >
+          <div className="flex items-center justify-between text-sky-500 mb-2.5">
+            <span className="text-xs font-bold">محررو المحاضرات</span>
+            <div className="w-7 h-7 rounded-xl bg-sky-500/15 flex items-center justify-center">
+              <Video className="w-4 h-4 text-sky-500" />
+            </div>
+          </div>
+          <div className="text-2xl sm:text-3xl font-black text-sky-600 dark:text-sky-400">
+            {stats.eCms}
+          </div>
+          <div className="text-[10px] text-sky-500/80 mt-1 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+            <span>المحاضرات والدورات فقط</span>
+          </div>
+        </div>
+
         {/* 6. الطلاب Students */}
         <div 
           onClick={() => setSelectedRoleFilter('student')}
@@ -1206,10 +1272,16 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                                   ? 'bg-purple-500/10 text-purple-600 dark:text-purple-300 border border-purple-500/40 hover:border-purple-500'
                                   : user.role === 'teacher'
                                   ? 'bg-blue-500/10 text-blue-600 dark:text-blue-300 border border-blue-500/40 hover:border-blue-500'
+                                  : user.role === 'e_simulator'
+                                  ? 'bg-amber-500/10 text-amber-500 border border-amber-500/40 hover:border-amber-500 font-bold'
+                                  : user.role === 'e_cms'
+                                  ? 'bg-sky-500/10 text-sky-500 border border-sky-500/40 hover:border-sky-500 font-bold'
                                   : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-amber-500'
                               }`}
                             >
                               <option value="student">🎯 طالب</option>
+                              <option value="e_simulator">⚡ محرر المحاكي (E.Simulator)</option>
+                              <option value="e_cms">🎬 محرر المحاضرات (E.CMS)</option>
                               <option value="teacher">🎓 معلم</option>
                               <option value="admin">🛡️ مسؤول</option>
                               <option value="super_admin">👑 سوبر أدمن</option>
@@ -1474,10 +1546,16 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                             ? 'bg-purple-500/10 text-purple-600 border border-purple-500/40'
                             : user.role === 'teacher'
                             ? 'bg-blue-500/10 text-blue-600 border border-blue-500/40'
+                            : user.role === 'e_simulator'
+                            ? 'bg-amber-500/10 text-amber-500 border border-amber-500/40 font-bold'
+                            : user.role === 'e_cms'
+                            ? 'bg-sky-500/10 text-sky-500 border border-sky-500/40 font-bold'
                             : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
                         }`}
                       >
                         <option value="student">🎯 طالب (Student)</option>
+                        <option value="e_simulator">⚡ محرر المحاكي (E.Simulator)</option>
+                        <option value="e_cms">🎬 محرر المحاضرات (E.CMS)</option>
                         <option value="teacher">🎓 معلم (Teacher)</option>
                         <option value="admin">🛡️ مسؤول (Admin)</option>
                         <option value="super_admin">👑 سوبر أدمن (Super Admin)</option>
@@ -1604,6 +1682,24 @@ export const SuperAdminRolesPanel: React.FC<SuperAdminRolesPanelProps> = ({
                 <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                 <span>
                   <strong>تنبيه أمني:</strong> منح هذه الرتبة يتيح للمستخدم إدارة المحتوى والأسئلة والتحكم في قاعدة البيانات وفق صلاحيات الدور الممنوح.
+                </span>
+              </div>
+            )}
+
+            {pendingChange.newRole === 'e_simulator' && (
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs mb-4 flex items-start gap-2">
+                <Zap className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-500" />
+                <span>
+                  <strong>رتبة E.Simulator:</strong> تمنح المستخدم صلاحية الدخول لبنك أسئلة المحاكي وتعديله فقط، دون الوصول لإدارة المحاضرات أو إعدادات النظام.
+                </span>
+              </div>
+            )}
+
+            {pendingChange.newRole === 'e_cms' && (
+              <div className="p-3 rounded-xl bg-sky-500/10 border border-sky-500/30 text-sky-600 dark:text-sky-400 text-xs mb-4 flex items-start gap-2">
+                <Video className="w-4 h-4 flex-shrink-0 mt-0.5 text-sky-500" />
+                <span>
+                  <strong>رتبة E.CMS:</strong> تمنح المستخدم صلاحية إضافة وتعديل المحاضرات والدورات وإدارة مشتركيها، دون صلاحية تعديل أسئلة المحاكي.
                 </span>
               </div>
             )}

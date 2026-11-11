@@ -28,7 +28,8 @@ import {
   Download,
   Search,
   BookOpen,
-  FolderOpen
+  FolderOpen,
+  Users
 } from 'lucide-react';
 import { CourseModule, Lesson, LessonAttachment, VideoProvider, CourseFileItem, AttachmentType, CourseEnrollmentStatus, TeacherId, InstructorInfo } from '../types';
 import { AVAILABLE_INSTRUCTORS } from '../data/foundationModules';
@@ -36,6 +37,7 @@ import { FileUploadZone } from './FileUploadZone';
 import { uploadLessonVideo } from '../lib/videoUploadService';
 import { fileStorageService } from '../lib/fileStorageService';
 import { coursesStorage } from '../lib/subscriptionService';
+import { CourseSubscribersDashboard } from './CourseSubscribersDashboard';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { sanitizeUrl } from '../lib/securityUtils';
 
@@ -86,8 +88,9 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
   onUpdateInstructor,
   onDeleteInstructor,
 }) => {
-  // تبويب العرض الحالي: المحاضرات أو المذكرات والملفات أو الأبواب أو المدرسين
-  const [activeTab, setActiveTab] = useState<'lectures' | 'files' | 'modules' | 'instructors'>('lectures');
+  // تبويب العرض الحالي: المحاضرات أو المذكرات والملفات أو الأبواب أو المدرسين أو المشتركين
+  const [activeTab, setActiveTab] = useState<'lectures' | 'files' | 'modules' | 'instructors' | 'subscribers'>('lectures');
+  const [subscribersCourseId, setSubscribersCourseId] = useState<string | undefined>(undefined);
   const [selectedModuleId, setSelectedModuleId] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
@@ -994,6 +997,21 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
           <Shield className="w-4 h-4" />
           <span>المدرسين ({instructors.length})</span>
         </button>
+
+        <button
+          onClick={() => {
+            setSubscribersCourseId(undefined);
+            setActiveTab('subscribers');
+          }}
+          className={`flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 transition cursor-pointer whitespace-nowrap ${
+            activeTab === 'subscribers'
+              ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>مشتركو الدورات 👥</span>
+        </button>
       </div>
 
       {/* ======================================================================= */}
@@ -1112,12 +1130,16 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-black border ${
                           mod.status === 'active'
                             ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                            : mod.status === 'locked'
+                            ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30'
                             : mod.status === 'upcoming'
                             ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30'
                             : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30'
                         }`}>
                           {mod.status === 'active'
                             ? 'متاح للتسجيل ✅'
+                            : mod.status === 'locked'
+                            ? 'مغلق / قيد التجهيز 🔒'
                             : mod.status === 'upcoming'
                             ? 'قادم قريباً ⏳'
                             : 'التسجيل مغلق مؤقتاً ⏸️'}
@@ -1137,13 +1159,14 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                           const newStatus = e.target.value as CourseEnrollmentStatus;
                           coursesStorage.updateModuleStatus(mod.id, newStatus);
                           setToast({
-                            text: `تم تغيير حالة التسجيل إلى (${newStatus === 'active' ? 'متاح للتسجيل' : newStatus === 'paused' ? 'مغلق مؤقتاً / قريباً' : 'قادمة قريباً'}) بنجاح!`,
+                            text: `تم تغيير حالة التسجيل إلى (${newStatus === 'active' ? 'متاح للتسجيل' : newStatus === 'locked' ? 'مغلق / قيد التجهيز' : newStatus === 'paused' ? 'مغلق مؤقتاً' : 'قادمة قريباً'}) بنجاح!`,
                             type: 'success',
                           });
                         }}
                         className="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer"
                       >
                         <option value="active">🟢 متاح للجميع (Active)</option>
+                        <option value="locked">🔒 مغلق / قيد التجهيز (Locked)</option>
                         <option value="paused">⏸️ مغلق مؤقتاً (Paused)</option>
                         <option value="upcoming">⏳ قادمة قريباً (Upcoming)</option>
                       </select>
@@ -1580,12 +1603,16 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                       <span className={`text-[10px] px-2.5 py-1 rounded-full font-black border ${
                         mod.status === 'active'
                           ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                          : mod.status === 'locked'
+                          ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30'
                           : mod.status === 'upcoming'
                           ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30'
                           : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30'
                       }`}>
                         {mod.status === 'active'
                           ? 'متاح للتسجيل ✅'
+                          : mod.status === 'locked'
+                          ? 'مغلق / قيد التجهيز 🔒'
                           : mod.status === 'upcoming'
                           ? 'قادم قريباً ⏳'
                           : 'التسجيل مغلق مؤقتاً ⏸️'}
@@ -1649,15 +1676,29 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                       </button>
                     </div>
 
-                    <button
-                      onClick={() => {
-                        setSelectedModuleId(mod.id);
-                        setActiveTab('lectures');
-                      }}
-                      className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-amber-500 hover:text-slate-950 dark:bg-slate-800 dark:hover:bg-amber-500 text-slate-700 dark:text-slate-200 font-bold text-xs transition cursor-pointer"
-                    >
-                      استعراض الدروس 🎥
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => {
+                          setSubscribersCourseId(mod.courseId || mod.id);
+                          setActiveTab('subscribers');
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-600 dark:text-rose-400 font-bold text-xs transition cursor-pointer flex items-center gap-1"
+                        title="عرض وإدارة مشتركي هذا الباب والدورة"
+                      >
+                        <Users className="w-3.5 h-3.5" />
+                        <span>المشتركون 👥</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setSelectedModuleId(mod.id);
+                          setActiveTab('lectures');
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-amber-500 hover:text-slate-950 dark:bg-slate-800 dark:hover:bg-amber-500 text-slate-700 dark:text-slate-200 font-bold text-xs transition cursor-pointer"
+                      >
+                        استعراض الدروس 🎥
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -1778,7 +1819,19 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
       )}
 
       {/* ======================================================================= */}
-      {/* 5. نافذة منبثقة لإضافة / تعديل المحاضرة (Lecture Modal) */}
+      {/* 5. تبويب لوحات مشتركي الدورات المستقلة */}
+      {/* ======================================================================= */}
+      {activeTab === 'subscribers' && (
+        <div className="animate-in fade-in duration-200">
+          <CourseSubscribersDashboard
+            initialCourseId={subscribersCourseId}
+            onBack={() => setActiveTab('modules')}
+          />
+        </div>
+      )}
+
+      {/* ======================================================================= */}
+      {/* 6. نافذة منبثقة لإضافة / تعديل المحاضرة (Lecture Modal) */}
       {/* ======================================================================= */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
@@ -2548,6 +2601,7 @@ export const LecturesCMS: React.FC<LecturesCMSProps> = ({
                     className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-purple-500 cursor-pointer"
                   >
                     <option value="active">🟢 متاح للتسجيل للجميع (Active)</option>
+                    <option value="locked">🔒 مغلق / قيد التجهيز (Locked)</option>
                     <option value="paused">⏸️ مغلق مؤقتاً للتحديث (Paused)</option>
                     <option value="upcoming">⏳ قادم قريباً (Upcoming)</option>
                   </select>

@@ -282,7 +282,7 @@ export const initGlobalAntiHack = (
         type: 'screenshot_attempt',
         details: 'رصد ضغط زر التقاط الشاشة PrintScreen',
       });
-      triggerSafeAlert('🛡️ تنبيه: محتوى بنك الأسئلة محمي من التصوير والتسريب.');
+      triggerSafeAlert('🛡️ تنبيه: محتوى المنصة والمذكرات محمي من التصوير والتسريب.');
     }
   };
 
@@ -305,7 +305,7 @@ export const initGlobalAntiHack = (
       type: 'copy_attempt',
       details: 'محاولة نسخ محتوى من الصفحة المحمية',
     });
-    triggerSafeAlert('🔒 نسخ نصوص الأسئلة والمذكرات غير مصرح به.');
+    triggerSafeAlert('🔒 نسخ نصوص الشروحات والمذكرات غير مصرح به.');
   };
 
   // 4. مراقبة فحص فتح الـ DevTools دورياً عبر أبعاد النافذة (فقط لسطح المكتب لمنع الإنذار الكاذب على الهواتف)

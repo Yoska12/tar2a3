@@ -2,8 +2,8 @@ import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { TarqaUser } from './supabase';
 
 export interface AppStateData {
-  currentView: 'home' | 'courses' | 'quiz' | 'result' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles' | 'leaderboard';
-  activeTab: 'home' | 'courses' | 'categories' | 'speed' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles' | 'leaderboard' | 'admin-kashier' | 'admin-security' | 'kashier' | 'security';
+  currentView: 'home' | 'courses' | 'dashboard' | 'admin' | 'classroom' | 'admin-lectures' | 'admin-roles' | 'admin-subscribers' | 'leaderboard';
+  activeTab: 'home' | 'courses' | 'categories' | 'history' | 'dashboard' | 'admin' | 'roadmap' | 'admin-lectures' | 'admin-roles' | 'admin-subscribers' | 'leaderboard' | 'admin-kashier' | 'admin-security' | 'kashier' | 'security' | 'admin-promo' | 'promo' | string;
   activeModuleId?: string;
   activeLessonId?: string;
   updatedAt: number;

@@ -29,7 +29,8 @@ import { SecureVideoPlayer } from './SecureVideoPlayer';
 import { downloadTrackingService } from '../lib/downloadTrackingService';
 import { fileStorageService, isMobileDevice } from '../lib/fileStorageService';
 import { PdfPreviewModal } from './PdfPreviewModal';
-import { isUserSubscribed, coursesStorage } from '../lib/subscriptionService';
+import { isUserSubscribed, coursesStorage, canEditCourses, isCourseEnrollmentOpen } from '../lib/subscriptionService';
+import { courseCommerceService } from '../lib/courseCommerceService';
 import { getStudentDisplayIdentity } from '../lib/userUtils';
 import {
   isYouTubeUrl as isYouTube,
@@ -43,8 +44,7 @@ interface ClassroomViewProps {
   currentLesson?: Lesson | null;
   currentUser?: TarqaUser | null;
   onSelectLesson: (lesson: Lesson) => void;
-  onCompleteLesson: (lessonId: string) => void;
-  onStartQuiz?: (quizId: string) => void;
+  onCompleteLesson?: (lessonId: string) => void;
   onBackToRoadmap: () => void;
   onOpenAuth?: () => void;
 }
@@ -55,7 +55,6 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
   currentUser,
   onSelectLesson,
   onCompleteLesson,
-  onStartQuiz,
   onBackToRoadmap,
   onOpenAuth,
 }) => {
@@ -117,7 +116,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
     );
   }
 
-  const [activeTab, setActiveTab] = useState<'attachments' | 'quiz' | 'tarqa_tips'>('attachments');
+  const [activeTab, setActiveTab] = useState<'attachments' | 'tarqa_tips'>('attachments');
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [isCompleted, setIsCompleted] = useState<boolean>(Boolean(currentLesson?.isCompleted));
   const [isPlayerFullscreen, setIsPlayerFullscreen] = useState<boolean>(false);
@@ -125,6 +124,12 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const youtubeIframeRef = useRef<HTMLIFrameElement>(null);
   const vimeoIframeRef = useRef<HTMLIFrameElement>(null);
+
+  // التحقق من اشتراك الطالب في هذه الدورة المستقلة أو الاشتراك العام
+  const isUserEnrolledInThisCourse = Boolean(
+    isUserSubscribed(currentUser) ||
+    courseCommerceService.isUserSubscribedToCourse(currentUser, currentModule.courseId || 'course-foundation')
+  );
 
   // تحديث حالة الإكمال تلقائياً عند تغيير الدرس المختار
   useEffect(() => {
@@ -387,7 +392,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
     const nextState = !isCompleted;
     setIsCompleted(nextState);
     if (nextState && currentLesson?.id) {
-      onCompleteLesson(currentLesson.id);
+      onCompleteLesson?.(currentLesson.id);
     }
   };
 
@@ -484,10 +489,36 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
         {/* القسم الرئيسي (مشغل الفيديو والمذكرات): 8 أعمدة في الشاشات الواسعة وعرض كامل في التابلت */}
         <div className="lg:col-span-8 flex flex-col gap-3 sm:gap-6">
           
-          {/* فحص صلاحية الوصول للمحاضرة: التحقق من الاشتراك أو المعاينة المجانية */}
+          {/* فحص صلاحية الوصول للمحاضرة: التحقق من حالة الدورة والاشتراك أو المعاينة المجانية */}
           {(() => {
-            const isSubscribed = isUserSubscribed(currentUser);
-            const hasAccess = Boolean(currentLesson?.isFreePreview || isSubscribed);
+            const isEditor = canEditCourses(currentUser?.role, currentUser?.email);
+            const isModuleLocked = !isCourseEnrollmentOpen(currentModule);
+
+            if (isModuleLocked && !isEditor) {
+              return (
+                <div className="aspect-video w-full rounded-2xl sm:rounded-3xl border border-amber-500/30 bg-slate-900/90 flex flex-col items-center justify-center p-6 text-center text-white shadow-2xl">
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-500 mb-4 shadow-lg shadow-amber-500/20">
+                    <Clock className="w-7 h-7 sm:w-8 sm:h-8" />
+                  </div>
+                  <h3 className="text-base sm:text-xl font-black mb-2 text-white">هذه الدورة قادمة قريباً ومغلقة حالياً ⏳</h3>
+                  <p className="text-xs sm:text-sm text-slate-300 max-w-md mb-5 leading-relaxed">
+                    نقوم بتجهيز ونشر شروحات واختبارات هذه الدورة التدريبية، وستتاح المحاضرات فور إطلاق الدورة رسمياً!
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onBackToRoadmap) onBackToRoadmap();
+                      else window.location.hash = '#courses';
+                    }}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-amber-500/25 hover:scale-[1.02] transition cursor-pointer"
+                  >
+                    العودة إلى صفحة الدورات 🎯
+                  </button>
+                </div>
+              );
+            }
+
+            const hasAccess = Boolean(currentLesson?.isFreePreview || isUserEnrolledInThisCourse);
 
             if (!hasAccess) {
               return (
@@ -520,7 +551,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
           <div
             ref={playerContainerRef}
             className={`transition-all duration-200 ${
-              Boolean(currentLesson?.isFreePreview || isUserSubscribed(currentUser)) ? '' : 'hidden '
+              Boolean(currentLesson?.isFreePreview || isUserEnrolledInThisCourse) ? '' : 'hidden '
             }${
               isPlayerFullscreen
                 ? 'fixed inset-0 z-[99999] w-screen h-screen bg-black flex flex-col justify-center items-center p-0 m-0'
@@ -587,7 +618,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                 src={currentLesson?.videoUrl}
                 title={currentLesson?.title}
                 currentUser={currentUser}
-                onEnded={() => onCompleteLesson(currentLesson.id)}
+                onEnded={() => onCompleteLesson?.(currentLesson.id)}
                 playbackSpeed={playbackSpeed}
                 onSpeedChange={handleSpeedChange}
               />
@@ -691,19 +722,6 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
 
               <button
                 type="button"
-                onClick={() => setActiveTab('quiz')}
-                className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold transition shrink-0 whitespace-nowrap cursor-pointer ${
-                  activeTab === 'quiz'
-                    ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
-                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white bg-slate-50 dark:bg-slate-900/50'
-                }`}
-              >
-                <HelpCircle className="w-3.5 h-3.5 shrink-0" />
-                <span>كويز التثبيت</span>
-              </button>
-
-              <button
-                type="button"
                 onClick={() => setActiveTab('tarqa_tips')}
                 className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold transition shrink-0 whitespace-nowrap cursor-pointer ${
                   activeTab === 'tarqa_tips'
@@ -749,7 +767,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
                         <div className="flex items-center gap-1.5 shrink-0">
                           {(() => {
                             const isAttFree = Boolean((att as any).isFreePreview || currentLesson?.isFreePreview);
-                            const hasAccess = isAttFree || isUserSubscribed(currentUser);
+                            const hasAccess = isAttFree || isUserEnrolledInThisCourse;
 
                             return (
                               <>
@@ -866,26 +884,6 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
               </div>
             )}
 
-            {/* محتوى تبويب الكويز - معطل ومغلق مؤقتاً للتطوير */}
-            {activeTab === 'quiz' && (
-              <div className="p-6 rounded-2xl bg-gradient-to-br from-amber-500/10 to-transparent border border-amber-500/20 text-center space-y-4">
-                <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-500 flex items-center justify-center mx-auto text-2xl font-black">
-                  ⏳
-                </div>
-                <div>
-                  <h4 className="text-base font-black text-slate-900 dark:text-white">
-                    كويزات المحاضرات التطبيقية
-                  </h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto mt-1">
-                    قسم الكويزات التطبيقية ومحاكي قياس يخضع للتطوير والتجهيز الشامل وسينطلق قريباً جداً ⏳
-                  </p>
-                </div>
-
-                <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-black text-xs">
-                  <span>قريباً جداً ⏳</span>
-                </div>
-              </div>
-            )}
 
             {/* محتوى تبويب طريقة طرقع */}
             {activeTab === 'tarqa_tips' && (
@@ -925,8 +923,7 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
             <div className="space-y-2">
               {currentModule.lessons.map((lesson, idx) => {
                 const isActive = lesson.id === currentLesson.id;
-                const isSubscribed = isUserSubscribed(currentUser);
-                const hasLessonAccess = Boolean(lesson.isFreePreview || isSubscribed);
+                const hasLessonAccess = Boolean(lesson.isFreePreview || isUserEnrolledInThisCourse);
 
                 return (
                   <button
@@ -1019,12 +1016,12 @@ export const ClassroomView: React.FC<ClassroomViewProps> = ({
         }}
         file={previewFile}
         currentUser={currentUser}
-        isSubscribed={isUserSubscribed(currentUser)}
+        isSubscribed={isUserEnrolledInThisCourse}
         onSubscribeClick={() => {
-          alert('هذا الملف متاح حصرياً لمشتركي باقة طرقع 🔒 يرجى تفعيل أو تجديد الاشتراك لتنزيل الملفات');
+          alert('هذا الملف متاح حصرياً لمشتركي الدورة 🔒 يرجى تفعيل الاشتراك لتنزيل الملفات والمذكرات');
         }}
         onDownloadClick={(fileToDownload: CourseFileItem) => {
-          const hasAccess = Boolean(fileToDownload.isFreePreview || isUserSubscribed(currentUser));
+          const hasAccess = Boolean(fileToDownload.isFreePreview || isUserEnrolledInThisCourse);
           if (!hasAccess) return;
           downloadTrackingService.trackDownload(
             {

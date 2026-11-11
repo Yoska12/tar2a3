@@ -1,0 +1,38 @@
+[
+  {
+    "id": "rcpt_1794259808298",
+    "order_id": "TARQA_1794259808296",
+    "user_id": "u_test2",
+    "user_name": "محمد علي",
+    "user_email": "mohamed@test.com",
+    "user_phone": "+966512345678",
+    "course_id": "course-foundation",
+    "course_title": "دورة قدرات",
+    "original_price": 75,
+    "discount_amount": 15,
+    "final_price": 60,
+    "currency": "SAR",
+    "promo_code": "TAR20",
+    "payment_method": "InstaPay / Bank",
+    "payment_status": "PAID",
+    "created_at": "2026-11-09T21:30:08.298Z"
+  },
+  {
+    "id": "rcpt_1794259753593",
+    "order_id": "TARQA_1794259753593",
+    "user_id": "u_test1",
+    "user_name": "أحمد محمد",
+    "user_email": "ahmed@test.com",
+    "user_phone": "+201012345678",
+    "course_id": "course-foundation",
+    "course_title": "دورة قدرات",
+    "original_price": 75,
+    "discount_amount": 0,
+    "final_price": 75,
+    "currency": "SAR",
+    "promo_code": "TAR20",
+    "payment_method": "Kashier Card",
+    "payment_status": "PAID",
+    "created_at": "2026-11-09T21:29:13.593Z"
+  }
+]

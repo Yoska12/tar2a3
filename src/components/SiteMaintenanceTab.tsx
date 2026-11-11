@@ -344,10 +344,10 @@ export const SiteMaintenanceTab: React.FC = () => {
           >
             <div className="flex items-center gap-2 text-purple-500 font-bold text-xs mb-1">
               <Zap className="w-4 h-4" />
-              <span>تحديث بنك الأسئلة</span>
+              <span>تحديث المحتوى والتأسيس</span>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2">
-              إضافة تسريبات وتجميعات 1446-1447 وتدقيق الأسئلة
+              تحديث الشروحات والقوانين الذهنية وتدقيق المذكرات
             </p>
           </button>
 
